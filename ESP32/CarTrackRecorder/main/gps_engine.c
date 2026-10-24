@@ -1,12 +1,13 @@
 #include "gps_engine.h"
 #include "gpx_manager.h"
 #include "bsp_board.h"
+#include "bsp/esp-bsp.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <sys/time.h>
-#include "driver/i2c.h"
+#include "driver/i2c_master.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -14,6 +15,8 @@
 static const char *TAG = "GPS_ENGINE";
 static SemaphoreHandle_t s_gps_mutex = NULL;
 static uint32_t s_last_alt_update_ms = 0;
+static i2c_master_dev_handle_t s_lc76g_dev_wr = NULL;
+static i2c_master_dev_handle_t s_lc76g_dev_rd = NULL;
 
 static double parse_nmea_coord(const char *str, char dir)
 {
