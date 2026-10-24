@@ -58,7 +58,7 @@ esp_err_t gpx_manager_check_fifo(void)
 
     // 寻找字母序最小的 gpx 文件 (即时间戳最早的最旧文件)
     while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_type == DT_REG && strstr(entry->d_name, ".gpx")) {
+        if ((entry->d_type == DT_REG || entry->d_type == DT_UNKNOWN) && entry->d_name[0] != '.' && strstr(entry->d_name, ".gpx")) {
             // 跳过当前正在写入的文件
             char full_path[320];
             snprintf(full_path, sizeof(full_path), "%s/%s", GPX_STORAGE_DIR, entry->d_name);
@@ -142,25 +142,33 @@ esp_err_t gpx_manager_start(record_mode_t mode)
                 // 检查该文件在 SD 卡是否存在
                 struct stat st;
                 if (stat(prev_file, &st) == 0 && st.st_size > 0) {
-                    // 找到了断电前的原文件，以追加模式打开
+                    // 找到了断电前的原文件，以读写模式打开
                     s_gpx_file = fopen(prev_file, "r+");
                     if (s_gpx_file) {
-                        // 寻找并去除先前的闭合标签，追加新段
                         fseek(s_gpx_file, 0, SEEK_END);
                         long fsize = ftell(s_gpx_file);
-                        // 回退搜索 </trkseg>
-                        if (fsize > 60) {
-                            fseek(s_gpx_file, fsize - 60, SEEK_SET);
-                            char tail_buf[64] = {0};
-                            fread(tail_buf, 1, 60, s_gpx_file);
-                            char *pos = strstr(tail_buf, "</trkseg>");
-                            if (pos) {
-                                long offset = (tail_buf + 60) - pos;
-                                fseek(s_gpx_file, fsize - offset, SEEK_SET);
-                            }
+                        long search_len = (fsize > 256) ? 256 : fsize;
+                        fseek(s_gpx_file, fsize - search_len, SEEK_SET);
+                        char tail_buf[257] = {0};
+                        fread(tail_buf, 1, search_len, s_gpx_file);
+
+                        // 检查尾部是否包含闭合标签 </trkseg> 或 </gpx>
+                        char *pos_trkseg = strstr(tail_buf, "</trkseg>");
+                        char *pos_gpx = strstr(tail_buf, "</gpx>");
+
+                        if (pos_trkseg || pos_gpx) {
+                            // 先前已被正常封存闭合，回退到 </trkseg> 处，截断并开启新段追加
+                            char *target = pos_trkseg ? pos_trkseg : pos_gpx;
+                            long offset = (tail_buf + search_len) - target;
+                            long new_len = fsize - offset;
+                            ftruncate(fileno(s_gpx_file), new_len);
+                            fseek(s_gpx_file, new_len, SEEK_SET);
+                            fprintf(s_gpx_file, "    <trkseg>\n");
+                            fflush(s_gpx_file);
+                        } else {
+                            // 未闭合 (突发掉电)，文件指针定位于文件末尾直接继续记录
+                            fseek(s_gpx_file, 0, SEEK_END);
                         }
-                        fprintf(s_gpx_file, "    <trkseg>\n");
-                        fflush(s_gpx_file);
                         snprintf(g_app_state.current_gpx_path, sizeof(g_app_state.current_gpx_path), "%s", prev_file);
                         ESP_LOGI(TAG, "Resumed continuous GPX file: %s", prev_file);
                         nvs_close(nvs_h);

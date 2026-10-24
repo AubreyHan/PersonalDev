@@ -109,9 +109,12 @@ esp_err_t wifi_mgr_start_provisioning(void)
     // 启动热点与 Web 服务供手机配置
     web_server_start();
 
-    // 屏幕展示二维码 (标准 Wi-Fi 配置格式: WIFI:S:CarTracker-Setup;T:nopass;;)
+    // 屏幕展示二维码 (标准 Wi-Fi 配置格式: WIFI:S:<SSID>;T:nopass;;)
+    char qr_payload[80];
+    snprintf(qr_payload, sizeof(qr_payload), "WIFI:S:%s;T:nopass;;", WEB_AP_SSID);
+
     bsp_display_lock(-1);
-    ui_show_wifi_qrcode("WIFI:S:CarTracker-Setup;T:nopass;;", "请用手机扫码连接热点\n浏览器打开 192.168.4.1 配网");
+    ui_show_wifi_qrcode(qr_payload, "请用手机扫码连接热点\n浏览器打开 192.168.4.1 配网");
     bsp_display_unlock();
 
     return ESP_OK;
