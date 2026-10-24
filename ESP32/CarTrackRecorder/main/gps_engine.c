@@ -350,7 +350,7 @@ esp_err_t gps_engine_init(void)
         i2c_device_config_t dev_wr_cfg = {
             .dev_addr_length = I2C_ADDR_BIT_LEN_7,
             .device_address = ADDR_LC76G_WR,
-            .scl_speed_hz = BOARD_I2C_FREQ_HZ,
+            .scl_speed_hz = LC76G_I2C_FREQ_HZ,
         };
         esp_err_t ret = i2c_master_bus_add_device(bus, &dev_wr_cfg, &s_lc76g_dev_wr);
         if (ret != ESP_OK) {
@@ -360,7 +360,7 @@ esp_err_t gps_engine_init(void)
         i2c_device_config_t dev_rd_cfg = {
             .dev_addr_length = I2C_ADDR_BIT_LEN_7,
             .device_address = ADDR_LC76G_RD,
-            .scl_speed_hz = BOARD_I2C_FREQ_HZ,
+            .scl_speed_hz = LC76G_I2C_FREQ_HZ,
         };
         ret = i2c_master_bus_add_device(bus, &dev_rd_cfg, &s_lc76g_dev_rd);
         if (ret != ESP_OK) {

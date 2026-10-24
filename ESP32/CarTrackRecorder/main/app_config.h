@@ -21,6 +21,9 @@ extern "C" {
 #define BOARD_I2C_SDA_GPIO          GPIO_NUM_15
 #define BOARD_I2C_FREQ_HZ           400000
 
+// LC76G I2C 速率 (对齐微雪官方示例 09_LC76G_I2C: 100kHz)
+#define LC76G_I2C_FREQ_HZ           100000
+
 // I2C 从机地址
 #define ADDR_TCA9554                0x20
 #define ADDR_AXP2101                0x34
