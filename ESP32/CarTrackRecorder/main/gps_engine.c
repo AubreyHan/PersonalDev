@@ -223,45 +223,47 @@ static void gps_task(void *pvParameters)
     uint8_t query_cmd[] = { 0x08, 0x00, 0x51, 0xAA, 0x04, 0x00, 0x00, 0x00 };
     uint8_t read_len_buf[4] = {0};
 
-    char line_buf[128];
+    char line_buf[256];
     int line_idx = 0;
     uint32_t last_gpx_feed_ms = 0;
 
     while (1) {
-        // 1. 发送查询数据长度命令到 0x50
-        esp_err_t err = i2c_master_write_to_device(I2C_NUM_0, ADDR_LC76G_WR, query_cmd, sizeof(query_cmd), pdMS_TO_TICKS(100));
-        if (err == ESP_OK) {
-            vTaskDelay(pdMS_TO_TICKS(30));
-            // 2. 从 0x54 读取 4 字节数据长度
-            err = i2c_master_read_from_device(I2C_NUM_0, ADDR_LC76G_RD, read_len_buf, 4, pdMS_TO_TICKS(100));
+        if (s_lc76g_dev_wr && s_lc76g_dev_rd) {
+            // 1. 发送查询数据长度命令到 0x50
+            esp_err_t err = i2c_master_transmit(s_lc76g_dev_wr, query_cmd, sizeof(query_cmd), pdMS_TO_TICKS(100));
             if (err == ESP_OK) {
-                uint32_t len = (read_len_buf[0]) | (read_len_buf[1] << 8) | (read_len_buf[2] << 16) | (read_len_buf[3] << 24);
-                if (len > 0 && len <= 2048) {
-                    // 3. 发送带长度的读数据命令到 0x50
-                    uint8_t fetch_cmd[8] = { 0x00, 0x20, 0x51, 0xAA, read_len_buf[0], read_len_buf[1], read_len_buf[2], read_len_buf[3] };
-                    if (i2c_master_write_to_device(I2C_NUM_0, ADDR_LC76G_WR, fetch_cmd, sizeof(fetch_cmd), pdMS_TO_TICKS(100)) == ESP_OK) {
-                        vTaskDelay(pdMS_TO_TICKS(30));
-                        uint8_t *rx_buf = malloc(len + 1);
-                        if (rx_buf) {
-                            if (i2c_master_read_from_device(I2C_NUM_0, ADDR_LC76G_RD, rx_buf, len, pdMS_TO_TICKS(300)) == ESP_OK) {
-                                rx_buf[len] = '\0';
-                                // 拆分每一行 NMEA 语句
-                                for (uint32_t i = 0; i < len; i++) {
-                                    char c = (char)rx_buf[i];
-                                    if (c == '\r' || c == '\n') {
-                                        if (line_idx > 0) {
-                                            line_buf[line_idx] = '\0';
-                                            parse_nmea_line(line_buf);
-                                            line_idx = 0;
-                                        }
-                                    } else {
-                                        if (line_idx < sizeof(line_buf) - 1) {
-                                            line_buf[line_idx++] = c;
+                vTaskDelay(pdMS_TO_TICKS(30));
+                // 2. 从 0x54 读取 4 字节数据长度
+                err = i2c_master_receive(s_lc76g_dev_rd, read_len_buf, 4, pdMS_TO_TICKS(100));
+                if (err == ESP_OK) {
+                    uint32_t len = (read_len_buf[0]) | (read_len_buf[1] << 8) | (read_len_buf[2] << 16) | (read_len_buf[3] << 24);
+                    if (len > 0 && len <= 2048) {
+                        // 3. 发送带长度的读数据命令到 0x50
+                        uint8_t fetch_cmd[8] = { 0x00, 0x20, 0x51, 0xAA, read_len_buf[0], read_len_buf[1], read_len_buf[2], read_len_buf[3] };
+                        if (i2c_master_transmit(s_lc76g_dev_wr, fetch_cmd, sizeof(fetch_cmd), pdMS_TO_TICKS(100)) == ESP_OK) {
+                            vTaskDelay(pdMS_TO_TICKS(30));
+                            uint8_t *rx_buf = malloc(len + 1);
+                            if (rx_buf) {
+                                if (i2c_master_receive(s_lc76g_dev_rd, rx_buf, len, pdMS_TO_TICKS(300)) == ESP_OK) {
+                                    rx_buf[len] = '\0';
+                                    // 拆分每一行 NMEA 语句
+                                    for (uint32_t i = 0; i < len; i++) {
+                                        char c = (char)rx_buf[i];
+                                        if (c == '\r' || c == '\n') {
+                                            if (line_idx > 0) {
+                                                line_buf[line_idx] = '\0';
+                                                parse_nmea_line(line_buf);
+                                                line_idx = 0;
+                                            }
+                                        } else {
+                                            if (line_idx < sizeof(line_buf) - 1) {
+                                                line_buf[line_idx++] = c;
+                                            }
                                         }
                                     }
                                 }
+                                free(rx_buf);
                             }
-                            free(rx_buf);
                         }
                     }
                 }
@@ -341,6 +343,32 @@ esp_err_t gps_engine_init(void)
     s_gps_mutex = xSemaphoreCreateMutex();
     // 默认时区设为东八区
     g_app_state.gps.timezone_offset = 8;
+
+    // 从 BSP 获取共享的 I2C Master Bus Handle
+    i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
+    if (bus) {
+        i2c_device_config_t dev_wr_cfg = {
+            .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+            .device_address = ADDR_LC76G_WR,
+            .scl_speed_hz = BOARD_I2C_FREQ_HZ,
+        };
+        esp_err_t ret = i2c_master_bus_add_device(bus, &dev_wr_cfg, &s_lc76g_dev_wr);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to add LC76G write device to I2C bus: %s", esp_err_to_name(ret));
+        }
+
+        i2c_device_config_t dev_rd_cfg = {
+            .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+            .device_address = ADDR_LC76G_RD,
+            .scl_speed_hz = BOARD_I2C_FREQ_HZ,
+        };
+        ret = i2c_master_bus_add_device(bus, &dev_rd_cfg, &s_lc76g_dev_rd);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to add LC76G read device to I2C bus: %s", esp_err_to_name(ret));
+        }
+    } else {
+        ESP_LOGE(TAG, "Failed to get I2C bus handle from BSP!");
+    }
 
     xTaskCreatePinnedToCore(gps_task, "gps_task", 4096, NULL, 4, NULL, 0);
     return ESP_OK;
