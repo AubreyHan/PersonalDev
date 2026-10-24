@@ -80,10 +80,8 @@ static void on_boot_button_event(btn_event_t event)
 
         case BTN_EVENT_LONG_PRESS:
             ESP_LOGI(TAG, "Button: Long Press event received.");
-            // 长按开关 HTTP Web 导出服务 (屏幕弹窗提示 AP 状态)
-            bsp_display_lock(-1);
+            // 长按开关 HTTP Web 导出服务 (内部按需锁定 display 显示 Toast)
             web_server_toggle();
-            bsp_display_unlock();
             break;
     }
 }

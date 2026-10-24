@@ -225,8 +225,8 @@ void ui_view_track_update(const gps_data_t *gps)
             py = ry;
         }
 
-        s_line_points[valid_points].x = (lv_coord_t)(cx + px);
-        s_line_points[valid_points].y = (lv_coord_t)(cy + py);
+        s_line_points[valid_points].x = (int32_t)(cx + px);
+        s_line_points[valid_points].y = (int32_t)(cy + py);
         valid_points++;
     }
 
