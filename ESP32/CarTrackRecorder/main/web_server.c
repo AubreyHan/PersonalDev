@@ -1,5 +1,6 @@
 #include "web_server.h"
 #include "bsp_board.h"
+#include "bsp/esp-bsp.h"
 #include "ui_app.h"
 #include "wifi_mgr.h"
 #include <stdio.h>
@@ -99,7 +100,7 @@ static esp_err_t index_handler(httpd_req_t *req)
     if (dir) {
         struct dirent *entry;
         while ((entry = readdir(dir)) != NULL) {
-            if (entry->d_type == DT_REG && strstr(entry->d_name, ".gpx")) {
+            if ((entry->d_type == DT_REG || entry->d_type == DT_UNKNOWN) && entry->d_name[0] != '.' && strstr(entry->d_name, ".gpx")) {
                 char full_path[320];
                 snprintf(full_path, sizeof(full_path), "%s/%s", GPX_STORAGE_DIR, entry->d_name);
                 struct stat st;
