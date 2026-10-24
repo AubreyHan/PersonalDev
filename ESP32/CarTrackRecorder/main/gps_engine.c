@@ -45,7 +45,7 @@ static void parse_nmea_line(const char *line)
 {
     if (!line || line[0] != '$' || strlen(line) < 6) return;
 
-    char buf[160];
+    char buf[256];
     snprintf(buf, sizeof(buf), "%s", line);
     char *p = buf;
     char *token = NULL;
