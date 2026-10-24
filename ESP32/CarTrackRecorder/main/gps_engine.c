@@ -40,16 +40,17 @@ static int calculate_timezone(double lat, double lon)
     return (int)round(lon / 15.0);
 }
 
-// NMEA 逐行解析
+// NMEA 逐行解析 (采用 strsep 精准保留空字段分隔，避免 strtok 跳过空值导致字段错位)
 static void parse_nmea_line(const char *line)
 {
-    if (!line || line[0] != '$') return;
+    if (!line || line[0] != '$' || strlen(line) < 6) return;
+
+    char buf[160];
+    snprintf(buf, sizeof(buf), "%s", line);
+    char *p = buf;
+    char *token = NULL;
 
     if (strncmp(line + 3, "RMC", 3) == 0) {
-        char buf[128];
-        snprintf(buf, sizeof(buf), "%s", line);
-
-        char *token = strtok(buf, ",");
         int field = 0;
         char status = 'V';
         char time_str[16] = {0};
@@ -61,20 +62,19 @@ static void parse_nmea_line(const char *line)
         char trk_str[16] = {0};
         char date_str[16] = {0};
 
-        while (token != NULL) {
+        while ((token = strsep(&p, ",")) != NULL) {
             switch (field) {
                 case 1: snprintf(time_str, sizeof(time_str), "%s", token); break;
-                case 2: status = token[0]; break;
+                case 2: if (token[0]) status = token[0]; break;
                 case 3: snprintf(lat_str, sizeof(lat_str), "%s", token); break;
-                case 4: lat_dir = token[0]; break;
+                case 4: if (token[0]) lat_dir = token[0]; break;
                 case 5: snprintf(lon_str, sizeof(lon_str), "%s", token); break;
-                case 6: lon_dir = token[0]; break;
+                case 6: if (token[0]) lon_dir = token[0]; break;
                 case 7: snprintf(spd_str, sizeof(spd_str), "%s", token); break;
                 case 8: snprintf(trk_str, sizeof(trk_str), "%s", token); break;
                 case 9: snprintf(date_str, sizeof(date_str), "%s", token); break;
                 default: break;
             }
-            token = strtok(NULL, ",");
             field++;
         }
 
@@ -127,23 +127,18 @@ static void parse_nmea_line(const char *line)
             xSemaphoreGive(s_gps_mutex);
         }
     } else if (strncmp(line + 3, "GGA", 3) == 0) {
-        char buf[128];
-        snprintf(buf, sizeof(buf), "%s", line);
-
-        char *token = strtok(buf, ",");
         int field = 0;
         int sats = 0;
         float hdop = 0.0f;
         float alt = 0.0f;
 
-        while (token != NULL) {
+        while ((token = strsep(&p, ",")) != NULL) {
             switch (field) {
-                case 7: sats = atoi(token); break;
-                case 8: hdop = (float)atof(token); break;
-                case 9: alt = (float)atof(token); break;
+                case 7: if (token[0]) sats = atoi(token); break;
+                case 8: if (token[0]) hdop = (float)atof(token); break;
+                case 9: if (token[0]) alt = (float)atof(token); break;
                 default: break;
             }
-            token = strtok(NULL, ",");
             field++;
         }
 
@@ -166,21 +161,19 @@ static void parse_nmea_line(const char *line)
         }
         xSemaphoreGive(s_gps_mutex);
     } else if (strncmp(line + 3, "GSV", 3) == 0) {
-        char buf[128];
-        snprintf(buf, sizeof(buf), "%s", line);
-        char *token = strtok(buf, ",");
         int field = 0;
         int snr_sum = 0;
         int snr_cnt = 0;
-        while (token != NULL) {
+        while ((token = strsep(&p, ",")) != NULL) {
             if (field == 7 || field == 11 || field == 15 || field == 19) {
-                int snr = atoi(token);
-                if (snr > 0 && snr < 99) {
-                    snr_sum += snr;
-                    snr_cnt++;
+                if (token[0]) {
+                    int snr = atoi(token);
+                    if (snr > 0 && snr < 99) {
+                        snr_sum += snr;
+                        snr_cnt++;
+                    }
                 }
             }
-            token = strtok(NULL, ",");
             field++;
         }
         if (snr_cnt > 0) {
