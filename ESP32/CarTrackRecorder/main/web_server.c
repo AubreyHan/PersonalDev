@@ -272,15 +272,11 @@ esp_err_t web_server_start(void)
         },
     };
 
-    wifi_mode_t current_mode;
-    if (esp_wifi_get_mode(&current_mode) == ESP_OK) {
-        esp_wifi_set_mode(WIFI_MODE_APSTA);
-        esp_wifi_set_config(WIFI_IF_AP, &wifi_config);
-    } else {
-        esp_wifi_set_mode(WIFI_MODE_APSTA);
-        esp_wifi_set_config(WIFI_IF_AP, &wifi_config);
-        esp_wifi_start();
-    }
+    esp_wifi_set_mode(WIFI_MODE_APSTA);
+    esp_wifi_set_config(WIFI_IF_AP, &wifi_config);
+    // esp_wifi_get_mode 在已 init 但未 start 时同样返回 OK，无法据此判断；
+    // 直接调用 start，已启动时重复调用无副作用，忽略返回值。
+    esp_wifi_start();
 
     // 2. 启动 HTTP 服务
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
