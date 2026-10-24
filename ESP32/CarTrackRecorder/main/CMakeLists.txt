@@ -1,0 +1,25 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "bsp_board.c"
+        "gps_engine.c"
+        "gpx_manager.c"
+        "web_server.c"
+        "wifi_mgr.c"
+        "ui_app.c"
+        "ui_view_altitude.c"
+        "ui_view_track.c"
+        "tile_engine.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        esp_wifi
+        esp_http_server
+        fatfs
+        sdmmc
+        driver
+        nvs_flash
+        esp_netif
+        esp_event
+        mbedtls
+)

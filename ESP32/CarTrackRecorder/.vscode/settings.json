@@ -1,0 +1,10 @@
+{
+  "idf.espIdfPath": "/Users/aubreyhan/.espressif/v5.5.6/esp-idf",
+  "idf.toolsPath": "/Users/aubreyhan/.espressif/tools",
+  "idf.pythonBinPath": "/Users/aubreyhan/.espressif/tools/python/v5.5.6/venv/bin/python",
+  "idf.customExtraPaths": "/Users/aubreyhan/.espressif/tools/shims/v5.5.6:/opt/homebrew/bin:/Users/aubreyhan/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20260121/xtensa-esp-elf/bin:/Users/aubreyhan/.espressif/tools/ninja/1.12.1",
+  "idf.customExtraVars": {
+    "OPENOCD_SCRIPTS": "/Users/aubreyhan/.espressif/tools/openocd-esp32/v0.12.0-esp32-20260831/openocd-esp32/share/openocd/scripts"
+  },
+  "idf.flashType": "UART"
+}

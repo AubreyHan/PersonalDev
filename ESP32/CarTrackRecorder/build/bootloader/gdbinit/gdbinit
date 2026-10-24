@@ -1,0 +1,2 @@
+source /Users/aubreyhan/Tools/ESP32/CarTrackRecorder/build/bootloader/gdbinit/symbols
+source /Users/aubreyhan/Tools/ESP32/CarTrackRecorder/build/bootloader/gdbinit/connect
