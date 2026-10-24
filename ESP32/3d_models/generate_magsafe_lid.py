@@ -1,34 +1,48 @@
+"""生成带螺纹的 MagSafe 磁吸后盖 (与 generate_threaded_body.py 生成的机身配套)。
+
+相对原设计的改动
+  1. 后盖增加内螺纹裙边 (外径仍为 57.0mm)，与机身加高的外螺纹 collar 旋合，避免脱落。
+  2. 插塞(plug)加长，使其尖端在机身坐标系中仍停在 Z=13.5mm，
+     机身内部可用空间与原设计完全一致。
+  3. 所有面片按外法线方向统一缠绕 (原模型缠绕混乱，有符号体积异常)。
+参数见 thread_params.py。
+"""
 import math
+import os
 import struct
-from collections import defaultdict
+import sys
 
-def create_slicer_optimized_lid(out_stl_path):
-    N_THETA = 144  # 2.5 deg resolution
+from thread_params import (
+    R_LID_OUT, Z_SHOULDER, Z_SKIRT_TOP, Z_PLUG_TOP, lid_r,
+)
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+OUT_STL = os.path.join(HERE, "esp32-s3-touch-amoled-1_75-magsafe-lid.stl")
+
+N_THETA = 360          # 1° 分辨率，保证螺旋面平滑
+N_Z_THREAD = 52        # 裙边内螺纹沿 Z 的分段 (约 0.1mm/段)
+
+
+def create_threaded_lid(out_stl_path):
     thetas = [i * 2.0 * math.pi / N_THETA for i in range(N_THETA)]
-    
-    # Radii definitions
-    R_HUB = 5.0           # Center solid hub (dia 10.0mm)
-    R_WIN_OUT = 20.5      # Large GPS/cooling window outer edge (dia 41.0mm)
-    R_STEP_IN = 21.6      # Inner ridge start (dia 43.2mm)
-    R_MAG_IN = 22.4       # MagSafe inner radius (dia 44.8mm)
-    R_MAG_OUT = 27.6      # MagSafe outer radius (dia 55.2mm)
-    R_OUT = 28.5          # Overall outer radius (dia 57.0mm)
-    
-    R_PLUG_IN = 22.0      # Plug inner wall radius
-    R_PLUG = 24.35        # Plug outer radius (dia 48.70mm)
-    R_PLUG_TIP = 23.85    # Plug lead-in chamfer tip
-    
-    # Z levels (Vertical build axis in 3D printer: Z=0 is heatbed!)
-    # Total height = 5.07mm
-    Z_BED = 0.00          # Flat on heatbed (Z=0)
-    Z_GROOVE = 0.80       # MagSafe groove ceiling (0.80mm deep recess from bed)
-    Z_CHAMF = 0.40        # 45-deg chamfer for self-supporting bridging
-    Z_SHOULDER = 2.57     # Seating shoulder on body rim
-    Z_PLUG_CHAMF = 4.57   # Plug lead-in chamfer start
-    Z_TOP = 5.07          # Tip of plug (insertion into body)
 
-    # 4 large quadrant windows for GPS signals & heat dissipation
-    # In car orientation: Top (Skyward) is +Y (+90 deg), Left is -X (180 deg), Bottom is -Y (270 deg), Right is +X (0 deg)
+    # Radii definitions (与原设计一致)
+    R_HUB = 5.0
+    R_WIN_OUT = 20.5
+    R_STEP_IN = 21.6
+    R_MAG_IN = 22.4
+    R_MAG_OUT = 27.6
+    R_PLUG_IN = 22.0
+    R_PLUG = 24.35
+    R_PLUG_TIP = 23.85
+
+    # Z levels
+    Z_BED = 0.00
+    Z_GROOVE = 0.80
+    Z_SHLD = Z_SHOULDER
+    Z_PLUG_CHAMF = Z_PLUG_TOP - 0.5
+    Z_TOP = Z_PLUG_TOP
+
     def is_center_window(deg):
         deg = deg % 360.0
         quads = [(65, 115), (155, 205), (245, 295), (335, 360), (0, 25)]
@@ -39,121 +53,120 @@ def create_slicer_optimized_lid(out_stl_path):
 
     triangles = []
 
-    def add_quad(p1, p2, p3, p4):
-        # Two triangles with normal matching right-hand rule
-        triangles.append((p1, p2, p3))
-        triangles.append((p1, p3, p4))
+    def tri(a, b, c, hint):
+        """按期望外法线 hint 自动校正缠绕方向；退化三角形丢弃。"""
+        u = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
+        v = (c[0] - a[0], c[1] - a[1], c[2] - a[2])
+        n = (u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0])
+        if math.sqrt(n[0] ** 2 + n[1] ** 2 + n[2] ** 2) < 1e-9:
+            return
+        if n[0] * hint[0] + n[1] * hint[1] + n[2] * hint[2] < 0:
+            b, c = c, b
+        triangles.append((a, b, c))
 
-    def add_tri(p1, p2, p3):
-        triangles.append((p1, p2, p3))
+    def quad(p1, p2, p3, p4, hint):
+        tri(p1, p2, p3, hint)
+        tri(p1, p3, p4, hint)
+
+    UP = (0.0, 0.0, 1.0)
+    DOWN = (0.0, 0.0, -1.0)
 
     for i in range(N_THETA):
         th1 = thetas[i]
         th2 = thetas[(i + 1) % N_THETA]
-        deg_mid = (math.degrees((th1 + th2) / 2.0)) % 360.0
-        
+        thm = (i + 0.5) * 2.0 * math.pi / N_THETA
+        deg_mid = math.degrees(thm) % 360.0
         c1, s1 = math.cos(th1), math.sin(th1)
         c2, s2 = math.cos(th2), math.sin(th2)
-        
+        OUT = (math.cos(thm), math.sin(thm), 0.0)
+        IN = (-OUT[0], -OUT[1], 0.0)
+
         has_win = is_center_window(deg_mid)
-        
-        # Point generator: (r, z) -> (x, y, z)
-        # Note: X = r*cos(th), Y = r*sin(th), Z = height
+
         def pt1(r, z): return (round(r * c1, 4), round(r * s1, 4), round(z, 4))
         def pt2(r, z): return (round(r * c2, 4), round(r * s2, 4), round(z, 4))
 
-        # --- 1. BED LEVEL: CENTER HUB (r from 0 to R_HUB) ---
-        # Bottom face on heatbed (Z_BED = 0.0)
-        # Normal pointing down (-Z)
-        add_tri((0.0, 0.0, Z_BED), pt1(R_HUB, Z_BED), pt2(R_HUB, Z_BED))
-        # Top face of hub at Z_SHOULDER
-        # Normal pointing up (+Z)
-        add_tri((0.0, 0.0, Z_SHOULDER), pt2(R_HUB, Z_SHOULDER), pt1(R_HUB, Z_SHOULDER))
+        # --- 1. 中心 hub ---
+        tri((0.0, 0.0, Z_BED), pt1(R_HUB, Z_BED), pt2(R_HUB, Z_BED), DOWN)
+        tri((0.0, 0.0, Z_SHLD), pt1(R_HUB, Z_SHLD), pt2(R_HUB, Z_SHLD), UP)
 
-        # --- 2. WINDOW / SPOKE ZONE (R_HUB to R_WIN_OUT) ---
+        # --- 2. 辐条 / 窗口区 (R_HUB .. R_WIN_OUT) ---
         if not has_win:
-            # Solid cross spoke:
-            # Bottom face on heatbed
-            add_quad(pt1(R_HUB, Z_BED), pt1(R_WIN_OUT, Z_BED), pt2(R_WIN_OUT, Z_BED), pt2(R_HUB, Z_BED))
-            # Top face at Z_SHOULDER
-            add_quad(pt1(R_HUB, Z_SHOULDER), pt2(R_HUB, Z_SHOULDER), pt2(R_WIN_OUT, Z_SHOULDER), pt1(R_WIN_OUT, Z_SHOULDER))
+            quad(pt1(R_HUB, Z_BED), pt1(R_WIN_OUT, Z_BED), pt2(R_WIN_OUT, Z_BED), pt2(R_HUB, Z_BED), DOWN)
+            quad(pt1(R_HUB, Z_SHLD), pt1(R_WIN_OUT, Z_SHLD), pt2(R_WIN_OUT, Z_SHLD), pt2(R_HUB, Z_SHLD), UP)
         else:
-            # Open window: vertical side walls
-            # Hub inner wall: from Z_BED to Z_SHOULDER
-            add_quad(pt1(R_HUB, Z_BED), pt2(R_HUB, Z_BED), pt2(R_HUB, Z_SHOULDER), pt1(R_HUB, Z_SHOULDER))
-            # Window outer wall at R_WIN_OUT: from Z_SHOULDER down to Z_BED
-            add_quad(pt1(R_WIN_OUT, Z_SHOULDER), pt2(R_WIN_OUT, Z_SHOULDER), pt2(R_WIN_OUT, Z_BED), pt1(R_WIN_OUT, Z_BED))
+            # hub 外壁 (材料在内侧 -> 法线朝外)
+            quad(pt1(R_HUB, Z_BED), pt2(R_HUB, Z_BED), pt2(R_HUB, Z_SHLD), pt1(R_HUB, Z_SHLD), OUT)
+            # 窗口外缘壁 (材料在外侧 -> 法线朝轴心)
+            quad(pt1(R_WIN_OUT, Z_SHLD), pt2(R_WIN_OUT, Z_SHLD), pt2(R_WIN_OUT, Z_BED), pt1(R_WIN_OUT, Z_BED), IN)
 
-        # Radial side walls at window-spoke boundaries
-        deg_prev = math.degrees(thetas[(i - 1) % N_THETA] + thetas[i]) / 2.0 % 360.0
-        has_win_prev = is_center_window(deg_prev)
+        # 窗口/辐条交界处的径向侧壁 (法线指向空侧)
+        has_win_prev = is_center_window((thm - 2.0 * math.pi / N_THETA) * 180.0 / math.pi)
         if has_win_prev != has_win:
-            if has_win:
-                add_quad(pt1(R_HUB, Z_BED), pt1(R_HUB, Z_SHOULDER), pt1(R_WIN_OUT, Z_SHOULDER), pt1(R_WIN_OUT, Z_BED))
-            else:
-                add_quad(pt1(R_HUB, Z_BED), pt1(R_WIN_OUT, Z_BED), pt1(R_WIN_OUT, Z_SHOULDER), pt1(R_HUB, Z_SHOULDER))
+            tang = (-math.sin(th1), math.cos(th1), 0.0)
+            hint = tang if has_win else (-tang[0], -tang[1], 0.0)
+            quad(pt1(R_HUB, Z_BED), pt1(R_WIN_OUT, Z_BED), pt1(R_WIN_OUT, Z_SHLD), pt1(R_HUB, Z_SHLD), hint)
 
-        # --- 3. ZONE FROM R_WIN_OUT TO R_STEP_IN ---
-        # Bottom face on heatbed
-        add_quad(pt1(R_WIN_OUT, Z_BED), pt1(R_STEP_IN, Z_BED), pt2(R_STEP_IN, Z_BED), pt2(R_WIN_OUT, Z_BED))
-        # Top face at Z_SHOULDER
-        add_quad(pt1(R_WIN_OUT, Z_SHOULDER), pt2(R_WIN_OUT, Z_SHOULDER), pt2(R_STEP_IN, Z_SHOULDER), pt1(R_STEP_IN, Z_SHOULDER))
+        # --- 3. R_WIN_OUT .. R_STEP_IN ---
+        quad(pt1(R_WIN_OUT, Z_BED), pt1(R_STEP_IN, Z_BED), pt2(R_STEP_IN, Z_BED), pt2(R_WIN_OUT, Z_BED), DOWN)
+        quad(pt1(R_WIN_OUT, Z_SHLD), pt1(R_STEP_IN, Z_SHLD), pt2(R_STEP_IN, Z_SHLD), pt2(R_WIN_OUT, Z_SHLD), UP)
 
-        # --- 4. RIDGE STEP: R_STEP_IN TO R_MAG_IN ---
-        # Bottom face of inner retaining ridge on heatbed (Z_BED = 0.0)
-        # Width: 21.6mm to 22.4mm (0.8mm solid bed adhesion ring)
-        add_quad(pt1(R_STEP_IN, Z_BED), pt1(R_MAG_IN, Z_BED), pt2(R_MAG_IN, Z_BED), pt2(R_STEP_IN, Z_BED))
-        # Top face at Z_SHOULDER
-        add_quad(pt1(R_STEP_IN, Z_SHOULDER), pt2(R_STEP_IN, Z_SHOULDER), pt2(R_PLUG_IN, Z_SHOULDER), pt1(R_PLUG_IN, Z_SHOULDER))
-        
-        # MagSafe groove inner wall: rises from Z_BED to Z_GROOVE at R_MAG_IN
-        add_quad(pt1(R_MAG_IN, Z_BED), pt2(R_MAG_IN, Z_BED), pt2(R_MAG_IN, Z_GROOVE), pt1(R_MAG_IN, Z_GROOVE))
+        # --- 4. 内侧挡边 R_STEP_IN .. R_MAG_IN ---
+        quad(pt1(R_STEP_IN, Z_BED), pt1(R_MAG_IN, Z_BED), pt2(R_MAG_IN, Z_BED), pt2(R_STEP_IN, Z_BED), DOWN)
+        quad(pt1(R_STEP_IN, Z_SHLD), pt1(R_PLUG_IN, Z_SHLD), pt2(R_PLUG_IN, Z_SHLD), pt2(R_STEP_IN, Z_SHLD), UP)
+        # MagSafe 凹槽内壁 (材料在内侧)
+        quad(pt1(R_MAG_IN, Z_BED), pt2(R_MAG_IN, Z_BED), pt2(R_MAG_IN, Z_GROOVE), pt1(R_MAG_IN, Z_GROOVE), OUT)
 
-        # --- 5. MAGSAFE GROOVE (R_MAG_IN TO R_MAG_OUT) ---
-        # Recessed groove floor at Z_GROOVE (0.80mm deep)
-        # Normal pointing down towards bed (-Z)
-        add_quad(pt1(R_MAG_IN, Z_GROOVE), pt2(R_MAG_IN, Z_GROOVE), pt2(R_MAG_OUT, Z_GROOVE), pt1(R_MAG_OUT, Z_GROOVE))
+        # --- 5. MagSafe 凹槽 ---
+        quad(pt1(R_MAG_IN, Z_GROOVE), pt1(R_MAG_OUT, Z_GROOVE), pt2(R_MAG_OUT, Z_GROOVE), pt2(R_MAG_IN, Z_GROOVE), DOWN)
+        # 凹槽外壁 (材料在外侧)
+        quad(pt1(R_MAG_OUT, Z_GROOVE), pt2(R_MAG_OUT, Z_GROOVE), pt2(R_MAG_OUT, Z_BED), pt1(R_MAG_OUT, Z_BED), IN)
 
-        # MagSafe groove outer wall: drops from Z_GROOVE down to Z_BED at R_MAG_OUT
-        add_quad(pt1(R_MAG_OUT, Z_GROOVE), pt2(R_MAG_OUT, Z_GROOVE), pt2(R_MAG_OUT, Z_BED), pt1(R_MAG_OUT, Z_BED))
+        # --- 6. 外圈 + 内螺纹裙边 ---
+        quad(pt1(R_MAG_OUT, Z_BED), pt1(R_LID_OUT, Z_BED), pt2(R_LID_OUT, Z_BED), pt2(R_MAG_OUT, Z_BED), DOWN)
+        # 外圆柱面: 从 Z_BED 一直到裙边端面
+        quad(pt1(R_LID_OUT, Z_BED), pt2(R_LID_OUT, Z_BED), pt2(R_LID_OUT, Z_SKIRT_TOP), pt1(R_LID_OUT, Z_SKIRT_TOP), OUT)
+        # 裙边端面
+        quad(pt1(lid_r(th1, Z_SKIRT_TOP), Z_SKIRT_TOP), pt1(R_LID_OUT, Z_SKIRT_TOP),
+             pt2(R_LID_OUT, Z_SKIRT_TOP), pt2(lid_r(th2, Z_SKIRT_TOP), Z_SKIRT_TOP), UP)
+        # 座面 (贴合机身 collar 顶面): R_PLUG .. 内螺纹
+        quad(pt1(R_PLUG, Z_SHLD), pt1(lid_r(th1, Z_SHLD), Z_SHLD),
+             pt2(lid_r(th2, Z_SHLD), Z_SHLD), pt2(R_PLUG, Z_SHLD), UP)
+        # 内螺纹螺旋面 (材料在外侧 -> 法线朝轴心)
+        for j in range(N_Z_THREAD):
+            za = Z_SHLD + (Z_SKIRT_TOP - Z_SHLD) * j / N_Z_THREAD
+            zb = Z_SHLD + (Z_SKIRT_TOP - Z_SHLD) * (j + 1) / N_Z_THREAD
+            quad(pt1(lid_r(th1, za), za), pt2(lid_r(th2, za), za),
+                 pt2(lid_r(th2, zb), zb), pt1(lid_r(th1, zb), zb), IN)
 
-        # --- 6. OUTER RETAINING RIM (R_MAG_OUT TO R_OUT) ---
-        # Flat bed adhesion ring at Z_BED (27.6mm to 28.5mm, 0.9mm solid ring)
-        add_quad(pt1(R_MAG_OUT, Z_BED), pt1(R_OUT, Z_BED), pt2(R_OUT, Z_BED), pt2(R_MAG_OUT, Z_BED))
-        # Outer vertical cylinder wall from Z_BED to Z_SHOULDER at R_OUT (57.0mm OD)
-        add_quad(pt1(R_OUT, Z_BED), pt2(R_OUT, Z_BED), pt2(R_OUT, Z_SHOULDER), pt1(R_OUT, Z_SHOULDER))
-        
-        # Mating shoulder resting face on body rim: from R_OUT (28.5) down to R_PLUG (24.35) at Z_SHOULDER
-        # Normal pointing up (+Z)
-        add_quad(pt1(R_PLUG, Z_SHOULDER), pt2(R_PLUG, Z_SHOULDER), pt2(R_OUT, Z_SHOULDER), pt1(R_OUT, Z_SHOULDER))
+        # --- 7. 插塞 (已加长，尖端在机身坐标 Z=13.5mm) ---
+        quad(pt1(R_PLUG, Z_SHLD), pt1(R_PLUG, Z_PLUG_CHAMF), pt2(R_PLUG, Z_PLUG_CHAMF), pt2(R_PLUG, Z_SHLD), OUT)
+        quad(pt1(R_PLUG, Z_PLUG_CHAMF), pt1(R_PLUG_TIP, Z_TOP), pt2(R_PLUG_TIP, Z_TOP), pt2(R_PLUG, Z_PLUG_CHAMF),
+             (OUT[0], OUT[1], 1.0))
+        quad(pt1(R_PLUG_IN, Z_TOP), pt2(R_PLUG_IN, Z_TOP), pt2(R_PLUG_TIP, Z_TOP), pt1(R_PLUG_TIP, Z_TOP), UP)
+        quad(pt1(R_PLUG_IN, Z_TOP), pt1(R_PLUG_IN, Z_SHLD), pt2(R_PLUG_IN, Z_SHLD), pt2(R_PLUG_IN, Z_TOP), IN)
 
-        # --- 7. PLUG LIP (R_PLUG = 24.35mm, R_PLUG_IN = 22.0mm) ---
-        # Plug outer cylinder: from Z_SHOULDER up to Z_PLUG_CHAMF
-        add_quad(pt1(R_PLUG, Z_SHOULDER), pt1(R_PLUG, Z_PLUG_CHAMF), pt2(R_PLUG, Z_PLUG_CHAMF), pt2(R_PLUG, Z_SHOULDER))
-        # Plug lead-in chamfer: 45-deg inward taper to R_PLUG_TIP (23.85mm) at Z_TOP (5.07mm)
-        add_quad(pt1(R_PLUG, Z_PLUG_CHAMF), pt1(R_PLUG_TIP, Z_TOP), pt2(R_PLUG_TIP, Z_TOP), pt2(R_PLUG, Z_PLUG_CHAMF))
-        # Plug annular tip face at Z_TOP from R_PLUG_IN to R_PLUG_TIP
-        add_quad(pt1(R_PLUG_IN, Z_TOP), pt2(R_PLUG_IN, Z_TOP), pt2(R_PLUG_TIP, Z_TOP), pt1(R_PLUG_TIP, Z_TOP))
-        # Plug inner cylinder: from Z_TOP down to Z_SHOULDER at R_PLUG_IN
-        add_quad(pt1(R_PLUG_IN, Z_TOP), pt1(R_PLUG_IN, Z_SHOULDER), pt2(R_PLUG_IN, Z_SHOULDER), pt2(R_PLUG_IN, Z_TOP))
+    write_stl(out_stl_path, triangles,
+              b'ESP32-S3-AMOLED MagSafe Lid - Threaded (Flat Bed Z=0)')
+    return triangles
 
-    # Write out binary STL
-    with open(out_stl_path, 'wb') as f:
-        f.write(b'ESP32-S3-AMOLED MagSafe Lid - Slicer Optimized (Flat Bed Z=0)'.ljust(80, b'\x00'))
+
+def write_stl(path, triangles, header):
+    with open(path, 'wb') as f:
+        f.write(header.ljust(80, b'\x00')[:80])
         f.write(struct.pack('<I', len(triangles)))
-        for tri in triangles:
-            p1, p2, p3 = tri
-            u = (p2[0]-p1[0], p2[1]-p1[1], p2[2]-p1[2])
-            v = (p3[0]-p1[0], p3[1]-p1[1], p3[2]-p1[2])
-            nx = u[1]*v[2] - u[2]*v[1]
-            ny = u[2]*v[0] - u[0]*v[2]
-            nz = u[0]*v[1] - u[1]*v[0]
-            l = math.hypot(math.hypot(nx, ny), nz)
-            if l > 1e-9:
-                nx, ny, nz = nx/l, ny/l, nz/l
-            else:
-                nx, ny, nz = 0.0, 0.0, 0.0
-            f.write(struct.pack('<3f9fH', nx, ny, nz, p1[0], p1[1], p1[2], p2[0], p2[1], p2[2], p3[0], p3[1], p3[2], 0))
-    print(f"Generated {len(triangles)} triangles to {out_stl_path}")
+        for p1, p2, p3 in triangles:
+            u = (p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2])
+            v = (p3[0] - p1[0], p3[1] - p1[1], p3[2] - p1[2])
+            nx = u[1] * v[2] - u[2] * v[1]
+            ny = u[2] * v[0] - u[0] * v[2]
+            nz = u[0] * v[1] - u[1] * v[0]
+            l = math.sqrt(nx * nx + ny * ny + nz * nz)
+            if l > 1e-12:
+                nx, ny, nz = nx / l, ny / l, nz / l
+            f.write(struct.pack('<12fH', nx, ny, nz, *p1, *p2, *p3, 0))
+    print(f"Generated {len(triangles)} triangles to {path}")
 
-create_slicer_optimized_lid("/Users/aubreyhan/.gemini/antigravity-cli/brain/80b5301e-d076-4ec5-aef3-d3844ffd990d/scratch/esp32-s3-touch-amoled-1_75-magsafe-lid-slicer.stl")
+
+if __name__ == "__main__":
+    create_threaded_lid(sys.argv[1] if len(sys.argv) > 1 else OUT_STL)
