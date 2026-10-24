@@ -272,9 +272,15 @@ esp_err_t web_server_start(void)
         },
     };
 
-    esp_wifi_set_mode(WIFI_MODE_APSTA);
-    esp_wifi_set_config(WIFI_IF_AP, &wifi_config);
-    esp_wifi_start();
+    wifi_mode_t current_mode;
+    if (esp_wifi_get_mode(&current_mode) == ESP_OK) {
+        esp_wifi_set_mode(WIFI_MODE_APSTA);
+        esp_wifi_set_config(WIFI_IF_AP, &wifi_config);
+    } else {
+        esp_wifi_set_mode(WIFI_MODE_APSTA);
+        esp_wifi_set_config(WIFI_IF_AP, &wifi_config);
+        esp_wifi_start();
+    }
 
     // 2. 启动 HTTP 服务
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
@@ -329,10 +335,11 @@ esp_err_t web_server_stop(void)
         httpd_stop(s_http_server);
         s_http_server = NULL;
     }
-    // 若 STA 已经连接，不完全停止 Wi-Fi，只切回 STA 模式
-    if (g_app_state.wifi_state == WIFI_STATE_CONNECTED) {
+    // 若 STA 已经连接或正在连接，不停止 Wi-Fi，切回 STA 模式
+    if (g_app_state.wifi_state == WIFI_STATE_CONNECTED || g_app_state.wifi_state == WIFI_STATE_CONNECTING) {
         esp_wifi_set_mode(WIFI_MODE_STA);
     } else {
+        esp_wifi_set_mode(WIFI_MODE_NULL);
         esp_wifi_stop();
     }
     g_app_state.ap_web_running = false;
@@ -344,12 +351,14 @@ esp_err_t web_server_toggle(void)
 {
     if (g_app_state.ap_web_running) {
         web_server_stop();
-        // 屏幕 Toast 提示已关闭
+        bsp_display_lock(-1);
         ui_show_toast("AP 热点已关闭", "已恢复低功耗模式", 2500);
+        bsp_display_unlock();
     } else {
         web_server_start();
-        // 屏幕 Toast 提示已开启
+        bsp_display_lock(-1);
         ui_show_toast("AP 热点已开启", "SSID: Car-Tracker-GPX\nIP: 192.168.4.1", 4000);
+        bsp_display_unlock();
     }
     return ESP_OK;
 }
