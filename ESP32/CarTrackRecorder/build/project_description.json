@@ -1,7 +1,7 @@
 {
     "version":            "1.2",
     "project_name":       "CarTrackRecorder",
-    "project_version":    "b3c7bd9-dirty",
+    "project_version":    "1d80dda-dirty",
     "project_path":       "/Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder",
     "idf_path":           "/Users/aubreyhan/.espressif/v5.5.6/esp-idf",
     "build_dir":          "/Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/build",
