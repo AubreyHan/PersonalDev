@@ -1,0 +1,2 @@
+source /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/build/gdbinit/symbols
+source /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/build/gdbinit/connect
