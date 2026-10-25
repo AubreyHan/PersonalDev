@@ -1166,7 +1166,7 @@ static void *display_manager_alloc_draw_buffer(size_t size, bool use_psram)
 #endif
     }
 
-    const uint32_t caps = use_psram ? MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT : MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+    const uint32_t caps = use_psram ? (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) : (MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT | MALLOC_CAP_DMA);
 
     if (align > 0) {
         void *buf = heap_caps_aligned_alloc(align, alloc_size, caps);
