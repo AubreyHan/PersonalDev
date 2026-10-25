@@ -100,6 +100,17 @@ def generate_3mf():
         write_object_model(obj2_path, 3, "00020000-81cb-4c03-9d28-80fed5dfa1dc", v_lid, t_lid, z_center_l)
         write_object_model(obj3_path, 5, "00030000-81cb-4c03-9d28-80fed5dfa1dc", v_cover, t_cover, z_center_c)
 
+        # 写入 3D/_rels/3dmodel.model.rels (注册所有 3 个对象的引用关系)
+        rels_path = os.path.join(temp_dir, "3D", "_rels", "3dmodel.model.rels")
+        os.makedirs(os.path.dirname(rels_path), exist_ok=True)
+        with open(rels_path, "w", encoding="utf-8") as f:
+            f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+            f.write('<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n')
+            f.write(' <Relationship Target="/3D/Objects/object_1.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>\n')
+            f.write(' <Relationship Target="/3D/Objects/object_2.model" Id="rel-2" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>\n')
+            f.write(' <Relationship Target="/3D/Objects/object_3.model" Id="rel-3" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>\n')
+            f.write('</Relationships>\n')
+
         # 3. 写入 3D/3dmodel.model (托盘排布)
         # 热床排布：X1C 尺寸 256x256，机身放在 X=80, Y=125；后盖放在 X=165, Y=125；天线盖放在 X=125, Y=205
         model_3d_path = os.path.join(temp_dir, "3D", "3dmodel.model")
