@@ -228,7 +228,7 @@ def generate_3mf():
             f.write('  </assemble>\n')
             f.write('</config>\n')
 
-        # 5. 更新 Metadata/project_settings.config (适配 Bambu X1C + Bambu PETG HF + 0.16mm 精密工艺)
+        # 5. 更新 Metadata/project_settings.config (针对 Bambu X1C + Bambu PETG HF 防炒面/防脱床专项优化)
         proj_cfg_path = os.path.join(temp_dir, "Metadata", "project_settings.config")
         with open(proj_cfg_path, "r", encoding="utf-8") as f:
             proj_data = json.load(f)
@@ -242,30 +242,49 @@ def generate_3mf():
             "filament_vendor": ["Bambu Lab"],
             "nozzle_diameter": ["0.4"],
             "curr_bed_type": "Textured PEI Plate",
-            "nozzle_temperature": ["245"],
-            "nozzle_temperature_initial_layer": ["230"],
-            "textured_plate_temp": ["70"],
-            "textured_plate_temp_initial_layer": ["70"],
-            "hot_plate_temp": ["70"],
-            "hot_plate_temp_initial_layer": ["70"],
-            "fan_min_speed": ["20"],
-            "fan_max_speed": ["60"],
-            "overhang_fan_speed": ["90"],
-            "filament_flow_ratio": ["0.95"],
-            "filament_max_volumetric_speed": ["21"],
-            "layer_height": "0.16",
+            # 温度优化: 提升首层喷嘴和纹理热床温度，确保 PETG 熔融渗透纹理 PEI
+            "nozzle_temperature_initial_layer": ["250"],
+            "nozzle_temperature": ["250"],
+            "nozzle_temperature_range_high": ["270"],
+            "nozzle_temperature_range_low": ["230"],
+            "textured_plate_temp_initial_layer": ["80"],
+            "textured_plate_temp": ["75"],
+            "hot_plate_temp_initial_layer": ["80"],
+            "hot_plate_temp": ["75"],
+            # 裙边与附着力: 强制开启 5mm 外裙边 (Brim)，彻底防止零件翘曲脱床炒面
+            "brim_type": "outer_only",
+            "brim_width": "5",
+            "brim_object_gap": "0.1",
+            # 首层速度与挤出挤压: 降速加宽，让材料充分压入纹理缝隙
+            "initial_layer_speed": ["20"],
+            "initial_layer_infill_speed": ["30"],
+            "initial_layer_line_width": "0.5",
             "initial_layer_print_height": "0.2",
+            # 风扇冷却控制: 关掉辅助侧风扇，前 3 层完全关闭零件风扇，防止 PETG 冷缩脱床
+            "close_fan_the_first_x_layers": ["3"],
+            "additional_cooling_fan_speed": ["0"],
+            "auxiliary_fan": 0,
+            "fan_min_speed": ["20"],
+            "fan_max_speed": ["50"],
+            "overhang_fan_speed": ["80"],
+            # 挤出流速与体积速率: 限制为安全可靠的 14 mm³/s，杜绝进料打滑
+            "filament_flow_ratio": ["0.98"],
+            "filament_max_volumetric_speed": ["14"],
+            # 结构与螺纹精度
+            "layer_height": "0.16",
             "wall_loops": "4",
             "top_shell_layers": "5",
             "bottom_shell_layers": "4",
             "sparse_infill_density": "25%",
             "sparse_infill_pattern": "gyroid",
-            "outer_wall_speed": ["100"],
-            "inner_wall_speed": ["150"],
+            "outer_wall_speed": ["80"],
+            "inner_wall_speed": ["120"],
+            "sparse_infill_speed": ["100"],
             "precise_outer_wall": "1",
             "elefant_foot_compensation": "0.15",
             "bridge_flow": "0.9",
             "seam_position": "aligned",
+            # 树状支撑
             "enable_support": "1",
             "support_type": "tree(auto)",
             "support_style": "tree_slim",
