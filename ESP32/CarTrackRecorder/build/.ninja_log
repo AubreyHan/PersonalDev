@@ -2347,3 +2347,5 @@
 5674	5809	1792919301111855252	/Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/build/.bin_timestamp	2a97755d8638fdbc
 5809	5838	1792919301112532802	esp-idf/esptool_py/CMakeFiles/app_check_size	22496db13f683c03
 5809	5838	1792919301112532802	/Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/build/esp-idf/esptool_py/CMakeFiles/app_check_size	22496db13f683c03
+5838	17331	1792919301141560254	CMakeFiles/flash	fcc7c4eab23fe6b4
+5838	17331	1792919301141560254	/Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/build/CMakeFiles/flash	fcc7c4eab23fe6b4
