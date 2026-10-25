@@ -2,6 +2,8 @@
 #include "gpx_manager.h"
 #include "bsp_board.h"
 #include "bsp/esp-bsp.h"
+#include "bsp/esp32_s3_touch_amoled_1_75.h"
+#include "esp_io_expander.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
