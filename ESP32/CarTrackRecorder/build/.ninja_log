@@ -2365,3 +2365,5 @@
 90	105	1792919425557077000	bootloader-prefix/src/bootloader-stamp/bootloader-done	4e15b18e67b3be73
 90	105	1792919425557077000	/Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/build/CMakeFiles/bootloader-complete	4e15b18e67b3be73
 90	105	1792919425557077000	/Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/build/bootloader-prefix/src/bootloader-stamp/bootloader-done	4e15b18e67b3be73
+105	11592	1792919425557622853	CMakeFiles/flash	fcc7c4eab23fe6b4
+105	11592	1792919425557622853	/Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/build/CMakeFiles/flash	fcc7c4eab23fe6b4
