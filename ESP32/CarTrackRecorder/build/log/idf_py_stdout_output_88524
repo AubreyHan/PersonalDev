@@ -75,3 +75,115 @@ Loading defaults file /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrack
 -- ESP_LCD_PANEL_IO_ADDITIONS: 1.0.1
 -- Components: app_trace app_update bootloader bootloader_support bt cmock console cxx driver efuse esp-tls esp_adc esp_app_format esp_bootloader_format esp_coex esp_common esp_driver_ana_cmpr esp_driver_bitscrambler esp_driver_cam esp_driver_dac esp_driver_gpio esp_driver_gptimer esp_driver_i2c esp_driver_i2s esp_driver_isp esp_driver_jpeg esp_driver_ledc esp_driver_mcpwm esp_driver_parlio esp_driver_pcnt esp_driver_ppa esp_driver_rmt esp_driver_sdio esp_driver_sdm esp_driver_sdmmc esp_driver_sdspi esp_driver_spi esp_driver_touch_sens esp_driver_tsens esp_driver_twai esp_driver_uart esp_driver_usb_serial_jtag esp_eth esp_event esp_gdbstub esp_hal_ieee802154 esp_hid esp_http_client esp_http_server esp_https_ota esp_https_server esp_hw_support esp_lcd esp_local_ctrl esp_mm esp_netif esp_netif_stack esp_partition esp_phy esp_pm esp_psram esp_ringbuf esp_rom esp_security esp_system esp_timer esp_vfs_console esp_wifi espcoredump espressif__button espressif__cmake_utilities espressif__esp_codec_dev espressif__esp_io_expander espressif__esp_io_expander_tca9554 espressif__esp_lcd_co5300 espressif__esp_lcd_panel_io_additions espressif__esp_lcd_touch espressif__esp_lv_decoder espressif__esp_lv_fs espressif__esp_lvgl_adapter espressif__esp_mmap_assets espressif__esp_new_jpeg espressif__freetype espressif__knob espressif__libpng espressif__zlib esptool_py fatfs freertos hal heap http_parser idf_test ieee802154 json log lvgl__lvgl lwip main mbedtls mqtt newlib nvs_flash nvs_sec_provider openthread partition_table perfmon protobuf-c protocomm pthread rt sdmmc soc spi_flash spiffs tcp_transport touch_element ulp unity usb vfs waveshare__esp32_s3_touch_amoled_1_75 waveshare__esp_lcd_touch_cst9217 wear_levelling wifi_provisioning wpa_supplicant xtensa
 -- Component paths: /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/app_trace /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/app_update /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/bootloader /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/bootloader_support /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/bt /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/cmock /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/console /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/cxx /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/driver /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/efuse /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp-tls /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_adc /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_app_format /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_bootloader_format /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_coex /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_common /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_ana_cmpr /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_bitscrambler /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_cam /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_dac /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_gpio /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_gptimer /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_i2c /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_i2s /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_isp /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_jpeg /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_ledc /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_mcpwm /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_parlio /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_pcnt /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_ppa /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_rmt /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_sdio /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_sdm /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_sdmmc /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_sdspi /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_spi /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_touch_sens /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_tsens /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_twai /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_uart /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_driver_usb_serial_jtag /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_eth /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_event /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_gdbstub /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_hal_ieee802154 /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_hid /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_http_client /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_http_server /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_https_ota /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_https_server /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_hw_support /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_lcd /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_local_ctrl /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_mm /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_netif /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_netif_stack /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_partition /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_phy /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_pm /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_psram /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_ringbuf /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_rom /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_security /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_system /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_timer /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_vfs_console /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esp_wifi /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/espcoredump /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/espressif__button /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/espressif__cmake_utilities /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/espressif__esp_codec_dev /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/espressif__esp_io_expander /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/espressif__esp_io_expander_tca9554 /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/espressif__esp_lcd_co5300 /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/espressif__esp_lcd_panel_io_additions /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/espressif__esp_lcd_touch /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/espressif__esp_lv_decoder /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/espressif__esp_lv_fs /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/espressif__esp_lvgl_adapter /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/espressif__esp_mmap_assets /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/espressif__esp_new_jpeg /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/espressif__freetype /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/espressif__knob /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/espressif__libpng /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/espressif__zlib /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esptool_py /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/fatfs /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/freertos /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/hal /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/heap /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/http_parser /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/idf_test /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/ieee802154 /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/json /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/log /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/lvgl__lvgl /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/lwip /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/main /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/mbedtls /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/mqtt /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/newlib /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/nvs_flash /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/nvs_sec_provider /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/openthread /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/partition_table /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/perfmon /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/protobuf-c /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/protocomm /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/pthread /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/rt /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/sdmmc /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/soc /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/spi_flash /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/spiffs /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/tcp_transport /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/touch_element /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/ulp /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/unity /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/usb /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/vfs /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/waveshare__esp32_s3_touch_amoled_1_75 /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/managed_components/waveshare__esp_lcd_touch_cst9217 /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/wear_levelling /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/wifi_provisioning /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/wpa_supplicant /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/xtensa
+-- Configuring done (6.6s)
+-- Generating done (0.4s)
+-- Build files have been written to: /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/build
+[1/11] Performing build step for 'bootloader'
+[1/1] cd /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/build/bootloader/esp-idf/esptool_py && /Users/aubreyhan/.espressif/python_env/idf5.5_py3.12_env/bin/python /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x0 /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/build/bootloader/bootloader.bin
+Bootloader binary size 0x5590 bytes. 0x2a70 bytes (33%) free.
+[2/11] Building C object esp-idf/esp_app_format/CMakeFiles/__idf_esp_app_format.dir/esp_app_desc.c.obj
+[3/11] No install step for 'bootloader'
+[4/11] Completed 'bootloader'
+[5/11] Linking C static library esp-idf/esp_app_format/libesp_app_format.a
+[6/11] Generating esp-idf/esp_system/ld/sections.ld
+[7/11] Linking CXX executable CarTrackRecorder.elf
+[8/11] Generating binary image from built executable
+esptool.py v4.12.0
+Creating esp32s3 image...
+Merged 2 ELF sections
+Successfully created esp32s3 image.
+Generated /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/build/CarTrackRecorder.bin
+[9/11] cd /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/build/esp-idf/esptool_py && /Users/aubreyhan/.espressif/python_env/idf5.5_py3.12_env/bin/python /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 partition --type app /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/build/partition_table/partition-table.bin /Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/build/CarTrackRecorder.bin
+CarTrackRecorder.bin binary size 0x168aa0 bytes. Smallest app partition is 0x800000 bytes. 0x697560 bytes (82%) free.
+[9/11] cd /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esptool_py && /opt/homebrew/bin/cmake -D IDF_PATH=/Users/aubreyhan/.espressif/v5.5.6/esp-idf -D "SERIAL_TOOL=/Users/aubreyhan/.espressif/python_env/idf5.5_py3.12_env/bin/python;;/Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esptool_py/esptool/esptool.py;--chip;esp32s3" -D "SERIAL_TOOL_ARGS=--before=default_reset;--after=hard_reset;write_flash;@flash_args" -D WORKING_DIRECTORY=/Users/aubreyhan/Tools/git_repo/PersonalDev/ESP32/CarTrackRecorder/build -P /Users/aubreyhan/.espressif/v5.5.6/esp-idf/components/esptool_py/run_serial_tool.cmake
+esptool.py --chip esp32s3 -p /dev/cu.usbmodem21101 -b 460800 --before=default_reset --after=hard_reset write_flash --flash_mode dio --flash_freq 80m --flash_size 16MB 0x0 bootloader/bootloader.bin 0x10000 CarTrackRecorder.bin 0x8000 partition_table/partition-table.bin
+esptool.py v4.12.0
+Serial port /dev/cu.usbmodem21101
+Connecting...
+Chip is ESP32-S3 (QFN56) (revision v0.2)
+Features: WiFi, BLE, Embedded PSRAM 8MB (AP_3v3)
+Crystal is 40MHz
+USB mode: USB-Serial/JTAG
+MAC: b8:1f:3f:cf:9f:14
+Uploading stub...
+Running stub...
+Stub running...
+Changing baud rate to 460800
+Changed.
+Configuring flash size...
+Flash will be erased from 0x00000000 to 0x00005fff...
+Flash will be erased from 0x00010000 to 0x00178fff...
+Flash will be erased from 0x00008000 to 0x00008fff...
+SHA digest in image updated
+Compressed 21904 bytes to 14085...
+Writing at 0x00000000... (100 %)
+Wrote 21904 bytes (14085 compressed) at 0x00000000 in 0.2 seconds (effective 840.7 kbit/s)...
+Hash of data verified.
+Compressed 1477280 bytes to 944090...
+Writing at 0x00010000... (1 %)
+Writing at 0x0001bf24... (3 %)
+Writing at 0x00028f08... (5 %)
+Writing at 0x0003097c... (6 %)
+Writing at 0x00038a25... (8 %)
+Writing at 0x00042be4... (10 %)
+Writing at 0x0004f3f6... (12 %)
+Writing at 0x0005a9bb... (13 %)
+Writing at 0x00066acb... (15 %)
+Writing at 0x0006cae4... (17 %)
+Writing at 0x00072600... (18 %)
+Writing at 0x00077f81... (20 %)
+Writing at 0x0007da23... (22 %)
+Writing at 0x00082dd1... (24 %)
+Writing at 0x00088092... (25 %)
+Writing at 0x0008d5f5... (27 %)
+Writing at 0x00092d62... (29 %)
+Writing at 0x00098024... (31 %)
+Writing at 0x0009d313... (32 %)
+Writing at 0x000a3607... (34 %)
+Writing at 0x000a89a8... (36 %)
+Writing at 0x000adc13... (37 %)
+Writing at 0x000b33a9... (39 %)
+Writing at 0x000b8572... (41 %)
+Writing at 0x000be07a... (43 %)
+Writing at 0x000c3afe... (44 %)
+Writing at 0x000c9297... (46 %)
+Writing at 0x000ceed1... (48 %)
+Writing at 0x000d4586... (50 %)
+Writing at 0x000d9bed... (51 %)
+Writing at 0x000dede5... (53 %)
+Writing at 0x000e3f3f... (55 %)
+Writing at 0x000e8ebe... (56 %)
+Writing at 0x000ee7b6... (58 %)
+Writing at 0x000f3ec3... (60 %)
+Writing at 0x000f92ce... (62 %)
+Writing at 0x000fe860... (63 %)
+Writing at 0x00103f34... (65 %)
+Writing at 0x00109a0b... (67 %)
+Writing at 0x0010eb71... (68 %)
+Writing at 0x00113de9... (70 %)
+Writing at 0x00118ea2... (72 %)
+Writing at 0x0011e2db... (74 %)
+Writing at 0x001233fe... (75 %)
+Writing at 0x0012857f... (77 %)
+Writing at 0x0012ddee... (79 %)
+Writing at 0x001333ed... (81 %)
+Writing at 0x00138d97... (82 %)
+Writing at 0x0013f4af... (84 %)
+Writing at 0x0014766f... (86 %)
+Writing at 0x0014ccdb... (87 %)
+Writing at 0x001527d5... (89 %)
+Writing at 0x00158ba1... (91 %)
+Writing at 0x0015e3cd... (93 %)
+Writing at 0x00163d26... (94 %)
+Writing at 0x00169bb0... (96 %)
+Writing at 0x0016ffc8... (98 %)
+Writing at 0x00174ec8... (100 %)
+Wrote 1477280 bytes (944090 compressed) at 0x00010000 in 7.7 seconds (effective 1526.5 kbit/s)...
+Hash of data verified.
+Compressed 3072 bytes to 120...
+Writing at 0x00008000... (100 %)
+Wrote 3072 bytes (120 compressed) at 0x00008000 in 0.0 seconds (effective 1014.0 kbit/s)...
+Hash of data verified.
+
+Leaving...
+Hard resetting via RTS pin...
