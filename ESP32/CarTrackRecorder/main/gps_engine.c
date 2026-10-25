@@ -47,6 +47,11 @@ static void parse_nmea_line(const char *line)
 {
     if (!line || line[0] != '$' || strlen(line) < 6) return;
 
+    // 打印关键语句以便用户了解当前天空卫星接收情况
+    if (strncmp(line + 3, "RMC", 3) == 0 || strncmp(line + 3, "GGA", 3) == 0 || strncmp(line + 3, "GSV", 3) == 0) {
+        ESP_LOGI(TAG, "NMEA: %s", line);
+    }
+
     char buf[256];
     snprintf(buf, sizeof(buf), "%s", line);
     char *p = buf;
