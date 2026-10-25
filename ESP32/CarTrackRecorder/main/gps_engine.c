@@ -228,22 +228,29 @@ static void gps_task(void *pvParameters)
     char line_buf[256];
     int line_idx = 0;
     uint32_t last_gpx_feed_ms = 0;
+    uint32_t last_diag_log_ms = 0;
+    uint32_t last_success_len = 0;
+    esp_err_t last_err = ESP_OK;
 
     while (1) {
         if (s_lc76g_dev_wr && s_lc76g_dev_rd) {
             // 1. 发送查询数据长度命令到 0x50
             esp_err_t err = i2c_master_transmit(s_lc76g_dev_wr, query_cmd, sizeof(query_cmd), pdMS_TO_TICKS(100));
+            last_err = err;
             if (err == ESP_OK) {
-                vTaskDelay(pdMS_TO_TICKS(30));
+                vTaskDelay(pdMS_TO_TICKS(100));
                 // 2. 从 0x54 读取 4 字节数据长度
                 err = i2c_master_receive(s_lc76g_dev_rd, read_len_buf, 4, pdMS_TO_TICKS(100));
+                last_err = err;
                 if (err == ESP_OK) {
                     uint32_t len = (read_len_buf[0]) | (read_len_buf[1] << 8) | (read_len_buf[2] << 16) | (read_len_buf[3] << 24);
+                    last_success_len = len;
                     if (len > 0 && len <= 2048) {
                         // 3. 发送带长度的读数据命令到 0x50
                         uint8_t fetch_cmd[8] = { 0x00, 0x20, 0x51, 0xAA, read_len_buf[0], read_len_buf[1], read_len_buf[2], read_len_buf[3] };
+                        vTaskDelay(pdMS_TO_TICKS(100));
                         if (i2c_master_transmit(s_lc76g_dev_wr, fetch_cmd, sizeof(fetch_cmd), pdMS_TO_TICKS(100)) == ESP_OK) {
-                            vTaskDelay(pdMS_TO_TICKS(30));
+                            vTaskDelay(pdMS_TO_TICKS(100));
                             uint8_t *rx_buf = malloc(len + 1);
                             if (rx_buf) {
                                 if (i2c_master_receive(s_lc76g_dev_rd, rx_buf, len, pdMS_TO_TICKS(300)) == ESP_OK) {
@@ -272,11 +279,22 @@ static void gps_task(void *pvParameters)
             }
         }
 
+        // 定期输出诊断日志 (每 3 秒)
+        uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+        if (now - last_diag_log_ms >= 3000) {
+            last_diag_log_ms = now;
+            xSemaphoreTake(s_gps_mutex, portMAX_DELAY);
+            ESP_LOGI(TAG, "GNSS Diag: fix=%d, sats=%d, avg_snr=%d dB, hdop=%.1f, last_len=%lu, i2c_err=%s",
+                     g_app_state.gps.valid_fix, g_app_state.gps.satellites,
+                     g_app_state.gps.avg_snr, g_app_state.gps.hdop,
+                     (unsigned long)last_success_len, esp_err_to_name(last_err));
+            xSemaphoreGive(s_gps_mutex);
+        }
+
         // 高度界面数据周期更新 (每 5 秒)
         update_altitude_stats();
 
         // 1Hz 轨迹写入喂点
-        uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
         if (now - last_gpx_feed_ms >= 1000) {
             last_gpx_feed_ms = now;
             if (g_app_state.record_status == REC_STATUS_ACTIVE && g_app_state.gps.valid_fix) {
