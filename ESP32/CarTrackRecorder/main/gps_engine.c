@@ -346,7 +346,21 @@ esp_err_t gps_engine_init(void)
     // 默认时区设为东八区
     g_app_state.gps.timezone_offset = 8;
 
-    // 从 BSP 获取共享的 I2C Master Bus Handle
+    // 1. 初始化板载 TCA9554 扩展芯片并复位/使能 LC76G (P7 / EXIO7: GPS_RST)
+    esp_io_expander_handle_t io_exp = bsp_io_expander_init();
+    if (io_exp) {
+        esp_io_expander_set_dir(io_exp, IO_EXPANDER_PIN_NUM_7, IO_EXPANDER_OUTPUT);
+        // 拉低复位 50ms，随后拉高保持使能
+        esp_io_expander_set_level(io_exp, IO_EXPANDER_PIN_NUM_7, 0);
+        vTaskDelay(pdMS_TO_TICKS(50));
+        esp_io_expander_set_level(io_exp, IO_EXPANDER_PIN_NUM_7, 1);
+        vTaskDelay(pdMS_TO_TICKS(150));
+        ESP_LOGI(TAG, "TCA9554 EXIO7: LC76G GNSS reset released (HIGH)");
+    } else {
+        ESP_LOGW(TAG, "Failed to initialize TCA9554 IO Expander!");
+    }
+
+    // 2. 从 BSP 获取共享的 I2C Master Bus Handle
     i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
     if (bus) {
         i2c_device_config_t dev_wr_cfg = {
