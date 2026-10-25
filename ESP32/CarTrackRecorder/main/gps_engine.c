@@ -47,8 +47,9 @@ static void parse_nmea_line(const char *line)
 {
     if (!line || line[0] != '$' || strlen(line) < 6) return;
 
-    // 打印关键语句以便用户了解当前天空卫星接收情况
-    if (strncmp(line + 3, "RMC", 3) == 0 || strncmp(line + 3, "GGA", 3) == 0 || strncmp(line + 3, "GSV", 3) == 0) {
+    // 打印关键语句以便用户了解当前天空卫星接收情况与天线自检状态
+    if (strncmp(line + 3, "RMC", 3) == 0 || strncmp(line + 3, "GGA", 3) == 0 || strncmp(line + 3, "GSV", 3) == 0 ||
+        strstr(line, "TXT") != NULL || strstr(line, "ANT") != NULL || strstr(line, "PQ") != NULL) {
         ESP_LOGI(TAG, "NMEA: %s", line);
     }
 
