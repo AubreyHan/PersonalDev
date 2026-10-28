@@ -331,28 +331,83 @@ namespace Viewport {
 }
 
 
-// Base Dual 16340 板载 INA226 高精度功耗/电压/电流监测配置
+// Base Dual 16340 板载 INA226 高精度功耗/电压/电流监测与软硬件库仑计配置
 namespace Ina226Config {
-    constexpr uint8_t  I2C_ADDR           = 0x45; // INA226 7位 I2C 物理地址
-    constexpr float    SHUNT_RESISTOR_OHM = 0.02f; // 20 毫欧精密分流采样电阻
-    constexpr uint32_t SAMPLE_INTERVAL_MS = 500;  // 500ms 刷新一次功率与电流
+    constexpr uint8_t  I2C_ADDR           = 0x45;   // INA226 7位 I2C 物理从机地址
+    constexpr float    SHUNT_RESISTOR_OHM = 0.02f;  // 20 毫欧精密分流采样电阻 (R_shunt)
+    constexpr uint32_t SAMPLE_INTERVAL_MS = 500;   // 500ms (2Hz) 刷新一次功率与电流
+    
+    // INA226 内部寄存器地址映射
+    constexpr uint8_t  REG_CONFIG         = 0x00;   // 配置寄存器 (复位/平均次数/转换时间/工作模式)
+    constexpr uint8_t  REG_SHUNTVOLTAGE   = 0x01;   // 分流电压寄存器 (2.5 uV/LSB)
+    constexpr uint8_t  REG_BUSVOLTAGE     = 0x02;   // 总线电压寄存器 (1.25 mV/LSB)
+    constexpr uint8_t  REG_POWER          = 0x03;   // 功率寄存器 (25 * Current_LSB = 2.5 mW/LSB)
+    constexpr uint8_t  REG_CURRENT        = 0x04;   // 电流寄存器 (Current_LSB = 0.1 mA/LSB)
+    constexpr uint8_t  REG_CALIBRATION    = 0x05;   // 校准寄存器
+    constexpr uint8_t  REG_MANUF_ID       = 0xFE;   // 制造商 ID (固定 0x5449)
+    constexpr uint8_t  REG_DIE_ID         = 0xFF;   // 芯片 ID (固定 0x2260)
+    
+    // 寄存器校准参数推导：
+    // Current_LSB = Max_Expected_Current(2.0A) / 2^15 ≈ 0.061 mA -> 取整选取 0.1 mA/LSB (0.0001 A)
+    // CAL = trunc(0.00512 / (Current_LSB * R_shunt)) = trunc(0.00512 / (0.0001 * 0.02)) = 2560 (0x0A00)
+    constexpr uint16_t CALIBRATION_VAL    = 2560;   // 0x0A00
+    constexpr float    CURRENT_LSB_MA     = 0.1f;   // 0.1 mA / bit
+    constexpr float    POWER_LSB_MW       = 2.5f;   // 2.5 mW / bit
+    constexpr float    BUS_VOLT_LSB_MV    = 1.25f;  // 1.25 mV / bit
+    
+    // 配置寄存器字: 0x4127 (平均采样16次, VBUS 1.1ms, VSHUNT 1.1ms, 连续采样模式)
+    constexpr uint16_t CONFIG_WORD_DEFAULT= 0x4127;
 }
 
-// INA226 实时电源监测数据契约
+// 双 16340 电池组与软件库仑计积分参数规范
+namespace CoulombCounterConfig {
+    constexpr float    BATTERY_RATED_MAH      = 1400.0f; // Base Dual 16340 双并联标称容量 (1400 mAh)
+    constexpr float    CHARGE_EFFICIENCY_ETA  = 0.95f;   // 锂电池充电库仑效率因数 (95%)
+    constexpr float    DISCHARGE_EFFICIENCY   = 1.00f;   // 锂电池放电效率因数 (100%)
+    constexpr float    STANDSTILL_CURRENT_MA  = 20.0f;   // 静置低电流门限 (|I| < 20mA 允许触发 OCV 校准)
+    constexpr uint32_t STANDSTILL_SETTLE_MS   = 5000;    // 静置平稳维持时间 (5 秒无大动态后执行 OCV 矫正)
+    constexpr float    CUTOFF_VOLTAGE_V       = 3.00f;   // 电池截止放电下限保护电压 (0%)
+    constexpr float    FULL_VOLTAGE_V         = 4.20f;   // 电池满电浮充上限电压 (100%)
+}
 
+// 3.7V 锂电池 11 节点分段开路电压 (OCV) 查表校准契约
+struct OcvLookupPoint {
+    uint16_t voltageMv;    // 开路电压 (mV)
+    uint8_t  socPercent;   // 对应电量百分比 (0 ~ 100%)
+};
+
+// 标准 16340 锂电开路电压对照表 (降序排列，用于静态零漂校准)
+constexpr OcvLookupPoint OCV_TABLE[11] = {
+    { 4200, 100 },
+    { 4100,  90 },
+    { 4000,  80 },
+    { 3900,  70 },
+    { 3820,  60 },
+    { 3760,  50 },
+    { 3700,  40 },
+    { 3650,  30 },
+    { 3580,  20 },
+    { 3450,  10 },
+    { 3000,   0 }
+};
+
+// INA226 实时电源监测与库仑计数据契约
 enum BatteryHardwareMode : uint8_t {
     BATTERY_MODE_NO_BASE_EMPTY = 0, // 阶段一：未检测到底座/电池，屏幕电量显示为空 (🪫 0%)
     BATTERY_MODE_BASE_ATTACHED = 1  // 阶段二：自动探测到 Base Dual 16340 (🔋 85% 真实电量)
 };
 
 struct PowerMonitorData {
-    bool  isAvailable;        // INA226 是否在线正常响应
-    float busVoltageV;        // 实时总线电压 (V, 正常范围 3.0 ~ 4.2V)
-    float shuntVoltageMv;     // 分流电阻电压降 (mV)
-    float currentMa;          // 实时电流 (mA，正值表示充电输入，负值表示系统耗电)
-    float powerMw;            // 即时功耗 (mW)
-    float batterySocPercent;  // 结合电压与安时积分计算的电量百分比 (0~100 %)
-    uint16_t remainingMinutes;// 结合当前耗电速度预测的剩余可用运行分钟数
+    bool     isAvailable;        // INA226 芯片是否在线正常响应 (0x45 ACK)
+    bool     isCharging;         // 是否处于外部电源充电状态 (Current > +15mA)
+    float    busVoltageV;        // 实时总线电压 (V, 正常范围 3.0 ~ 4.2V)
+    float    shuntVoltageMv;     // 分流电阻电压降 (mV)
+    float    currentMa;          // 实时瞬态电流 (mA，正值充电，负值放电)
+    float    avgCurrentMa;       // 30秒滑动平均电流 (mA，用于平滑预测续航)
+    float    powerMw;            // 即时功耗 (mW)
+    float    remainingMah;       // 库仑计积分维护的当前剩余容量 (mAh, 0~1400)
+    float    batterySocPercent;  // 软件库仑计与 OCV 复合计算的电量百分比 (0~100 %)
+    uint16_t remainingMinutes;   // 结合当前耗电速度预测的剩余可用运行分钟数 (若充电中显示充满倒计时)
 };
 
 
