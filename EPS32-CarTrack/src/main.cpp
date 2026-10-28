@@ -58,7 +58,7 @@ void setup() {
     M5.Display.setTextColor(WHITE, BLACK);
     M5.Display.setTextSize(1);
     M5.Display.drawString("M5Core2 + Module GNSS Test", 10, 8);
-    M5.Display.drawFastHLine(0, 24, 320, DARKGRAY);
+    M5.Display.drawFastHLine(0, 24, 320, 0x7BEF);
 
     Serial.println("\n============================================");
     Serial.println("  M5Core2 v1.3 + Module GNSS Sensor Diagnostic");
