@@ -108,6 +108,30 @@ void loop() {
     bool btnBPressed = M5.BtnB.isPressed();
     bool btnCPressed = M5.BtnC.isPressed();
 
+    static bool lastA = false, lastB = false, lastC = false;
+    if (btnAPressed != lastA || btnBPressed != lastB || btnCPressed != lastC) {
+        lastA = btnAPressed;
+        lastB = btnBPressed;
+        lastC = btnCPressed;
+
+        M5.Display.startWrite();
+        M5.Display.fillRect(10, 215, 90, 22, btnAPressed ? RED : 0x2104);
+        M5.Display.drawRect(10, 215, 90, 22, WHITE);
+        M5.Display.setTextColor(WHITE, btnAPressed ? RED : 0x2104);
+        M5.Display.drawCenterString("BTN A", 55, 218);
+
+        M5.Display.fillRect(115, 215, 90, 22, btnBPressed ? RED : 0x2104);
+        M5.Display.drawRect(115, 215, 90, 22, WHITE);
+        M5.Display.setTextColor(WHITE, btnBPressed ? RED : 0x2104);
+        M5.Display.drawCenterString("BTN B", 160, 218);
+
+        M5.Display.fillRect(220, 215, 90, 22, btnCPressed ? RED : 0x2104);
+        M5.Display.drawRect(220, 215, 90, 22, WHITE);
+        M5.Display.setTextColor(WHITE, btnCPressed ? RED : 0x2104);
+        M5.Display.drawCenterString("BTN C", 265, 218);
+        M5.Display.endWrite();
+    }
+
     if (M5.BtnA.wasPressed()) {
         M5.Power.setVibration(200);
         delay(40);
