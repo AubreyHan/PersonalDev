@@ -18,7 +18,7 @@
 | **FT6336U (触摸屏)** | 内部 I2C (Wire1) | GPIO 21 (SDA), GPIO 22 (SCL), GPIO 39 (INT) | 电容触摸屏控制器，支持点击、滑动手势识别 |
 | **ILI9342C (LCD 屏)** | 高速 SPI | MOSI 23, MISO 38, SCLK 18, CS 5, DC 15 | 320x240 分辨率，驱动频率 40MHz |
 | **MicroSD (TF 卡)** | 独立硬件 SPI | SCK: 18, MISO: 38, MOSI: 23, CS: 4 | 选用 `SdFat` 库：原生支持 **长文件名 (LFN)** 与机内 FAT32 格式化，引脚显式绑定 SPI |
-| **电源与电池系统 (自适应)** | M-Bus / Type-C | AXP192 / INA226 () | 支持车载 USB 5V 直供（无底座 0mAh，电量显空）；装上 Base Dual 16340 后免改代码自动识别双 16340 (1400mAh) |
+| **电源与电池系统 (自适应)** | M-Bus / Type-C | AXP192 / INA226 (0x45) | 支持车载 USB 5V 直供（无底座 0mAh，电量显空）；装上 Base Dual 16340 后免改代码自动识别双 16340 (1400mAh) |
 
 ---
 
