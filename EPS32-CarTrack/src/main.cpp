@@ -92,8 +92,8 @@ void setup() {
 
     // 4. Initialize GNSS UART
     gnssSerial.begin(currentGnssBaud, SERIAL_8N1, GNSS_RX_PIN, GNSS_TX_PIN);
-    Serial.printf("[GNSS] UART initialized on RX=G%d, TX=G%d at %d baud.\n", 
-                  GNSS_RX_PIN, GNSS_TX_PIN, currentGnssBaud);
+    Serial.printf("[GNSS] UART initialized on RX=G%d, TX=G%d at %lu baud.\n", 
+                  GNSS_RX_PIN, GNSS_TX_PIN, (unsigned long)currentGnssBaud);
 
     M5.Display.drawString("Initializing complete. Reading sensors...", 10, 30);
     delay(1000);
