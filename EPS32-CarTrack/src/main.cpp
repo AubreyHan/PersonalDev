@@ -161,8 +161,8 @@ void loop() {
         Serial.printf("[IMU] Accel: [%.2f, %.2f, %.2f] g | Gyro: [%.1f, %.1f, %.1f] dps\n", 
                       ax, ay, az, gx, gy, gz);
 
-        Serial.printf("[GNSS] Chars: %u | Sats: %d | Fix: %s\n", 
-                      gnssCharsReceived, gps.satellites.value(),
+        Serial.printf("[GNSS] Chars: %lu | Sats: %u | Fix: %s\n", 
+                      (unsigned long)gnssCharsReceived, (unsigned int)gps.satellites.value(),
                       gps.location.isValid() ? "YES" : "WAITING FOR LOCK");
 
         if (gps.location.isValid()) {
@@ -176,8 +176,8 @@ void loop() {
         M5.Display.setTextSize(1);
 
         // Header
-        M5.Display.fillRect(0, 0, 320, 22, NAVY);
-        M5.Display.setTextColor(WHITE, NAVY);
+        M5.Display.fillRect(0, 0, 320, 22, 0x000F);
+        M5.Display.setTextColor(WHITE, 0x000F);
         M5.Display.drawString("Core2 v1.3 + GNSS Module", 8, 4);
         char batBuf[20];
         snprintf(batBuf, sizeof(batBuf), "%d%% %.2fV", batLevel, batVoltage);
@@ -189,8 +189,8 @@ void loop() {
         M5.Display.drawString("--- GNSS (NEO-M9N) ---", 8, 26);
         M5.Display.setTextColor(WHITE, BLACK);
         char gnssLine1[60], gnssLine2[60], gnssLine3[60];
-        snprintf(gnssLine1, sizeof(gnssLine1), "Sats: %2d  Fix: %s  Baud: %d", 
-                 gps.satellites.value(), gps.location.isValid() ? "LOCKED" : "SEARCHING", currentGnssBaud);
+        snprintf(gnssLine1, sizeof(gnssLine1), "Sats: %2u  Fix: %s  Baud: %lu", 
+                 (unsigned int)gps.satellites.value(), gps.location.isValid() ? "LOCKED" : "SEARCHING", (unsigned long)currentGnssBaud);
         if (gps.location.isValid()) {
             snprintf(gnssLine2, sizeof(gnssLine2), "Lat: %.6f  Lon: %.6f", 
                      gps.location.lat(), gps.location.lng());
@@ -198,7 +198,7 @@ void loop() {
                      gps.altitude.meters(), gps.speed.kmph());
         } else {
             snprintf(gnssLine2, sizeof(gnssLine2), "Waiting for satellite lock...");
-            snprintf(gnssLine3, sizeof(gnssLine3), "Chars received: %u (Antenna plugged?)", gnssCharsReceived);
+            snprintf(gnssLine3, sizeof(gnssLine3), "Chars received: %lu (Antenna plugged?)", (unsigned long)gnssCharsReceived);
         }
         M5.Display.drawString(gnssLine1, 8, 42);
         M5.Display.drawString(gnssLine2, 8, 58);
