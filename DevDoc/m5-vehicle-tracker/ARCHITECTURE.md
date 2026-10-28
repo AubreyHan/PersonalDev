@@ -18,7 +18,6 @@
 | **FT6336U (触摸屏)** | 内部 I2C (Wire1) | GPIO 21 (SDA), GPIO 22 (SCL), GPIO 39 (INT) | 电容触摸屏控制器，支持点击、滑动手势识别 |
 | **ILI9342C (LCD 屏)** | 高速 SPI | MOSI 23, MISO 38, SCLK 18, CS 5, DC 15 | 320x240 分辨率，驱动频率 40MHz |
 | **MicroSD (TF 卡)** | 独立硬件 SPI | SCK: 18, MISO: 38, MOSI: 23, CS: 4 | 选用 `SdFat` 库：原生支持 **长文件名 (LFN)** 与机内 FAT32 格式化，引脚显式绑定 SPI |
-| **SK6812 RGB 灯带** | 单总线 GPIO | GPIO 25 | M5GO Bottom2 底座左右双侧 10 颗物理灯带（左 5 颗 GNSS，右 5 颗 Wi-Fi） |
 | **500mAh 锂电池** | M-Bus 供电总线 | BAT 引脚 / AXP192 | 位于 M5GO Bottom2 底座内（Core2 原机自带的 390mAh 塑料底壳已在堆叠时拆除） |
 
 ---
@@ -32,7 +31,7 @@
     - 屏幕正面为整块纯平电容触摸屏，交互全面基于全屏滑动手势与大卡片触控热区；全机唯一机械实体按键为左侧电源键；
     - Type-C 供电接口与物理电源键位于机身**左侧**（便于插 L 型弯头线隐蔽出风口走线）；
     - SMA 外置高增益天线接口位于机身**右侧**；
-    - M5GO Bottom2 双侧物理 RGB 灯带位于**左侧与右侧**。
+    - 纯黑屏幕顶部 24px 状态栏一体化集成时间、GNSS、Wi-Fi、电池电量与当地温湿度。
 - 初始化标准代码：
   ```cpp
   M5.Display.setRotation(1); // 标准横屏，三按键在下方，Type-C 在左侧，M5Unified 自动将 FT6336U 电容触摸坐标映射对齐
@@ -249,10 +248,9 @@ ESP32 拥有双核 Xtensa LX6 处理器（240MHz）。为了保证 **GPS 串口�
 3. **`PageIndicator` (悬浮 HUD 浮层)**：
    - 作为 OSD 浮层悬浮绘制在 `Y: 228~235` 中央。
    - 当发生页面滑动、按键切换或触摸时激活并浮现；**持续 3 秒无交互后自动完全隐形**，把整块底部区域 100% 留给页面主内容。
-4. **`LedService` (M5GO 双侧物理信号柱)**：
-   - 驱动引脚：`GPIO 25`（M5GO Bottom2 SK6812 总线，共 10 颗 LED）。
-   - **左侧 5 颗 LED (0~4)**：实时映射 GNSS 定位状态、可用星数、HDOP、隧道 DR 模式与射频报警。
-   - **右侧 5 颗 LED (5~9)**：实时映射 Wi-Fi 连通状态、RSSI 信号强度与 AP 热点模式。
+4. **`StatusBar` 一体化指示引擎**：
+   - 居中呈现 🛰️GNSS 信号徽章（搜星/3D锁定/DR模式/星数）与 📶Wi-Fi 状态；
+   - 常驻呈现 🔋/🪫 电池电量：未装底座显示空电池 `🪫 0%`，装上底座自动无缝点亮为真实电量 `🔋 85%` 与充电闪电 `⚡`。
 
 ### 5.5 车内环境 GNSS 深度调优与气压高程互补融合 (Baro-GNSS Fusion)
 - **NEO-M9N 车载专属底层指令注入**：
@@ -302,7 +300,6 @@ m5-vehicle-tracker/
 │   ├── driver/
 │   │   ├── GnssDriver.h/.cpp   # NEO-M9N 串口与车载模式/死区调优
 │   │   ├── BaroDriver.h/.cpp   # 复合模块板载 BMP280 气压/温度 I2C 驱动
-│   │   ├── LedDriver.h/.cpp    # M5GO Bottom2 SK6812 (GPIO 25) 物理灯带驱动
 │   │   ├── PowerDriver.h/.cpp  # AXP192 电源监视与安全关机
 │   │   ├── RtcDriver.h/.cpp    # BM8563 硬件 RTC 读写
 │   │   └── ButtonDriver.h/.cpp # 侧面 BtnPWR 物理按键与全屏触控手势事件调度

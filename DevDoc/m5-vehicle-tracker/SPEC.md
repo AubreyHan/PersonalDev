@@ -372,7 +372,7 @@ namespace MotionPowerConfig {
     constexpr float    STATIC_VARIANCE_THRESH    = 0.005f;  // 地库无GPS时IMU静止方差门限 (m/s^2)
     constexpr float    SUSTAINED_ACCEL_THRESH    = 0.12f;   // 真实起步持续推背加速度 (G)
     constexpr uint32_t SUSTAINED_ACCEL_MS        = 1500;    // 持续推背时间门限 (ms)
-    constexpr uint16_t BATTERY_CAPACITY_MAH      = 1400; // Base Dual 16340 并联双电芯标准容量     // M5GO Bottom2 独立供电容量 (Core2 390mAh底壳已拆除)
+    constexpr uint16_t BATTERY_CAPACITY_MAH      = 1400; // Base Dual 16340 并联双电芯标准容量
     constexpr float    BATTERY_CHARGE_MAX_TEMP_C = 55.0f;   // 高温暴晒停止给电池充电阈值 (°C)
     constexpr float    BATTERY_CHARGE_RESUME_TEMP= 45.0f;   // 降温恢复正常充电阈值 (°C)
     constexpr uint32_t STORAGE_WARN_MB           = 200;     // 存储空间安全低水位告警 (MB)
