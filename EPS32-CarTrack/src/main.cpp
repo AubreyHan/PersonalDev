@@ -103,6 +103,30 @@ void setup() {
 void loop() {
     M5.update();
 
+    // Check virtual touch buttons (3 Red Circles below the screen)
+    bool btnAPressed = M5.BtnA.isPressed();
+    bool btnBPressed = M5.BtnB.isPressed();
+    bool btnCPressed = M5.BtnC.isPressed();
+
+    if (M5.BtnA.wasPressed()) {
+        M5.Power.setVibration(200);
+        delay(40);
+        M5.Power.setVibration(0);
+        Serial.println(">>> [TOUCH] Button A (Left Red Circle) PRESSED! <<<");
+    }
+    if (M5.BtnB.wasPressed()) {
+        M5.Power.setVibration(200);
+        delay(40);
+        M5.Power.setVibration(0);
+        Serial.println(">>> [TOUCH] Button B (Middle Red Circle) PRESSED! <<<");
+    }
+    if (M5.BtnC.wasPressed()) {
+        M5.Power.setVibration(200);
+        delay(40);
+        M5.Power.setVibration(0);
+        Serial.println(">>> [TOUCH] Button C (Right Red Circle) PRESSED! <<<");
+    }
+
     // Read incoming GNSS characters
     while (gnssSerial.available() > 0) {
         char c = gnssSerial.read();
