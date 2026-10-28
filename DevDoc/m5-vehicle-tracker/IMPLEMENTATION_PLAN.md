@@ -27,7 +27,7 @@
 - [ ] **Task 1.1**：创建 `platformio.ini` 与 `partitions.csv`，配置 `board = m5stack-core2`，16MB Flash 分区表（包含 3MB 独立 `LittleFS` 分区），引入库依赖：`m5stack/M5Unified`, `m5stack/M5GFX`, `sparkfun/SparkFun u-blox GNSS Arduino Library`, `greiman/SdFat`, `fastled/FastLED`。
 - [ ] **Task 1.2**：编写 `src/config.h` 与 `src/main.cpp`，调用 `M5.begin()`，挂载片上 `LittleFS`。
 - [ ] **Task 1.3**：配置屏幕方向 `M5.Display.setRotation(1)`（320 × 240 标准横屏，Type-C 接口位于机身左侧），全屏清屏为纯黑色 `TFT_BLACK`，绘制居中荧光绿文本 `"M5Track-M9N Ready"`，测试触摸点并打印串口日志。
-- [ ] **Task 1.4**：创建 ，初始化 AXP192 供电轨，探测 I2C  (INA226) 并配置供电状态检测，实现无底座与有底座自适应识别。
+- [ ] **Task 1.4**：创建 `src/driver/PowerDriver.h/.cpp`，初始化 AXP192 供电轨，探测 I2C `0x45` (INA226) 并配置供电状态检测，实现无底座与有底座自适应识别。
 
 ### 验收与验证指令
 - **编译检查**：
