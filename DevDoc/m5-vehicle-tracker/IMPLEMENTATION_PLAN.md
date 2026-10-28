@@ -27,7 +27,7 @@
 - [ ] **Task 1.1**：创建 `platformio.ini` 与 `partitions.csv`，配置 `board = m5stack-core2`，16MB Flash 分区表（包含 3MB 独立 `LittleFS` 分区），引入库依赖：`m5stack/M5Unified`, `m5stack/M5GFX`, `sparkfun/SparkFun u-blox GNSS Arduino Library`, `greiman/SdFat`, `fastled/FastLED`。
 - [ ] **Task 1.2**：编写 `src/config.h` 与 `src/main.cpp`，调用 `M5.begin()`，挂载片上 `LittleFS`。
 - [ ] **Task 1.3**：配置屏幕方向 `M5.Display.setRotation(1)`（320 × 240 标准横屏，Type-C 接口位于机身左侧），全屏清屏为纯黑色 `TFT_BLACK`，绘制居中荧光绿文本 `"M5Track-M9N Ready"`，测试触摸点并打印串口日志。
-- [ ] **Task 1.4**：实现 `src/driver/LedDriver.h/.cpp`，初始化 M5GO Bottom2 物理灯带（GPIO 25，10 颗 SK6812）：左侧 5 颗灯亮起呼吸绿，右侧 5 颗灯亮起呼吸蓝，验证双侧氛围灯硬件通路。
+- [ ] **Task 1.4**：创建 ，初始化 AXP192 供电轨，探测 I2C  (INA226) 并配置供电状态检测，实现无底座与有底座自适应识别。
 
 ### 验收与验证指令
 - **编译检查**：
@@ -39,7 +39,7 @@
   ```bash
   pio run -t upload
   ```
-- **视觉验证**：屏幕 320x240 横屏黑底绿字，文字正向显示（Type-C 位于左侧，虚拟触控按键位于正下方）；同时 M5GO 底座左侧 5 颗灯绿光呼吸、右侧 5 颗灯蓝光呼吸；点击屏幕任意位置，串口输出对应的触摸 $(X, Y)$ 坐标且与屏幕显示完全吻合。
+- **视觉验证**：屏幕 320x240 横屏黑底绿字，文字正向显示（Type-C 位于左侧，纯平防刮玻璃触控）；屏幕顶部状态栏正常显示时间、状态图标与电池指示；点击屏幕任意位置，串口输出触摸坐标。
 
 ---
 
@@ -145,7 +145,7 @@
 ### 原子任务清单
 - [ ] **Task 5.1**：创建 `src/driver/PowerDriver.h/.cpp`，调用官方 API `M5.Power.getVBUSVoltage() > 4000` 准确感知外部 5V USB 车载供电通断；监听 AXP192 内部温度，实现 $>55^\circ\text{C}$ 暴晒暂停电池充电与 $<45^\circ\text{C}$ 恢复充电保护。
 - [ ] **Task 5.2**：实现地库零 GPS 信号下的静止超时检测：读取 BMI270 3 轴加速度与角速度方差，连续 30 分钟（1800s）低于静止底噪阈值 $\text{Var} < 0.005\text{ m/s}^2$ 时，向系统抛出 `EVT_STANDSTILL_TIMEOUT`。
-- [ ] **Task 5.3**：实现安全休眠与 NVS 落盘：静止超时后通知 `TrackLogger` 闭合 GPX 文件，将最后坐标/海拔写入 NVS，配置 BMI270 Any-Motion 硬件中断唤醒引脚，调用 `esp_deep_sleep_start()`（休眠电流 $<35\mu\text{A}$，由底座 500mAh 电池守护数月）。
+- [ ] **Task 5.3**：实现安全休眠与 NVS 落盘：静止超时后通知 `TrackLogger` 闭合 GPX 文件，将最后坐标/海拔写入 NVS，配置 BMI270 Any-Motion 硬件中断唤醒引脚，调用 `esp_deep_sleep_start()`（休眠电流 $<35\mu\text{A}$，装配底座时由 1400mAh 电池守护 12 个月以上；无底座时由流式预闭合确保断电 0 损失）。
 - [ ] **Task 5.4**：实现双阶段智能防抖唤醒流水线（Two-Stage Anti-Noise Wakeup）：
   - 硬件微动触发后进入 `STATE_SILENT_ASSESS`（保持屏幕纯黑不点亮，不启动外设）；
   - 启动 3 秒评估确认窗：若为单次孤立脉冲（关车门/拿放东西/人员就坐晃动，持续 $<0.5$s 且角速度积分 $\int |\omega_z| dt \approx 0$），立即退回 Deep Sleep；
@@ -180,7 +180,7 @@
 ## Phase 7: 全画幅 320px 全黑夜视 UI 体系与自适应状态栏 (UI & Adaptive Status Bar)
 
 ### 目标
-基于 `M5GFX` 纯黑画布与双缓冲，实现**顶部 24H 时间/温湿度状态栏**、**全宽 320x216 主内容视口（屏幕两侧彻底释放）**、**M5GO 物理双侧 RGB 信号灯带联动**及 4 大核心界面的手势切换。
+基于 `M5GFX` 纯黑画布与双缓冲，实现**顶部 24H 时间/温湿度状态栏**、**全宽 320x216 主内容视口（屏幕两侧彻底释放）**、**全屏常驻自适应状态栏指示**及 4 大核心界面的手势切换。
 
 ### 原子任务清单
 - [ ] **Task 7.1**：创建 `src/ui/UiManager.h/.cpp`，建立 320x240 双缓冲 Canvas，封装二维手势识别（左右横滑切换同级页面；**向上滑动手势 Swipe Up 实现层级退回**）与分层渲染总控。
