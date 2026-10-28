@@ -120,8 +120,8 @@ void loop() {
         gnssSerial.flush();
         gnssSerial.end();
         gnssSerial.begin(currentGnssBaud, SERIAL_8N1, GNSS_RX_PIN, GNSS_TX_PIN);
-        Serial.printf("[GNSS] No data yet, trying baud %d on RX:G%d, TX:G%d...\n", 
-                      currentGnssBaud, GNSS_RX_PIN, GNSS_TX_PIN);
+        Serial.printf("[GNSS] No data yet, trying baud %lu on RX:G%d, TX:G%d...\n", 
+                      (unsigned long)currentGnssBaud, GNSS_RX_PIN, GNSS_TX_PIN);
     }
 
     // Update display and serial log every 1 second
