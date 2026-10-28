@@ -52,6 +52,7 @@ dist/
 # ESP32 / Embedded / PlatformIO / ESP-IDF
 # ==========================================
 build/
+managed_components/
 .pio/
 .pioenvs/
 .piolibdeps/
