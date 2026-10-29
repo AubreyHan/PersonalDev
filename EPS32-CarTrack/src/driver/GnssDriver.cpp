@@ -2,30 +2,125 @@
 #include <math.h>
 
 bool GnssDriver::init() {
-    Serial2.begin(BaudConfig::GNSS_DEFAULT_BAUD, SERIAL_8N1, PinConfig::GNSS_RX_PIN, PinConfig::GNSS_TX_PIN);
-    delay(50);
+    Serial.println("[GNSS] Initializing NEO-M9N GNSS module...");
 
-    // Try connecting at default baud with short 250ms wait
-    if (!_myGNSS.begin(Serial2, 250)) {
-        // Try target baud in case already configured
-        Serial2.end();
-        Serial2.begin(BaudConfig::GNSS_TARGET_BAUD, SERIAL_8N1, PinConfig::GNSS_RX_PIN, PinConfig::GNSS_TX_PIN);
-        delay(50);
-        if (!_myGNSS.begin(Serial2, 250)) {
-            Serial.println("[GNSS] Failed to communicate with NEO-M9N!");
-            return false;
+    // Structure for candidate pin mappings:
+    // Primary: Core2 RX=14 (from GNSS TXD G14), TX=13 (to GNSS RXD G13)
+    // Alternate: Core2 RX=13, TX=14 (in case switch labels / directions are inverted)
+    struct PinPair {
+        int rx;
+        int tx;
+        const char* label;
+    };
+    PinPair pinPairs[] = {
+        {PinConfig::GNSS_RX_PIN, PinConfig::GNSS_TX_PIN, "Configured (Core2 RX=14, TX=13)"},
+        {PinConfig::GNSS_TX_PIN, PinConfig::GNSS_RX_PIN, "Swapped (Core2 RX=13, TX=14)"}
+    };
+
+    uint32_t bauds[] = {BaudConfig::GNSS_DEFAULT_BAUD, BaudConfig::GNSS_TARGET_BAUD, 9600};
+
+    bool connected = false;
+    int activeRx = PinConfig::GNSS_RX_PIN;
+    int activeTx = PinConfig::GNSS_TX_PIN;
+    uint32_t activeBaud = BaudConfig::GNSS_DEFAULT_BAUD;
+
+    for (const auto& pins : pinPairs) {
+        Serial.printf("[GNSS] Testing UART connection with %s...\n", pins.label);
+        for (uint32_t b : bauds) {
+            Serial.printf("[GNSS]  -> Probing baud %u bps (RX=%d, TX=%d)...\n", b, pins.rx, pins.tx);
+            Serial2.begin(b, SERIAL_8N1, pins.rx, pins.tx);
+            delay(100);
+
+            // Flush serial buffer
+            while (Serial2.available()) Serial2.read();
+
+            if (_myGNSS.begin(Serial2, 800)) {
+                Serial.printf("[GNSS] SUCCESS: Established communication with NEO-M9N at %u bps!\n", b);
+                connected = true;
+                activeRx = pins.rx;
+                activeTx = pins.tx;
+                activeBaud = b;
+                break;
+            }
+            Serial2.end();
+            delay(50);
         }
-    } else {
-        // Switch to target baud rate 115200 for high-rate navigation
+        if (connected) break;
+    }
+
+    if (!connected) {
+        Serial.println("[GNSS] ERROR: Could not establish communication with NEO-M9N!");
+        Serial2.begin(BaudConfig::GNSS_DEFAULT_BAUD, SERIAL_8N1, PinConfig::GNSS_RX_PIN, PinConfig::GNSS_TX_PIN);
+        delay(200);
+        int avail = Serial2.available();
+        Serial.printf("[GNSS] Line diagnostic: Serial2.available() = %d bytes\n", avail);
+        if (avail > 0) {
+            Serial.print("[GNSS] Received raw stream: ");
+            for (int i = 0; i < min(avail, 32); i++) {
+                Serial.printf("%02X ", Serial2.read());
+            }
+            Serial.println();
+        }
+        return false;
+    }
+
+    // If connected at baud != TARGET_BAUD, upgrade to TARGET_BAUD
+    if (activeBaud != BaudConfig::GNSS_TARGET_BAUD) {
+        Serial.printf("[GNSS] Switching module baud rate from %u to %u bps...\n", activeBaud, BaudConfig::GNSS_TARGET_BAUD);
         _myGNSS.setSerialRate(BaudConfig::GNSS_TARGET_BAUD);
         Serial2.end();
-        Serial2.begin(BaudConfig::GNSS_TARGET_BAUD, SERIAL_8N1, PinConfig::GNSS_RX_PIN, PinConfig::GNSS_TX_PIN);
         delay(50);
-        _myGNSS.begin(Serial2, 250);
+        Serial2.begin(BaudConfig::GNSS_TARGET_BAUD, SERIAL_8N1, activeRx, activeTx);
+        delay(100);
+        if (!_myGNSS.begin(Serial2, 800)) {
+            Serial.println("[GNSS] Target baud sync failed, reverting to previous baud...");
+            Serial2.end();
+            Serial2.begin(activeBaud, SERIAL_8N1, activeRx, activeTx);
+            _myGNSS.begin(Serial2, 800);
+        } else {
+            Serial.println("[GNSS] High-speed UART link verified at 115200 bps.");
+        }
     }
 
     _isInitialized = true;
     configureAutomotiveParams();
+
+    // Query GNSS Antenna & RF Status
+    UBX_MON_RF_data_t rfInfo;
+    if (_myGNSS.getRFinformation(&rfInfo, 1000) && rfInfo.header.nBlocks > 0) {
+        uint8_t antStat = rfInfo.blocks[0].antStatus;
+        uint8_t antPwr = rfInfo.blocks[0].antPower;
+        uint8_t jamState = rfInfo.blocks[0].flags.bits.jammingState;
+        uint16_t noise = rfInfo.blocks[0].noisePerMS;
+
+        const char* antStatusStr = "UNKNOWN";
+        if (antStat == 0) antStatusStr = "INIT (Initializing)";
+        else if (antStat == 1) antStatusStr = "DONTKNOW (Unknown)";
+        else if (antStat == 2) antStatusStr = "OK (Antenna Connected & Normal)";
+        else if (antStat == 3) antStatusStr = "SHORT (Antenna Short Circuit!)";
+        else if (antStat == 4) antStatusStr = "OPEN (Antenna Open Circuit / Disconnected!)";
+
+        const char* jamStr = "OK (No Jamming)";
+        if (jamState == 2) jamStr = "WARNING (Interference Detected)";
+        else if (jamState == 3) jamStr = "CRITICAL (Severe Jamming)";
+
+        Serial.println("---------------- GNSS Diagnostic Report ----------------");
+        Serial.printf("[GNSS] Antenna Connection Status : [%d] %s\n", antStat, antStatusStr);
+        Serial.printf("[GNSS] Antenna LNA Power Supply : %s\n", antPwr == 1 ? "ON (Active 3.3V DC Bias)" : (antPwr == 0 ? "OFF" : "UNKNOWN"));
+        Serial.printf("[GNSS] RF Jamming / Interference : [%d] %s\n", jamState, jamStr);
+        Serial.printf("[GNSS] RF Background Noise Level : %u\n", noise);
+        Serial.println("--------------------------------------------------------");
+
+        SystemState& state = SystemState::instance();
+        state.lock();
+        state.getContextUnsafe().gnss.antennaStatus = antStat;
+        state.getContextUnsafe().gnss.jammingState = jamState;
+        state.getContextUnsafe().gnss.rfNoiseLevel = noise;
+        state.unlock();
+    } else {
+        Serial.println("[GNSS] MON-RF status query timed out or unsupported.");
+    }
+
     return true;
 }
 
