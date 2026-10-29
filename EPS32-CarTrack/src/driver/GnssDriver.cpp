@@ -210,9 +210,19 @@ bool GnssDriver::injectPosition(int32_t latE7, int32_t lonE7, int32_t altCm, uin
 }
 
 void GnssDriver::queryMonRf() {
-    // Poll UBX-MON-RF (Class 0x0A, ID 0x38, len 0)
-    uint8_t pollMsg[8] = {0xB5, 0x62, 0x0A, 0x38, 0x00, 0x00, 0x42, 0xC4};
-    Serial2.write(pollMsg, 8);
+    UBX_MON_RF_data_t rfInfo;
+    if (_myGNSS.getRFinformation(&rfInfo, 100) && rfInfo.header.nBlocks > 0) {
+        uint8_t antStat = rfInfo.blocks[0].antStatus;
+        uint8_t jam = rfInfo.blocks[0].flags.bits.jammingState;
+        uint16_t noise = rfInfo.blocks[0].noisePerMS;
+
+        SystemState& state = SystemState::instance();
+        state.lock();
+        state.getContextUnsafe().gnss.antennaStatus = antStat;
+        state.getContextUnsafe().gnss.jammingState = jam;
+        state.getContextUnsafe().gnss.rfNoiseLevel = noise;
+        state.unlock();
+    }
 }
 
 void GnssDriver::update() {
@@ -300,6 +310,13 @@ void GnssDriver::update() {
         }
 
         state.unlock();
+
+        static uint32_t lastDiagPrint = 0;
+        if (millis() - lastDiagPrint >= 3000) {
+            lastDiagPrint = millis();
+            Serial.printf("[GNSS] Status: SIV=%u, Fix=%u, HDOP=%.2f, Speed=%.1f km/h, Lat=%.6f, Lon=%.6f\n",
+                          numSats, fix, hdop, speed, lat, lon);
+        }
     }
 
     // Query MON-RF every 2 seconds for jamming and antenna diagnosis
