@@ -20,7 +20,7 @@ void ToolTfManager::draw(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.drawString("格式化 TF 卡 (Format FAT32)", 16, 62);
 
     // 2. Wi-Fi Hotspot Download Button (X: 8~312, Y: 94~128)
-    bool isHotspot = NetworkManager::instance().isApActive();
+    bool isHotspot = WifiNetworkManager::instance().isApActive();
     canvas.fillRoundRect(8, 94, 304, 34, 4, UiColors::COLOR_PANEL_BG);
     canvas.drawRoundRect(8, 94, 304, 34, 4, isHotspot ? UiColors::COLOR_WARN : UiColors::COLOR_PRIMARY);
     canvas.setTextColor(isHotspot ? UiColors::COLOR_WARN : UiColors::COLOR_PRIMARY, UiColors::COLOR_PANEL_BG);
@@ -49,10 +49,10 @@ void ToolTfManager::handleTap(int16_t x, int16_t y) {
 
     // 2. Hotspot toggle button
     if (x >= 8 && x <= 312 && y >= 94 && y <= 128) {
-        if (NetworkManager::instance().isApActive()) {
-            NetworkManager::instance().stopHotspot();
+        if (WifiNetworkManager::instance().isApActive()) {
+            WifiNetworkManager::instance().stopHotspot();
         } else {
-            NetworkManager::instance().startShareHotspot();
+            WifiNetworkManager::instance().startShareHotspot();
         }
         return;
     }

@@ -45,7 +45,7 @@ void ToolWifi::handleTap(int16_t x, int16_t y) {
 
     // Add Network button
     if (x >= 8 && x <= 312 && y >= 108 && y <= 142) {
-        NetworkManager::instance().startConfigPortal();
+        WifiNetworkManager::instance().startConfigPortal();
         close();
     }
 }
