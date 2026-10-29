@@ -1,12 +1,12 @@
 #include "service/PowerMonitorService.h"
 #include <math.h>
 
-bool PowerMonitorService::init(TwoWire* wire) {
-    _wire = wire;
-    
-    // Probe INA226 at 0x45
-    _wire->beginTransmission(0x45);
-    if (_wire->endTransmission() != 0) {
+static constexpr uint8_t  INA226_I2C_ADDR = 0x45;
+static constexpr uint32_t INA226_I2C_FREQ = 400000;
+
+bool PowerMonitorService::init() {
+    uint8_t dummy[2] = {0};
+    if (!M5.In_I2C.readRegister(INA226_I2C_ADDR, 0x00, dummy, 2, INA226_I2C_FREQ)) {
         _isAvailable = false;
         return false;
     }
@@ -27,25 +27,17 @@ bool PowerMonitorService::init(TwoWire* wire) {
 
 uint16_t PowerMonitorService::readRegister16(uint8_t reg) {
     if (!_isAvailable) return 0;
-    _wire->beginTransmission(0x45);
-    _wire->write(reg);
-    if (_wire->endTransmission() != 0) return 0;
-
-    if (_wire->requestFrom((uint8_t)0x45, (uint8_t)2) == 2) {
-        uint8_t msb = _wire->read();
-        uint8_t lsb = _wire->read();
-        return ((uint16_t)msb << 8) | lsb;
+    uint8_t buf[2] = {0};
+    if (M5.In_I2C.readRegister(INA226_I2C_ADDR, reg, buf, 2, INA226_I2C_FREQ)) {
+        return ((uint16_t)buf[0] << 8) | buf[1];
     }
     return 0;
 }
 
 void PowerMonitorService::writeRegister16(uint8_t reg, uint16_t val) {
     if (!_isAvailable) return;
-    _wire->beginTransmission(0x45);
-    _wire->write(reg);
-    _wire->write((uint8_t)(val >> 8));
-    _wire->write((uint8_t)(val & 0xFF));
-    _wire->endTransmission();
+    uint8_t buf[2] = { (uint8_t)(val >> 8), (uint8_t)(val & 0xFF) };
+    M5.In_I2C.writeRegister(INA226_I2C_ADDR, reg, buf, 2, INA226_I2C_FREQ);
 }
 
 float PowerMonitorService::lookupOcvSoc(uint16_t mv) {
