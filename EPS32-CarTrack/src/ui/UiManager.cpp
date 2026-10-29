@@ -137,8 +137,7 @@ void UiManager::update() {
 
     SystemState& state = SystemState::instance();
     state.lock();
-    SystemContext ctx = state.getContextUnsafe();
-    state.unlock();
+    const SystemContext& ctx = state.getContextUnsafe();
 
     _canvas.fillScreen(UiColors::COLOR_BG);
 
@@ -179,6 +178,8 @@ void UiManager::update() {
         // 3. Draw Floating Page Indicator (Y: 228~235, auto-hides after 3s)
         _pageIndicator.draw(_canvas, ctx.mainPageIdx, ctx.totalMainPages);
     }
+
+    state.unlock();
 
     _canvas.pushSprite(0, 0);
 }

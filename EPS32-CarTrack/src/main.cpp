@@ -123,8 +123,8 @@ void setup() {
     UiManager::instance().init();
 
     // 5. Create Background FreeRTOS Tasks on Core 0
-    xTaskCreatePinnedToCore(gnssTask, "gnssTask", 8192, NULL, 5, &gnssTaskHandle, 0);
-    xTaskCreatePinnedToCore(netTask, "netTask", 6144, NULL, 2, &netTaskHandle, 0);
+    xTaskCreatePinnedToCore(gnssTask, "gnssTask", 12288, NULL, 5, &gnssTaskHandle, 0);
+    xTaskCreatePinnedToCore(netTask, "netTask", 8192, NULL, 2, &netTaskHandle, 0);
 
     Serial.println("[SYSTEM] System initialization complete. Starting main loop.");
 }
