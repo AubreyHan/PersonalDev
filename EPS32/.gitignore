@@ -1,0 +1,11 @@
+# Local ESP-IDF & Toolchain installation
+.esp-idf/
+.espressif/
+
+# ESP-IDF build & config artifacts
+build/
+sdkconfig.old
+managed_components/
+
+# macOS
+.DS_Store

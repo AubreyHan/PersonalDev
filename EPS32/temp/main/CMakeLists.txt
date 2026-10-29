@@ -1,0 +1,19 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "gps_lc76g.c"
+        "ui_framework.c"
+        "ui_font_digits_112.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        nvs_flash
+        esp_wifi
+        esp_netif
+        esp_event
+        esp_http_server
+        lwip
+        driver
+        fatfs
+        sdmmc
+)
