@@ -48,7 +48,7 @@ void gnssTask(void* pvParameters) {
 
 void netTask(void* pvParameters) {
     for (;;) {
-        NetworkManager::instance().update();
+        WifiNetworkManager::instance().update();
 
         SystemState& state = SystemState::instance();
         state.lock();

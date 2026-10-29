@@ -2,7 +2,7 @@
 #include "service/TrackLogger.h"
 #include <ArduinoJson.h>
 
-void NetworkManager::init() {
+void WifiNetworkManager::init() {
     _prefs.begin("m5track", false);
     _currentMode = NET_MODE_STA_IDLE;
     WiFi.mode(WIFI_STA);
@@ -10,7 +10,7 @@ void NetworkManager::init() {
     _lastConnectCheck = millis();
 }
 
-void NetworkManager::startConfigPortal() {
+void WifiNetworkManager::startConfigPortal() {
     _currentMode = NET_MODE_AP_CONFIG;
     WiFi.mode(WIFI_AP);
     WiFi.softAP("M5Track-Setup", "");
@@ -28,7 +28,7 @@ void NetworkManager::startConfigPortal() {
     SystemState::instance().unlock();
 }
 
-void NetworkManager::startShareHotspot() {
+void WifiNetworkManager::startShareHotspot() {
     _currentMode = NET_MODE_AP_SHARE;
     WiFi.mode(WIFI_AP);
     WiFi.softAP("M5Track-Share", "");
@@ -43,7 +43,7 @@ void NetworkManager::startShareHotspot() {
     SystemState::instance().unlock();
 }
 
-void NetworkManager::stopHotspot() {
+void WifiNetworkManager::stopHotspot() {
     if (_currentMode != NET_MODE_STA_IDLE) {
         _server.stop();
         _dnsServer.stop();
@@ -53,7 +53,7 @@ void NetworkManager::stopHotspot() {
     }
 }
 
-void NetworkManager::setupWebServerRoutes() {
+void WifiNetworkManager::setupWebServerRoutes() {
     _server.on("/", HTTP_GET, [this]() { handleRoot(); });
     _server.on("/api/scan", HTTP_GET, [this]() { handleScan(); });
     _server.on("/api/saved", HTTP_GET, [this]() { handleSaved(); });
@@ -64,7 +64,7 @@ void NetworkManager::setupWebServerRoutes() {
     _server.on("/api/sd/format", HTTP_POST, [this]() { handleSdFormat(); });
 }
 
-void NetworkManager::handleRoot() {
+void WifiNetworkManager::handleRoot() {
     const char* html = 
         "<!DOCTYPE html><html><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
@@ -79,7 +79,7 @@ void NetworkManager::handleRoot() {
     _server.send(200, "text/html", html);
 }
 
-void NetworkManager::handleScan() {
+void WifiNetworkManager::handleScan() {
     int n = WiFi.scanNetworks();
     JsonDocument doc;
     JsonArray aps = doc["aps"].to<JsonArray>();
@@ -94,7 +94,7 @@ void NetworkManager::handleScan() {
     _server.send(200, "application/json", out);
 }
 
-void NetworkManager::handleSaved() {
+void WifiNetworkManager::handleSaved() {
     uint8_t count = _prefs.getUChar("wifi_count", 0);
     JsonDocument doc;
     JsonArray arr = doc["saved"].to<JsonArray>();
@@ -112,7 +112,7 @@ void NetworkManager::handleSaved() {
     _server.send(200, "application/json", out);
 }
 
-void NetworkManager::handleConnect() {
+void WifiNetworkManager::handleConnect() {
     if (_server.hasArg("plain")) {
         JsonDocument doc;
         deserializeJson(doc, _server.arg("plain"));
@@ -135,7 +135,7 @@ void NetworkManager::handleConnect() {
     _server.send(400, "application/json", "{\"success\":false}");
 }
 
-void NetworkManager::handleDelete() {
+void WifiNetworkManager::handleDelete() {
     if (_server.hasArg("plain")) {
         JsonDocument doc;
         deserializeJson(doc, _server.arg("plain"));
@@ -158,20 +158,20 @@ void NetworkManager::handleDelete() {
     _server.send(400, "application/json", "{\"success\":false}");
 }
 
-void NetworkManager::handleTracks() {
+void WifiNetworkManager::handleTracks() {
     _server.send(200, "application/json", "{\"files\":[]}");
 }
 
-void NetworkManager::handleDownload() {
+void WifiNetworkManager::handleDownload() {
     _server.send(404, "text/plain", "File not specified");
 }
 
-void NetworkManager::handleSdFormat() {
+void WifiNetworkManager::handleSdFormat() {
     bool ok = TrackLogger::instance().formatSd();
     _server.send(200, "application/json", ok ? "{\"success\":true}" : "{\"success\":false}");
 }
 
-void NetworkManager::autoConnectKnown() {
+void WifiNetworkManager::autoConnectKnown() {
     if (WiFi.status() == WL_CONNECTED) return;
 
     uint8_t count = _prefs.getUChar("wifi_count", 0);
@@ -194,7 +194,7 @@ void NetworkManager::autoConnectKnown() {
     }
 }
 
-void NetworkManager::update() {
+void WifiNetworkManager::update() {
     if (_currentMode != NET_MODE_STA_IDLE) {
         if (_currentMode == NET_MODE_AP_CONFIG) {
             _dnsServer.processNextRequest();
