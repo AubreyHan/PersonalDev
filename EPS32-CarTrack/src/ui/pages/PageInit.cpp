@@ -54,11 +54,17 @@ void PageInit::draw(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.setTextColor(UiColors::COLOR_MUTED, UiColors::COLOR_BG);
     canvas.drawCenterString(hwBuf, 160, 182);
 
-    // [Wi-Fi Settings] Button (X: 100~220, Y: 202~230)
-    canvas.fillRoundRect(100, 202, 120, 26, 4, UiColors::COLOR_PANEL_BG);
-    canvas.drawRoundRect(100, 202, 120, 26, 4, UiColors::COLOR_PRIMARY);
+    // [Wi-Fi Settings] Button (X: 24~152, Y: 202~228)
+    canvas.fillRoundRect(24, 202, 128, 26, 4, UiColors::COLOR_PANEL_BG);
+    canvas.drawRoundRect(24, 202, 128, 26, 4, UiColors::COLOR_PRIMARY);
     canvas.setTextColor(UiColors::COLOR_PRIMARY, UiColors::COLOR_PANEL_BG);
-    canvas.drawCenterString("[ Wi-Fi 配网 ]", 160, 208);
+    canvas.drawCenterString("[ Wi-Fi 配网 ]", 88, 208);
+
+    // [Enter Dashboard] Button (X: 168~296, Y: 202~228)
+    canvas.fillRoundRect(168, 202, 128, 26, 4, UiColors::COLOR_PANEL_BG);
+    canvas.drawRoundRect(168, 202, 128, 26, 4, UiColors::COLOR_SECONDARY);
+    canvas.setTextColor(UiColors::COLOR_SECONDARY, UiColors::COLOR_PANEL_BG);
+    canvas.drawCenterString("[ 进入仪表盘 > ]", 232, 208);
 
     // If SD format is required, draw popup dialog
     if (ctx.sdFormatRequired) {
@@ -102,7 +108,17 @@ void PageInit::handleTap(int16_t x, int16_t y) {
     }
 
     // [Wi-Fi Settings] Button clicked
-    if (x >= 100 && x <= 220 && y >= 200 && y <= 235) {
+    if (x >= 20 && x <= 156 && y >= 198 && y <= 236) {
         WifiNetworkManager::instance().startConfigPortal();
+        return;
+    }
+
+    // [Enter Dashboard] Button clicked
+    if (x >= 164 && x <= 300 && y >= 198 && y <= 236) {
+        state.lock();
+        state.getContextUnsafe().currentState = STATE_MAIN_APP;
+        state.getContextUnsafe().mainPageIdx = 0;
+        state.unlock();
+        return;
     }
 }
