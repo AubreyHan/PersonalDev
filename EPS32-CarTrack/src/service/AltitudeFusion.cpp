@@ -58,5 +58,25 @@ void AltitudeFusion::update(float gnssAltM, bool gnssValid, float hdop, float sp
             _roadSlopePercent = 0.0f;
         }
         _prevDistanceM = _fusedAltM;
+
+        // Sync fused altitude, slope, and onboard barometer temperature into SystemState
+        SystemState& state = SystemState::instance();
+        state.lock();
+        SystemContext& ctx = state.getContextUnsafe();
+        ctx.gnss.altitudeMeters = _fusedAltM;
+        ctx.dynamics.roadSlopePercent = _roadSlopePercent;
+        uint32_t nowSec = now / 1000;
+        ctx.trip.altHistory.addSample(_fusedAltM, nowSec);
+        if (ctx.trip.altHistory.count <= 1) {
+            ctx.trip.maxAltitude = _fusedAltM;
+            ctx.trip.minAltitude = _fusedAltM;
+        } else {
+            if (_fusedAltM > ctx.trip.maxAltitude) ctx.trip.maxAltitude = _fusedAltM;
+            if (_fusedAltM < ctx.trip.minAltitude) ctx.trip.minAltitude = _fusedAltM;
+        }
+        if (!ctx.weather.hasData) {
+            ctx.weather.temperatureC = baro.getTemperatureC();
+        }
+        state.unlock();
     }
 }
