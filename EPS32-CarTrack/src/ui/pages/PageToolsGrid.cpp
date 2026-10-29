@@ -29,16 +29,16 @@ void PageToolsGrid::draw(M5Canvas& canvas, const SystemContext& ctx) {
 
     // 2x2 Grid (Each card: width 148, height 84)
     // Card 1: TF Manager (Row 1 Col 1)
-    drawToolCard(canvas, 8, 44, 148, 84, "💾 TF 卡存储管理", "格式化 / 导出", "点击进入管理", UiColors::COLOR_PRIMARY);
+    drawToolCard(canvas, 8, 44, 148, 84, "[TF] 卡存储管理", "格式化 / 导出", "点击进入管理", UiColors::COLOR_PRIMARY);
 
     // Card 2: Wi-Fi Manager (Row 1 Col 2)
-    drawToolCard(canvas, 164, 44, 148, 84, "📶 Wi-Fi 网络管理", ctx.isWifiConnected ? "已连接网络" : "未连接", "点击配置网络", UiColors::COLOR_BLUE);
+    drawToolCard(canvas, 164, 44, 148, 84, "[WiFi] 网络管理", ctx.isWifiConnected ? "已连接网络" : "未连接", "点击配置网络", UiColors::COLOR_BLUE);
 
     // Card 3: GNSS Info (Row 2 Col 1)
-    drawToolCard(canvas, 8, 134, 148, 84, "🛰️ GPS 卫星详情", "四星系统分布", "射频抗干扰诊断", UiColors::COLOR_SECONDARY);
+    drawToolCard(canvas, 8, 134, 148, 84, "[GPS] 卫星详情", "四星系统分布", "射频抗干扰诊断", UiColors::COLOR_SECONDARY);
 
     // Card 4: System Settings (Row 2 Col 2)
-    drawToolCard(canvas, 164, 134, 148, 84, "⚙️ 系统与电量", "INA226 库仑计", "背光与系统信息", UiColors::COLOR_WARN);
+    drawToolCard(canvas, 164, 134, 148, 84, "[SYS] 系统与电量", "INA226 库仑计", "背光与系统信息", UiColors::COLOR_WARN);
 }
 
 void PageToolsGrid::handleTap(int16_t x, int16_t y) {

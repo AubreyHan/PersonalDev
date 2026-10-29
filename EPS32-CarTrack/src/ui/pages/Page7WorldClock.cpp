@@ -31,7 +31,7 @@ void Page7WorldClock::drawClockCard(M5Canvas& canvas, int x, int y, int w, int h
     canvas.drawString(tzBuf, x + 8, y + 66);
 
     canvas.setTextColor(UiColors::COLOR_SECONDARY, UiColors::COLOR_PANEL_BG);
-    canvas.drawRightString(isDaytime ? "☀️" : "🌙", x + w - 8, y + 8);
+    canvas.drawRightString(isDaytime ? "[昼]" : "[夜]", x + w - 8, y + 8);
 }
 
 void Page7WorldClock::draw(M5Canvas& canvas, const SystemContext& ctx) {

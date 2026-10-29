@@ -13,9 +13,9 @@ void Page4Trail::draw(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.drawRoundRect(200, 26, 112, 20, 3, UiColors::COLOR_PRIMARY);
     canvas.setTextColor(UiColors::COLOR_PRIMARY, UiColors::COLOR_PANEL_BG);
     if (ctx.trail.viewMode == TRAIL_VIEW_FIT_ENTIRE) {
-        canvas.drawCenterString("⛶ 远景全貌", 256, 30);
+        canvas.drawCenterString("[全貌] 远景全貌", 256, 30);
     } else {
-        canvas.drawCenterString("🔄 5km 跟随", 256, 30);
+        canvas.drawCenterString("[跟随] 5km 跟随", 256, 30);
     }
 
     // Distance to Start HUD
