@@ -334,10 +334,11 @@ namespace Viewport {
 }
 
 namespace GestureConfig {
-    constexpr int16_t SWIPE_HORIZ_THRESHOLD_PX = 45;
-    constexpr int16_t SWIPE_UP_THRESHOLD_PX    = -35;
-    constexpr int16_t SWIPE_DOWN_THRESHOLD_PX  = 35;
-    constexpr float   DIRECTION_RATIO          = 1.3f;
+    constexpr int16_t SWIPE_HORIZ_THRESHOLD_PX = 24;
+    constexpr int16_t SWIPE_DRAG_TRIGGER_PX    = 34;
+    constexpr int16_t SWIPE_UP_THRESHOLD_PX    = -24;
+    constexpr int16_t SWIPE_DOWN_THRESHOLD_PX  = 24;
+    constexpr float   DIRECTION_RATIO          = 1.15f;
 }
 
 namespace TripResetConfig {
