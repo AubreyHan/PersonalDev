@@ -13,6 +13,5 @@ public:
     void draw(M5Canvas& canvas, const SystemContext& ctx);
     bool checkTap(int16_t x, int16_t y, uint8_t& targetPage);
 
-private:
     StatusBar() {}
 };

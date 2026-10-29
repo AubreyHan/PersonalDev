@@ -40,7 +40,7 @@ bool GnssDriver::configureAutomotiveParams() {
 
     // 3. Static hold threshold: 0.5 m/s (50 cm/s)
     // When speed < 0.5 m/s, freeze lat/lon to prevent slow drift
-    _myGNSS.setStaticHoldThreshold(50);
+    _myGNSS.setVal8(UBLOX_CFG_MOT_GNSSSPEED_THRS, 50);
 
     // 4. Set auto PVT callback/polling
     _myGNSS.setAutoPVT(true);

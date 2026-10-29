@@ -12,10 +12,10 @@ enum NetMode : uint8_t {
     NET_MODE_AP_SHARE
 };
 
-class NetworkManager {
+class WifiNetworkManager {
 public:
-    static NetworkManager& instance() {
-        static NetworkManager inst;
+    static WifiNetworkManager& instance() {
+        static WifiNetworkManager inst;
         return inst;
     }
 
@@ -29,7 +29,7 @@ public:
     bool isApActive() const { return _currentMode != NET_MODE_STA_IDLE; }
 
 private:
-    NetworkManager() : _server(80), _currentMode(NET_MODE_STA_IDLE), _lastScanTime(0), _lastConnectCheck(0) {}
+    WifiNetworkManager() : _server(80), _currentMode(NET_MODE_STA_IDLE), _lastScanTime(0), _lastConnectCheck(0) {}
 
     WebServer    _server;
     DNSServer    _dnsServer;

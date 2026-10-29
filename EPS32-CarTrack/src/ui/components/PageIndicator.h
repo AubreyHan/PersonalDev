@@ -12,7 +12,7 @@ public:
     void wake() { _lastActiveTime = millis(); }
     void draw(M5Canvas& canvas, uint8_t currentPage, uint8_t totalPages);
 
-private:
     PageIndicator() : _lastActiveTime(0) {}
+private:
     unsigned long _lastActiveTime;
 };
