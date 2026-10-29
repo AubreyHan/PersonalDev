@@ -104,6 +104,29 @@ void setup() {
     // External M-Bus Wire1 (SDA 32, SCL 33)
     Wire1.begin(PinConfig::EXT_I2C_SDA, PinConfig::EXT_I2C_SCL, 400000);
     Wire1.setTimeOut(25); // 25ms timeout so it never hangs if no external sensor
+
+    // Diagnostic scan of external M-Bus I2C to verify physical attachment of Module GNSS
+    Serial.println("\n[I2C] Scanning External M-Bus (Wire1: SDA 32, SCL 33)...");
+    uint8_t nDevices = 0;
+    for (uint8_t address = 1; address < 127; ++address) {
+        Wire1.beginTransmission(address);
+        uint8_t error = Wire1.endTransmission();
+        if (error == 0) {
+            Serial.printf("[I2C] Device found at 0x%02X", address);
+            if (address == 0x76 || address == 0x77) Serial.print(" -> BMP280 Barometer (Module GNSS)");
+            else if (address == 0x68 || address == 0x69) Serial.print(" -> BMI270 6-Axis IMU (Module GNSS)");
+            else if (address == 0x10) Serial.print(" -> BMM150 Magnetometer (Module GNSS)");
+            else if (address == 0x40 || address == 0x45) Serial.print(" -> INA226 Power Monitor (Base 16340)");
+            Serial.println();
+            nDevices++;
+        }
+    }
+    if (nDevices == 0) {
+        Serial.println("[I2C] WARNING: No I2C devices found on Wire1! Check if Module GNSS is firmly seated.");
+    } else {
+        Serial.printf("[I2C] Scan complete: %d device(s) detected.\n\n", nDevices);
+    }
+
     BaroDriver::instance().init(&Wire1);
     PowerMonitorService::instance().init(&Wire1);
 
