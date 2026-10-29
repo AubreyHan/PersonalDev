@@ -82,6 +82,14 @@ bool UiManager::handleTouchEvents() {
         return true;
     }
 
+    if (appState == STATE_PWR_OFF_WARN) {
+        // Any touch or swipe cancels the auto-shutdown and continues running on battery
+        state.lock();
+        ctx.currentState = STATE_MAIN_APP;
+        state.unlock();
+        return true;
+    }
+
     // In STATE_MAIN_APP
     BasePage* page = getActivePage(curPage);
 
