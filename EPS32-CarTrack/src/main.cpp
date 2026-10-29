@@ -100,7 +100,7 @@ void setup() {
     TimeService::instance().init();
     WeatherService::instance().init();
     TrackLogger::instance().init();
-    NetworkManager::instance().init();
+    WifiNetworkManager::instance().init();
 
     // 4. Initialize UI Manager
     UiManager::instance().init();

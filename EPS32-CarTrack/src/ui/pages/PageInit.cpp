@@ -101,6 +101,6 @@ void PageInit::handleTap(int16_t x, int16_t y) {
 
     // [Wi-Fi Settings] Button clicked
     if (x >= 100 && x <= 220 && y >= 200 && y <= 235) {
-        NetworkManager::instance().startConfigPortal();
+        WifiNetworkManager::instance().startConfigPortal();
     }
 }
