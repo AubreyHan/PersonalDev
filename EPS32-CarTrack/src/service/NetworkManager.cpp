@@ -65,7 +65,7 @@ void WifiNetworkManager::setupWebServerRoutes() {
 }
 
 void WifiNetworkManager::handleRoot() {
-    const char* html = 
+    String html = 
         "<!DOCTYPE html><html><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         "<title>M5Track-M9N</title>"
