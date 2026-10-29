@@ -3,11 +3,15 @@
 
 void Page6Weather::draw(M5Canvas& canvas, const SystemContext& ctx) {
     // 1. Current Weather Banner
-    canvas.setTextSize(1);
-    char weatherBanner[48];
-    snprintf(weatherBanner, sizeof(weatherBanner), "气象: 晴 / 多云  %.1f°C", ctx.weather.temperatureC);
+    canvas.setTextSize(2);
+    char tempBuf[16];
+    snprintf(tempBuf, sizeof(tempBuf), "%.1f°C", ctx.weather.temperatureC);
     canvas.setTextColor(UiColors::COLOR_PRIMARY, UiColors::COLOR_BG);
-    canvas.drawString(weatherBanner, 10, 28);
+    canvas.drawString(tempBuf, 8, 26);
+
+    canvas.setTextSize(1);
+    canvas.setTextColor(UiColors::COLOR_WHITE, UiColors::COLOR_BG);
+    canvas.drawString("晴 / 多云", 85, 30);
 
     char slotLabel[32];
     uint8_t slot = ctx.weather.currentSlotIdx;
@@ -20,7 +24,7 @@ void Page6Weather::draw(M5Canvas& canvas, const SystemContext& ctx) {
     char subBanner[64];
     snprintf(subBanner, sizeof(subBanner), "湿度: %d%% | 风速: %.0f km/h", ctx.weather.relativeHumidity, ctx.weather.windSpeedKmh);
     canvas.setTextColor(UiColors::COLOR_MUTED, UiColors::COLOR_BG);
-    canvas.drawString(subBanner, 10, 44);
+    canvas.drawString(subBanner, 8, 44);
 
     // 2. 8-Hour Forecast Chart: 8 slots, slot width 38px
     // Viewport: X: 8~312, Y: 60~180 (Height 120)
