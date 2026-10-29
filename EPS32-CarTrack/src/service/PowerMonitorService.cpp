@@ -79,18 +79,38 @@ void PowerMonitorService::update() {
     SystemContext& ctx = state.getContextUnsafe();
 
     if (!_isAvailable) {
-        if (now - _lastProbeMs < 5000) {
-            state.unlock();
-            return;
+        if (now - _lastProbeMs >= 5000) {
+            _lastProbeMs = now;
+            init();
         }
-        _lastProbeMs = now;
-        // Probe again in case base was attached during runtime
-        if (init()) {
-            ctx.batteryMode = BATTERY_MODE_BASE_ATTACHED;
-        } else {
-            ctx.batteryMode = BATTERY_MODE_NO_BASE_EMPTY;
-            ctx.batteryPercent = 0;
-            ctx.isCharging = false;
+        if (!_isAvailable) {
+            // Fallback to Core2 AXP192 PMIC telemetry (supports both internal battery and Base Dual 16340 on BAT bus)
+            int16_t vbatMv = M5.Power.getBatteryVoltage();
+            int32_t ibatMa = M5.Power.getBatteryCurrent();
+            int32_t soc    = M5.Power.getBatteryLevel();
+            bool    chg    = M5.Power.isCharging();
+
+            if (vbatMv > 2500) {
+                ctx.batteryMode = BATTERY_MODE_BASE_ATTACHED;
+                ctx.batteryPercent = (uint8_t)constrain(soc, 0, 100);
+                ctx.isCharging = chg;
+                ctx.powerMonitor.isAvailable = true;
+                ctx.powerMonitor.isCharging = chg;
+                ctx.powerMonitor.busVoltageV = vbatMv * 0.001f;
+                ctx.powerMonitor.currentMa = (float)ibatMa;
+                ctx.powerMonitor.powerMw = fabs(ctx.powerMonitor.busVoltageV * ctx.powerMonitor.currentMa);
+                ctx.powerMonitor.batterySocPercent = (float)ctx.batteryPercent;
+                ctx.powerMonitor.remainingMah = (ctx.batteryPercent / 100.0f) * 1400.0f;
+                if (ibatMa < -20) {
+                    ctx.powerMonitor.remainingMinutes = (uint16_t)((ctx.powerMonitor.remainingMah / -ibatMa) * 60.0f);
+                } else {
+                    ctx.powerMonitor.remainingMinutes = 999;
+                }
+            } else {
+                ctx.batteryMode = BATTERY_MODE_NO_BASE_EMPTY;
+                ctx.batteryPercent = 0;
+                ctx.isCharging = false;
+            }
             state.unlock();
             return;
         }
