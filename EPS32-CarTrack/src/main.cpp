@@ -28,15 +28,26 @@ void gnssTask(void* pvParameters) {
         GnssDriver::instance().update();
         BaroDriver::instance().update();
 
+        float altM = 0.0f, spdKmh = 0.0f, hdop = 99.0f, heading = 0.0f;
+        bool isValid = false;
+        int32_t latE7 = 0, lonE7 = 0;
+
         SystemState& state = SystemState::instance();
         state.lock();
-        SystemContext ctx = state.getContextUnsafe();
+        const GnssData& g = state.getContextUnsafe().gnss;
+        altM = g.altitudeMeters;
+        spdKmh = g.speedKmh;
+        hdop = g.hdop;
+        heading = g.headingDeg;
+        isValid = g.isValid;
+        latE7 = g.latE7;
+        lonE7 = g.lonE7;
         state.unlock();
 
         // Sensor fusion
-        AltitudeFusion::instance().update(ctx.gnss.altitudeMeters, ctx.gnss.isValid, ctx.gnss.hdop, ctx.gnss.speedKmh);
-        DeadReckoningService::instance().update(ctx.gnss.isValid, ctx.gnss.speedKmh, ctx.gnss.headingDeg, ctx.gnss.latE7, ctx.gnss.lonE7);
-        TunnelService::instance().update(ctx.gnss.latE7, ctx.gnss.lonE7, ctx.gnss.headingDeg, ctx.gnss.speedKmh, ctx.gnss.isValid);
+        AltitudeFusion::instance().update(altM, isValid, hdop, spdKmh);
+        DeadReckoningService::instance().update(isValid, spdKmh, heading, latE7, lonE7);
+        TunnelService::instance().update(latE7, lonE7, heading, spdKmh, isValid);
         PowerMonitorService::instance().update();
 
         // SD Track Logging
@@ -50,12 +61,17 @@ void netTask(void* pvParameters) {
     for (;;) {
         WifiNetworkManager::instance().update();
 
+        bool isWifi = false;
+        bool gnssValid = false;
+        double lat = 0.0, lon = 0.0;
+
         SystemState& state = SystemState::instance();
         state.lock();
-        bool isWifi = state.getContextUnsafe().isWifiConnected;
-        bool gnssValid = state.getContextUnsafe().gnss.isValid;
-        double lat = state.getContextUnsafe().gnss.latitude;
-        double lon = state.getContextUnsafe().gnss.longitude;
+        const SystemContext& ctx = state.getContextUnsafe();
+        isWifi = ctx.isWifiConnected;
+        gnssValid = ctx.gnss.isValid;
+        lat = ctx.gnss.latitude;
+        lon = ctx.gnss.longitude;
         state.unlock();
 
         TimeService::instance().update(isWifi, gnssValid);
@@ -87,6 +103,7 @@ void setup() {
 
     // External M-Bus Wire1 (SDA 32, SCL 33)
     Wire1.begin(PinConfig::EXT_I2C_SDA, PinConfig::EXT_I2C_SCL, 400000);
+    Wire1.setTimeOut(25); // 25ms timeout so it never hangs if no external sensor
     BaroDriver::instance().init(&Wire1);
     PowerMonitorService::instance().init(&Wire1);
 
