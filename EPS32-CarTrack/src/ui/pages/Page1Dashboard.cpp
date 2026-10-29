@@ -44,8 +44,9 @@ void Page1Dashboard::drawCompass(M5Canvas& canvas, float headingDeg) {
     else if (headingDeg >= 292.5 && headingDeg < 337.5) card = "NW";
 
     snprintf(headTxt, sizeof(headTxt), "%3.0f° %s", headingDeg, card);
+    canvas.setTextSize(2);
     canvas.setTextColor(UiColors::COLOR_PRIMARY, UiColors::COLOR_BG);
-    canvas.drawCenterString(headTxt, cx, 142);
+    canvas.drawCenterString(headTxt, cx, 140);
 }
 
 void Page1Dashboard::draw(M5Canvas& canvas, const SystemContext& ctx) {
