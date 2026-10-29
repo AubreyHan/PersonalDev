@@ -101,9 +101,15 @@ void setup() {
     SystemState::instance().init();
 
     // 2. Initialize Hardware Drivers
-    // Enable external power to M-Bus (supplies 5V via EXTEN and 3.3V to GNSS module)
-    M5.Power.setExtOutput(true);
-    delay(500); // Allow GNSS module & sensors to stabilize after power-on
+    // Module GNSS (M135) is powered by M-Bus +3.3V (AXP192 DCDC1, always ON).
+    // IMPORTANT: Keep ExtOutput FALSE on Core2! Enabling setExtOutput(true) drives
+    // N_VBUSEN high on AXP192, which disconnects USB VBUS input and drains the
+    // battery until AXP192 hits 3.0V VOFF auto-shutdown after a few minutes!
+    M5.Power.setExtOutput(false);
+    M5.Power.setBatteryCharge(true);
+    M5.Power.setChargeCurrent(390);
+    M5.Power.setChargeVoltage(4200);
+    delay(300); // Allow GNSS module & sensors to stabilize
 
     PowerDriver::instance().init();
     ButtonDriver::instance().init();
