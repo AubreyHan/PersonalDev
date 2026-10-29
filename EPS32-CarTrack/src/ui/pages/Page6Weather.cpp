@@ -14,10 +14,10 @@ void Page6Weather::draw(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.drawString("晴 / 多云", 85, 30);
 
     char slotLabel[32];
-    uint8_t slot = ctx.weather.currentSlotIdx;
-    if (slot == 0) snprintf(slotLabel, sizeof(slotLabel), "[1/3] 0~8h ↕️");
-    else if (slot == 1) snprintf(slotLabel, sizeof(slotLabel), "[2/3] 8~16h ↕️");
-    else snprintf(slotLabel, sizeof(slotLabel), "[3/3] 16~24h ↕️");
+    uint8_t slot = (ctx.weather.currentSlotIdx < 3) ? ctx.weather.currentSlotIdx : 0;
+    if (slot == 0) snprintf(slotLabel, sizeof(slotLabel), "[1/3] 0~8h [上下滑]");
+    else if (slot == 1) snprintf(slotLabel, sizeof(slotLabel), "[2/3] 8~16h [上下滑]");
+    else snprintf(slotLabel, sizeof(slotLabel), "[3/3] 16~24h [上下滑]");
     canvas.setTextColor(UiColors::COLOR_SECONDARY, UiColors::COLOR_BG);
     canvas.drawRightString(slotLabel, 310, 28);
 
@@ -42,7 +42,7 @@ void Page6Weather::draw(M5Canvas& canvas, const SystemContext& ctx) {
     // Draw slot dividers and hourly predictions
     int prevX = -1, prevY = -1;
     for (uint8_t i = 0; i < 8; i++) {
-        uint8_t hIdx = startHourIdx + i;
+        uint8_t hIdx = (startHourIdx + i) % 24;
         int sx = chartX + i * slotW;
 
         if (i > 0) {
@@ -57,6 +57,7 @@ void Page6Weather::draw(M5Canvas& canvas, const SystemContext& ctx) {
 
         int temp = ctx.weather.hourly[hIdx].tempC;
         uint8_t rainProb = ctx.weather.hourly[hIdx].rainProbPercent;
+        if (rainProb > 100) rainProb = 100;
 
         // Temperature number
         char tBuf[8];
