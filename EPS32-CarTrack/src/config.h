@@ -6,17 +6,17 @@
 // =============================================================================
 
 namespace PinConfig {
-    // Module GNSS (M135) UART2 Pins (DIP Switch configured on Core2)
-    // GPIO 14: RX2 (Receives from GNSS Module TXD at G14)
-    // GPIO 13: TX2 (Transmits to GNSS Module RXD at G13)
-    constexpr int GNSS_RX_PIN = 14;
-    constexpr int GNSS_TX_PIN = 13;
+    // Module GNSS (M135) UART2 Pins, per M5Stack Core2 pin map (M-Bus pin 15 = G13 RXD2, pin 16 = G14 TXD2)
+    // GPIO 13: RX2 (Core2 receives from GNSS Module NEO_TXD)
+    // GPIO 14: TX2 (Core2 transmits to GNSS Module NEO_RXD)
+    constexpr int GNSS_RX_PIN = 13;
+    constexpr int GNSS_TX_PIN = 14;
 
-    // External M-Bus I2C Pins (Wire1 on Core2)
-    // Module GNSS onboard sensors: BMP280 (0x76), BMI270 (0x68), BMM150 (0x10)
+    // M-Bus shared I2C (Core2 internal bus, G21/G22; Module GNSS and Base 16340 hang on it)
+    // Module GNSS onboard sensors: BMP280 (0x76), BMI270 (0x69), BMM150 (0x10, behind BMI270, not scannable)
     // Base Dual 16340 onboard sensor: INA226 (0x45)
-    constexpr int EXT_I2C_SDA = 32;
-    constexpr int EXT_I2C_SCL = 33;
+    constexpr int EXT_I2C_SDA = 21;
+    constexpr int EXT_I2C_SCL = 22;
 
     // MicroSD Card SPI Pins (Core2 Hardware SPI)
     constexpr int SD_SPI_SCK  = 18;

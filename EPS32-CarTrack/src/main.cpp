@@ -105,10 +105,7 @@ void setup() {
     ButtonDriver::instance().init();
     RtcDriver::instance().init();
 
-    // External M-Bus I2C on Wire (I2C0: SDA 32, SCL 33)
-    Wire.begin(PinConfig::EXT_I2C_SDA, PinConfig::EXT_I2C_SCL, 400000);
-    Wire.setTimeOut(25); // 25ms timeout so it never hangs if no external sensor
-
+    // M-Bus I2C shares the Core2 internal bus (G21/G22); Port A (G32/G33) is NOT the M-Bus.
     // Diagnostic scan of M-Bus I2C (Wire1: SDA 21, SCL 22)
     Serial.println("\n[I2C] Scanning M-Bus I2C (Wire1: SDA 21, SCL 22)...");
     uint8_t nDevices = 0;
