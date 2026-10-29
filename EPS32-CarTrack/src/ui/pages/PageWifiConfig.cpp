@@ -37,7 +37,7 @@ void PageWifiConfig::draw(M5Canvas& canvas, const SystemContext& ctx) {
 
 void PageWifiConfig::handleTap(int16_t x, int16_t y) {
     if (x >= 90 && x <= 230 && y >= 190 && y <= 235) {
-        NetworkManager::instance().stopHotspot();
+        WifiNetworkManager::instance().stopHotspot();
 
         SystemState& state = SystemState::instance();
         state.lock();
