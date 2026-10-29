@@ -1,4 +1,5 @@
 #include "ui/UiManager.h"
+#include "driver/PowerDriver.h"
 #include "config.h"
 
 void UiManager::init() {
@@ -88,6 +89,42 @@ void UiManager::handleTouchEvents() {
 
         case TOUCH_LONG_PRESS_2S:
             if (page) page->handleLongPress(evt.x, evt.y);
+            break;
+
+        case TOUCH_BTN_HOME:
+            // Button 1 (Left / BtnA): Go to Home Page (Page 1)
+            PowerDriver::instance().vibrate(40);
+            _page8Tools.resetToRoot();
+            state.lock();
+            ctx.mainPageIdx = 0;
+            if (ctx.currentState != STATE_MAIN_APP && ctx.gnss.isValid) {
+                ctx.currentState = STATE_MAIN_APP;
+            }
+            state.unlock();
+            break;
+
+        case TOUCH_BTN_TRIP_RESET:
+            // Button 2 (Middle / BtnB): 1.5s Long Press -> Full Trip Sync Reset
+            PowerDriver::instance().vibrate(100);
+            state.lock();
+            ctx.trip.reset(ctx.gnss.altitudeMeters, ctx.gnss.speedKmh, millis() / 1000);
+            ctx.trail.reset(ctx.gnss.latE7, ctx.gnss.lonE7, (int16_t)ctx.gnss.altitudeMeters);
+            ctx.dynamics.maxLateralG = 0.0f;
+            ctx.dynamics.maxLongG = 0.0f;
+            state.unlock();
+            _page1Dash.handleLongPress(200, 200); // Trigger feedback popup
+            break;
+
+        case TOUCH_BTN_TOOLS:
+            // Button 3 (Right / BtnC): Go to Tools Page (Page 8)
+            PowerDriver::instance().vibrate(40);
+            _page8Tools.resetToRoot();
+            state.lock();
+            ctx.mainPageIdx = 7; // Page 8 (Index 7)
+            if (ctx.currentState != STATE_MAIN_APP && ctx.gnss.isValid) {
+                ctx.currentState = STATE_MAIN_APP;
+            }
+            state.unlock();
             break;
 
         default:
