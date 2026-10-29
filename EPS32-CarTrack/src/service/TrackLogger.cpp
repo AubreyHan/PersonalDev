@@ -44,13 +44,12 @@ LatLonGcj TrackLogger::wgs84ToGcj02(double wgsLat, double wgsLon) {
 }
 
 bool TrackLogger::init() {
-    SPI.begin(PinConfig::SD_SPI_SCK, PinConfig::SD_SPI_MISO, PinConfig::SD_SPI_MOSI, PinConfig::SD_SPI_CS);
-    if (!_sd.begin(SdSpiConfig(PinConfig::SD_SPI_CS, DEDICATED_SPI, SD_SCK_MHZ(25), &SPI))) {
-        Serial.println("[TrackLogger] SD Mount failed. Check card format.");
+    // Core2 shares SPI between LCD Display and MicroSD. Must use SHARED_SPI!
+    if (!_sd.begin(SdSpiConfig(PinConfig::SD_SPI_CS, SHARED_SPI, SD_SCK_MHZ(25)))) {
+        Serial.println("[TrackLogger] SD Mount failed. (Card absent or unrecognized format)");
         _isMounted = false;
         SystemState::instance().lock();
         SystemState::instance().getContextUnsafe().isSdMounted = false;
-        SystemState::instance().getContextUnsafe().sdFormatRequired = true;
         SystemState::instance().unlock();
         return false;
     }
