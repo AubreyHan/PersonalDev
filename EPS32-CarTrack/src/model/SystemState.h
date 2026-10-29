@@ -387,7 +387,7 @@ public:
     }
 
     void init() {
-        _mutex = xSemaphoreCreateMutex();
+        _mutex = xSemaphoreCreateRecursiveMutex();
         SystemContext& ctx = _context;
         ctx.currentState = STATE_BOOT_INIT;
         ctx.mainPageIdx = 0;
@@ -412,10 +412,18 @@ public:
         ctx.trip.reset(0, 0, 0);
         ctx.trail.reset(0, 0, 0);
 
+        memset(&ctx.weather, 0, sizeof(ctx.weather));
         ctx.weather.hasData = false;
         ctx.weather.currentSlotIdx = 0;
-        ctx.weather.temperatureC = 0.0f;
-        ctx.weather.relativeHumidity = 0;
+        ctx.weather.temperatureC = 25.0f;
+        ctx.weather.relativeHumidity = 50;
+        ctx.weather.windSpeedKmh = 0.0f;
+        for (uint8_t i = 0; i < 24; i++) {
+            ctx.weather.hourly[i].hour = i;
+            ctx.weather.hourly[i].tempC = 22;
+            ctx.weather.hourly[i].rainProbPercent = 0;
+            ctx.weather.hourly[i].weatherCode = 0;
+        }
 
         // Default 4 world clock slots: Beijing (UTC+8), UTC (UTC+0), New York (EDT-4), Tokyo (UTC+9)
         ctx.worldClock.activeEditSlot = 0;
@@ -426,6 +434,7 @@ public:
         ctx.worldClock.slots[2] = {CLOCK_MODE_MANUAL_CITY, 1, -4, "纽约 New York", true};
         ctx.worldClock.slots[3] = {CLOCK_MODE_MANUAL_CITY, 2, 9, "东京 Tokyo", false};
 
+        memset(&ctx.powerMonitor, 0, sizeof(ctx.powerMonitor));
         ctx.powerMonitor.isAvailable = false;
         ctx.powerMonitor.batterySocPercent = 0.0f;
         ctx.powerMonitor.busVoltageV = 0.0f;
@@ -433,11 +442,11 @@ public:
     }
 
     void lock() {
-        if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
+        if (_mutex) xSemaphoreTakeRecursive(_mutex, portMAX_DELAY);
     }
 
     void unlock() {
-        if (_mutex) xSemaphoreGive(_mutex);
+        if (_mutex) xSemaphoreGiveRecursive(_mutex);
     }
 
     SystemContext& getContextUnsafe() {
