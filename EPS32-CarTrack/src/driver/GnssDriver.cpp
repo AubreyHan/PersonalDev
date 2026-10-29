@@ -13,8 +13,12 @@ bool GnssDriver::init() {
         const char* label;
     };
     PinPair pinPairs[] = {
-        {PinConfig::GNSS_RX_PIN, PinConfig::GNSS_TX_PIN, "Configured (Core2 RX=14, TX=13)"},
-        {PinConfig::GNSS_TX_PIN, PinConfig::GNSS_RX_PIN, "Swapped (Core2 RX=13, TX=14)"}
+        {14, 13, "TXD->G14, RXD->G13 (Recommended)"},
+        {13, 14, "TXD->G13, RXD->G14 (Reversed)"},
+        {27, 19, "TXD->G27, RXD->G19 (M5 Default)"},
+        {14, 19, "TXD->G14, RXD->G19"},
+        {27, 13, "TXD->G27, RXD->G13"},
+        {2,  19, "TXD->G2,  RXD->G19"}
     };
 
     uint32_t bauds[] = {BaudConfig::GNSS_DEFAULT_BAUD, BaudConfig::GNSS_TARGET_BAUD, 9600};
@@ -27,15 +31,17 @@ bool GnssDriver::init() {
     for (const auto& pins : pinPairs) {
         Serial.printf("[GNSS] Testing UART connection with %s...\n", pins.label);
         for (uint32_t b : bauds) {
-            Serial.printf("[GNSS]  -> Probing baud %u bps (RX=%d, TX=%d)...\n", b, pins.rx, pins.tx);
+            Serial.printf("[GNSS]  -> Probing baud %lu bps (RX=%d, TX=%d)...\n", (unsigned long)b, pins.rx, pins.tx);
             Serial2.begin(b, SERIAL_8N1, pins.rx, pins.tx);
-            delay(100);
+            delay(150);
 
-            // Flush serial buffer
-            while (Serial2.available()) Serial2.read();
+            int preAvail = Serial2.available();
+            if (preAvail > 0) {
+                Serial.printf("[GNSS]     [Signal detected: %d bytes in buffer!]\n", preAvail);
+            }
 
-            if (_myGNSS.begin(Serial2, 800)) {
-                Serial.printf("[GNSS] SUCCESS: Established communication with NEO-M9N at %u bps!\n", b);
+            if (_myGNSS.begin(Serial2, 600)) {
+                Serial.printf("[GNSS] SUCCESS: Established communication with NEO-M9N at %lu bps!\n", (unsigned long)b);
                 connected = true;
                 activeRx = pins.rx;
                 activeTx = pins.tx;
@@ -43,7 +49,7 @@ bool GnssDriver::init() {
                 break;
             }
             Serial2.end();
-            delay(50);
+            delay(30);
         }
         if (connected) break;
     }
