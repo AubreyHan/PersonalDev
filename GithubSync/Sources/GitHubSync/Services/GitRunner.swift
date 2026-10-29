@@ -60,7 +60,7 @@ public final class GitRunner: @unchecked Sendable {
                 process.arguments = args
                 process.currentDirectoryURL = directory
 
-                // 继承并扩充系统环境变量，确保 ssh / 钥匙串可用
+                // 继承并扩充系统环境变量，确保 ssh / 钥匙串可用，并禁用终端交互输入卡死
                 var env = ProcessInfo.processInfo.environment
                 let extraPaths = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
                 if let currentPath = env["PATH"] {
@@ -68,6 +68,7 @@ public final class GitRunner: @unchecked Sendable {
                 } else {
                     env["PATH"] = extraPaths
                 }
+                env["GIT_TERMINAL_PROMPT"] = "0"
                 process.environment = env
 
                 let stdoutPipe = Pipe()
