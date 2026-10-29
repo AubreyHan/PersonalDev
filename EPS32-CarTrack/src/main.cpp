@@ -170,9 +170,14 @@ void loop() {
     static uint32_t lastPrint = 0;
     if (millis() - lastPrint > 2000) {
         lastPrint = millis();
-        Serial.printf("[LOOP] Heartbeat: Free Heap = %d KB, VBUS = %d mV\n", 
+        Serial.printf("[LOOP] Heartbeat: Free Heap = %d KB | VBUS = %d mV (%.1f mA) | VBAT = %d mV (%+d mA, %d%%, Chg=%d)\n", 
                       (int)(ESP.getFreeHeap() / 1024), 
-                      (int)M5.Power.getVBUSVoltage());
+                      (int)M5.Power.getVBUSVoltage(),
+                      M5.Power.Axp192.getVBUSCurrent(),
+                      (int)M5.Power.getBatteryVoltage(),
+                      (int)M5.Power.getBatteryCurrent(),
+                      (int)M5.Power.getBatteryLevel(),
+                      (int)M5.Power.isCharging());
     }
 
     delay(8); // Poll FT6336U touch at ~125Hz; UiManager renders at 20 FPS or immediately on touch
