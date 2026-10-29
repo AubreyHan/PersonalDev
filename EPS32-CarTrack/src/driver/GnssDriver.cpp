@@ -3,14 +3,16 @@
 
 bool GnssDriver::init() {
     Serial2.begin(BaudConfig::GNSS_DEFAULT_BAUD, SERIAL_8N1, PinConfig::GNSS_RX_PIN, PinConfig::GNSS_TX_PIN);
-    delay(100);
+    delay(50);
+    _myGNSS.setTimeout(250);
 
     // Try connecting at default baud
     if (!_myGNSS.begin(Serial2)) {
         // Try target baud in case already configured
         Serial2.end();
         Serial2.begin(BaudConfig::GNSS_TARGET_BAUD, SERIAL_8N1, PinConfig::GNSS_RX_PIN, PinConfig::GNSS_TX_PIN);
-        delay(100);
+        delay(50);
+        _myGNSS.setTimeout(250);
         if (!_myGNSS.begin(Serial2)) {
             Serial.println("[GNSS] Failed to communicate with NEO-M9N!");
             return false;
