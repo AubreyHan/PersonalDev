@@ -69,15 +69,23 @@ void Page3Speed::draw(M5Canvas& canvas, const SystemContext& ctx) {
     // 3. Bottom Extremes Cards (Strictly NO minimum speed)
     canvas.fillRoundRect(8, 178, 148, 44, 4, UiColors::COLOR_PANEL_BG);
     canvas.drawRoundRect(8, 178, 148, 44, 4, UiColors::COLOR_BORDER);
+    canvas.setTextSize(1);
     canvas.setTextColor(UiColors::COLOR_DANGER, UiColors::COLOR_PANEL_BG);
-    char maxSpdStr[32];
-    snprintf(maxSpdStr, sizeof(maxSpdStr), "▲ 最高: %.0f km/h", ctx.trip.maxSpeedKmh);
-    canvas.drawString(maxSpdStr, 14, 192);
+    canvas.drawString("▲ MAX SPEED", 14, 182);
+    canvas.setTextSize(2);
+    canvas.setTextColor(UiColors::COLOR_WHITE, UiColors::COLOR_PANEL_BG);
+    char maxSpdVal[16];
+    snprintf(maxSpdVal, sizeof(maxSpdVal), "%.0f km/h", ctx.trip.maxSpeedKmh);
+    canvas.drawString(maxSpdVal, 14, 198);
 
     canvas.fillRoundRect(164, 178, 148, 44, 4, UiColors::COLOR_PANEL_BG);
     canvas.drawRoundRect(164, 178, 148, 44, 4, UiColors::COLOR_BORDER);
+    canvas.setTextSize(1);
     canvas.setTextColor(UiColors::COLOR_PRIMARY, UiColors::COLOR_PANEL_BG);
-    char avgSpdStr[32];
-    snprintf(avgSpdStr, sizeof(avgSpdStr), "平均: %.1f km/h", ctx.trip.avgSpeedKmh);
-    canvas.drawString(avgSpdStr, 170, 192);
+    canvas.drawString("AVG SPEED", 170, 182);
+    canvas.setTextSize(2);
+    canvas.setTextColor(UiColors::COLOR_WHITE, UiColors::COLOR_PANEL_BG);
+    char avgSpdVal[16];
+    snprintf(avgSpdVal, sizeof(avgSpdVal), "%.1f km/h", ctx.trip.avgSpeedKmh);
+    canvas.drawString(avgSpdVal, 170, 198);
 }

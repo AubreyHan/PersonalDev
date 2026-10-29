@@ -82,15 +82,23 @@ void Page2Altitude::draw(M5Canvas& canvas, const SystemContext& ctx) {
     // 3. Bottom Extremes Cards (Y: 176~224)
     canvas.fillRoundRect(8, 178, 148, 44, 4, UiColors::COLOR_PANEL_BG);
     canvas.drawRoundRect(8, 178, 148, 44, 4, UiColors::COLOR_BORDER);
+    canvas.setTextSize(1);
     canvas.setTextColor(UiColors::COLOR_DANGER, UiColors::COLOR_PANEL_BG);
-    char maxAltStr[32];
-    snprintf(maxAltStr, sizeof(maxAltStr), "▲ 最高: %.0f m", ctx.trip.maxAltitude);
-    canvas.drawString(maxAltStr, 14, 192);
+    canvas.drawString("▲ MAX ALT", 14, 182);
+    canvas.setTextSize(2);
+    canvas.setTextColor(UiColors::COLOR_WHITE, UiColors::COLOR_PANEL_BG);
+    char maxAltVal[16];
+    snprintf(maxAltVal, sizeof(maxAltVal), "%.0f m", ctx.trip.maxAltitude);
+    canvas.drawString(maxAltVal, 14, 198);
 
     canvas.fillRoundRect(164, 178, 148, 44, 4, UiColors::COLOR_PANEL_BG);
     canvas.drawRoundRect(164, 178, 148, 44, 4, UiColors::COLOR_BORDER);
+    canvas.setTextSize(1);
     canvas.setTextColor(UiColors::COLOR_BLUE, UiColors::COLOR_PANEL_BG);
-    char minAltStr[32];
-    snprintf(minAltStr, sizeof(minAltStr), "▼ 最低: %.0f m", ctx.trip.minAltitude);
-    canvas.drawString(minAltStr, 170, 192);
+    canvas.drawString("▼ MIN ALT", 170, 182);
+    canvas.setTextSize(2);
+    canvas.setTextColor(UiColors::COLOR_WHITE, UiColors::COLOR_PANEL_BG);
+    char minAltVal[16];
+    snprintf(minAltVal, sizeof(minAltVal), "%.0f m", ctx.trip.minAltitude);
+    canvas.drawString(minAltVal, 170, 198);
 }

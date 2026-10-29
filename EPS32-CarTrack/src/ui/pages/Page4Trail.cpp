@@ -20,9 +20,10 @@ void Page4Trail::draw(M5Canvas& canvas, const SystemContext& ctx) {
 
     // Distance to Start HUD
     char distBuf[32];
-    snprintf(distBuf, sizeof(distBuf), "🚩 距起点: %.1f km", ctx.trail.distanceToStartKm);
+    snprintf(distBuf, sizeof(distBuf), "DIST: %.1f km", ctx.trail.distanceToStartKm);
+    canvas.setTextSize(2);
     canvas.setTextColor(UiColors::COLOR_SECONDARY, UiColors::COLOR_BG);
-    canvas.drawString(distBuf, 8, 44);
+    canvas.drawString(distBuf, 8, 30);
 
     // 2. Vector Canvas Viewport: X: 8~312, Y: 58~200 (width 304, height 142)
     int cvsX = 8;

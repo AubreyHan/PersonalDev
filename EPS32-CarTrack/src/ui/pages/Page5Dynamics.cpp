@@ -30,16 +30,17 @@ void Page5Dynamics::draw(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.fillCircle(dotX, dotY, 4, UiColors::COLOR_DANGER);
 
     // G-Force stats below circle
-    canvas.setTextSize(1);
     char totalGBuf[24];
-    snprintf(totalGBuf, sizeof(totalGBuf), "总 G值: %.2f G", ctx.dynamics.totalG);
+    snprintf(totalGBuf, sizeof(totalGBuf), "%.2f G", ctx.dynamics.totalG);
+    canvas.setTextSize(2);
     canvas.setTextColor(UiColors::COLOR_PRIMARY, UiColors::COLOR_BG);
-    canvas.drawCenterString(totalGBuf, cx, 156);
+    canvas.drawCenterString(totalGBuf, cx, 154);
 
+    canvas.setTextSize(1);
     char peakGBuf[32];
-    snprintf(peakGBuf, sizeof(peakGBuf), "峰值: L%.2f / B%.2f", ctx.dynamics.maxLateralG, ctx.dynamics.maxLongG);
+    snprintf(peakGBuf, sizeof(peakGBuf), "MAX L%.2f B%.2f", ctx.dynamics.maxLateralG, ctx.dynamics.maxLongG);
     canvas.setTextColor(UiColors::COLOR_MUTED, UiColors::COLOR_BG);
-    canvas.drawCenterString(peakGBuf, cx, 172);
+    canvas.drawCenterString(peakGBuf, cx, 174);
 
     // Vertical Divider
     canvas.drawFastVLine(148, 28, 185, UiColors::COLOR_BORDER);
@@ -66,19 +67,29 @@ void Page5Dynamics::draw(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.fillRoundRect(156, 104, 156, 75, 4, UiColors::COLOR_PANEL_BG);
     canvas.drawRoundRect(156, 104, 156, 75, 4, UiColors::COLOR_BORDER);
 
+    // Left Col: Pitch
     canvas.setTextColor(UiColors::COLOR_MUTED, UiColors::COLOR_PANEL_BG);
-    canvas.drawString("车身俯仰角 (Pitch)", 164, 110);
-    char pitchBuf[24];
+    canvas.drawString("PITCH 俯仰", 164, 110);
+    char pitchBuf[16];
     snprintf(pitchBuf, sizeof(pitchBuf), "%+.1f°", ctx.dynamics.pitchDeg);
+    canvas.setTextSize(2);
     canvas.setTextColor(UiColors::COLOR_WHITE, UiColors::COLOR_PANEL_BG);
-    canvas.drawString(pitchBuf, 164, 124);
+    canvas.drawString(pitchBuf, 164, 126);
 
+    // Right Col: Roll
+    canvas.setTextSize(1);
     canvas.setTextColor(UiColors::COLOR_MUTED, UiColors::COLOR_PANEL_BG);
-    canvas.drawString("车身侧倾角 (Roll)", 164, 142);
-    char rollBuf[24];
+    canvas.drawString("ROLL 侧倾", 240, 110);
+    char rollBuf[16];
     snprintf(rollBuf, sizeof(rollBuf), "%+.1f°", ctx.dynamics.rollDeg);
+    canvas.setTextSize(2);
     canvas.setTextColor(UiColors::COLOR_WHITE, UiColors::COLOR_PANEL_BG);
-    canvas.drawString(rollBuf, 164, 156);
+    canvas.drawString(rollBuf, 240, 126);
+
+    // Subtext
+    canvas.setTextSize(1);
+    canvas.setTextColor(UiColors::COLOR_MUTED, UiColors::COLOR_PANEL_BG);
+    canvas.drawString("姿态自校准: 零偏跟踪", 164, 152);
 
     // Bottom Mode Info
     canvas.setTextColor(UiColors::COLOR_MUTED, UiColors::COLOR_BG);
