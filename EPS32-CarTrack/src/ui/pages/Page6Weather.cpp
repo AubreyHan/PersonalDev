@@ -83,7 +83,7 @@ void Page6Weather::draw(M5Canvas& canvas, const SystemContext& ctx) {
             canvas.drawLine(prevX, prevY, ptX, ptY, UiColors::COLOR_SECONDARY);
         }
         prevX = ptX;
-        prevPy = ptY;
+        prevY = ptY;
     }
 
     // 3. Bottom Advice / Cache hint

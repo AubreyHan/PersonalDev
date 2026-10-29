@@ -57,9 +57,9 @@ void Page4Trail::draw(M5Canvas& canvas, const SystemContext& ctx) {
             for (size_t i = 1; i < count; i++) {
                 int px = projectX(ctx.trail.points[i].lonE7);
                 int py = projectY(ctx.trail.points[i].latE7);
-                canvas.drawLine(prevX, prevPy, px, py, UiColors::COLOR_PRIMARY);
+                canvas.drawLine(prevX, prevY, px, py, UiColors::COLOR_PRIMARY);
                 prevX = px;
-                prevPy = py;
+                prevY = py;
             }
         }
 
