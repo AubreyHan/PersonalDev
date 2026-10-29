@@ -133,5 +133,14 @@ void loop() {
     M5.update();
     PowerDriver::instance().update();
     UiManager::instance().update();
+
+    static uint32_t lastPrint = 0;
+    if (millis() - lastPrint > 2000) {
+        lastPrint = millis();
+        Serial.printf("[LOOP] Heartbeat: Free Heap = %d KB, VBUS = %d mV\n", 
+                      (int)(ESP.getFreeHeap() / 1024), 
+                      (int)M5.Power.getVBUSVoltage());
+    }
+
     delay(33); // Target ~30 FPS on Core 1
 }
