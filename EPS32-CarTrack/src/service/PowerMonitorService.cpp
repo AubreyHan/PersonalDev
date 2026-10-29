@@ -79,8 +79,13 @@ void PowerMonitorService::update() {
     SystemContext& ctx = state.getContextUnsafe();
 
     if (!_isAvailable) {
+        if (now - _lastProbeMs < 5000) {
+            state.unlock();
+            return;
+        }
+        _lastProbeMs = now;
         // Probe again in case base was attached during runtime
-        if (init(_wire)) {
+        if (init()) {
             ctx.batteryMode = BATTERY_MODE_BASE_ATTACHED;
         } else {
             ctx.batteryMode = BATTERY_MODE_NO_BASE_EMPTY;
