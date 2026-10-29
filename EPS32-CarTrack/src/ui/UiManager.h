@@ -27,9 +27,10 @@ public:
     void update();
 
 private:
-    UiManager() : _canvas(&M5.Display) {}
+    UiManager() : _canvas(&M5.Display), _lastRenderMs(0) {}
 
     M5Canvas        _canvas;
+    unsigned long   _lastRenderMs;
     StatusBar       _statusBar;
     PageIndicator   _pageIndicator;
 
@@ -45,5 +46,5 @@ private:
     PageToolsGrid   _page8Tools;
 
     BasePage* getActivePage(uint8_t idx);
-    void handleTouchEvents();
+    bool handleTouchEvents();
 };
