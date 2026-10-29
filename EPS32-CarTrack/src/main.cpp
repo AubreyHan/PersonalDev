@@ -109,14 +109,14 @@ void setup() {
     ButtonDriver::instance().init();
     RtcDriver::instance().init();
 
-    // M-Bus I2C shares the Core2 internal bus (G21/G22); Port A (G32/G33) is NOT the M-Bus.
-    // Diagnostic scan of M-Bus I2C (Wire1: SDA 21, SCL 22)
-    Serial.println("\n[I2C] Scanning M-Bus I2C (Wire1: SDA 21, SCL 22)...");
+    // M-Bus I2C shares the Core2 internal bus (G21/G22) managed by M5.In_I2C.
+    // Diagnostic scan of M-Bus I2C (M5.In_I2C: SDA 21, SCL 22)
+    Serial.println("\n[I2C] Scanning M-Bus I2C (M5.In_I2C: SDA 21, SCL 22)...");
+    bool scanResult[120] = {false};
+    M5.In_I2C.scanID(scanResult, 400000);
     uint8_t nDevices = 0;
-    for (uint8_t address = 1; address < 127; ++address) {
-        Wire1.beginTransmission(address);
-        uint8_t error = Wire1.endTransmission();
-        if (error == 0) {
+    for (uint8_t address = 8; address < 120; ++address) {
+        if (scanResult[address]) {
             Serial.printf("[I2C] Device found at 0x%02X", address);
             if (address == 0x76 || address == 0x77) Serial.print(" -> BMP280 Barometer (Module GNSS)");
             else if (address == 0x68 || address == 0x69) Serial.print(" -> BMI270 6-Axis IMU (Module GNSS)");
@@ -131,8 +131,8 @@ void setup() {
     }
     Serial.printf("[I2C] Scan complete: %d device(s) detected.\n\n", nDevices);
 
-    BaroDriver::instance().init(&Wire1);
-    PowerMonitorService::instance().init(&Wire1);
+    BaroDriver::instance().init();
+    PowerMonitorService::instance().init();
 
     // GNSS NEO-M9N
     GnssDriver::instance().init();
@@ -169,5 +169,5 @@ void loop() {
                       (int)M5.Power.getVBUSVoltage());
     }
 
-    delay(33); // Target ~30 FPS on Core 1
+    delay(8); // Poll FT6336U touch at ~125Hz; UiManager renders at 20 FPS or immediately on touch
 }
