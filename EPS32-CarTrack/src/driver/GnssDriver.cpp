@@ -4,71 +4,67 @@
 bool GnssDriver::init() {
     Serial.println("[GNSS] Initializing NEO-M9N GNSS module...");
 
-    // Structure for candidate pin mappings:
-    // Primary: Core2 RX=14 (from GNSS TXD G14), TX=13 (to GNSS RXD G13)
-    // Alternate: Core2 RX=13, TX=14 (in case switch labels / directions are inverted)
-    struct PinPair {
-        int rx;
-        int tx;
-        const char* label;
-    };
-    PinPair pinPairs[] = {
-        {14, 13, "TXD->G14, RXD->G13 (Recommended)"},
-        {13, 14, "TXD->G13, RXD->G14 (Reversed)"},
-        {27, 19, "TXD->G27, RXD->G19 (M5 Default)"},
-        {14, 19, "TXD->G14, RXD->G19"},
-        {27, 13, "TXD->G27, RXD->G13"},
-        {2,  19, "TXD->G2,  RXD->G19"}
-    };
+    // 1. Passive broadcast listener to find exact TX pin and baud rate from NEO-M9N
+    Serial.println("[GNSS] Step 1: Passively listening for NMEA/UBX stream on candidate pins...");
+    int candidatePins[] = {14, 13, 27, 19, 2, 34, 35};
+    uint32_t candidateBauds[] = {38400, 9600, 115200};
 
-    uint32_t bauds[] = {BaudConfig::GNSS_DEFAULT_BAUD, BaudConfig::GNSS_TARGET_BAUD, 9600};
+    int detectedTxPin = -1;
+    uint32_t detectedBaud = 0;
 
-    bool connected = false;
-    int activeRx = PinConfig::GNSS_RX_PIN;
-    int activeTx = PinConfig::GNSS_TX_PIN;
-    uint32_t activeBaud = BaudConfig::GNSS_DEFAULT_BAUD;
-
-    for (const auto& pins : pinPairs) {
-        Serial.printf("[GNSS] Testing UART connection with %s...\n", pins.label);
-        for (uint32_t b : bauds) {
-            Serial.printf("[GNSS]  -> Probing baud %lu bps (RX=%d, TX=%d)...\n", (unsigned long)b, pins.rx, pins.tx);
-            Serial2.begin(b, SERIAL_8N1, pins.rx, pins.tx);
-            delay(150);
-
-            int preAvail = Serial2.available();
-            if (preAvail > 0) {
-                Serial.printf("[GNSS]     [Signal detected: %d bytes in buffer!]\n", preAvail);
-            }
-
-            if (_myGNSS.begin(Serial2, 600)) {
-                Serial.printf("[GNSS] SUCCESS: Established communication with NEO-M9N at %lu bps!\n", (unsigned long)b);
-                connected = true;
-                activeRx = pins.rx;
-                activeTx = pins.tx;
-                activeBaud = b;
-                break;
+    for (int pin : candidatePins) {
+        for (uint32_t baud : candidateBauds) {
+            Serial.printf("[GNSS]  -> Listening on GPIO %d @ %lu bps (1.2s)...\n", pin, (unsigned long)baud);
+            Serial2.begin(baud, SERIAL_8N1, pin, -1); // RX only
+            unsigned long t0 = millis();
+            int bytesRead = 0;
+            char sample[64] = {0};
+            while (millis() - t0 < 1200) {
+                while (Serial2.available()) {
+                    char c = (char)Serial2.read();
+                    if (bytesRead < 63) sample[bytesRead] = c;
+                    bytesRead++;
+                }
             }
             Serial2.end();
-            delay(30);
+            if (bytesRead >= 5) {
+                Serial.printf("[GNSS] *** SUCCESS: Detected GNSS stream on GPIO %d @ %lu bps! (%d bytes) ***\n", pin, (unsigned long)baud, bytesRead);
+                Serial.print("[GNSS] Stream sample: \"");
+                for (int i = 0; i < min(bytesRead, 60); i++) {
+                    if (sample[i] >= 32 && sample[i] <= 126) Serial.print(sample[i]);
+                    else Serial.printf("<%02X>", (uint8_t)sample[i]);
+                }
+                Serial.println("\"");
+                detectedTxPin = pin;
+                detectedBaud = baud;
+                break;
+            }
         }
-        if (connected) break;
+        if (detectedTxPin >= 0) break;
+    }
+
+    int activeRx = (detectedTxPin >= 0) ? detectedTxPin : PinConfig::GNSS_RX_PIN;
+    int activeTx = (detectedTxPin == 14) ? 13 : ((detectedTxPin == 13) ? 14 : ((detectedTxPin == 27) ? 19 : PinConfig::GNSS_TX_PIN));
+    uint32_t activeBaud = (detectedBaud > 0) ? detectedBaud : BaudConfig::GNSS_DEFAULT_BAUD;
+
+    Serial.printf("[GNSS] Step 2: Connecting u-blox driver with Core2 RX=%d, TX=%d @ %lu bps...\n", 
+                  activeRx, activeTx, (unsigned long)activeBaud);
+
+    Serial2.begin(activeBaud, SERIAL_8N1, activeRx, activeTx);
+    delay(100);
+
+    bool connected = _myGNSS.begin(Serial2, 1200);
+    if (!connected) {
+        Serial.println("[GNSS] Retry 2 with assumeSuccess...");
+        connected = _myGNSS.begin(Serial2, 1200, true);
     }
 
     if (!connected) {
-        Serial.println("[GNSS] ERROR: Could not establish communication with NEO-M9N!");
-        Serial2.begin(BaudConfig::GNSS_DEFAULT_BAUD, SERIAL_8N1, PinConfig::GNSS_RX_PIN, PinConfig::GNSS_TX_PIN);
-        delay(200);
-        int avail = Serial2.available();
-        Serial.printf("[GNSS] Line diagnostic: Serial2.available() = %d bytes\n", avail);
-        if (avail > 0) {
-            Serial.print("[GNSS] Received raw stream: ");
-            for (int i = 0; i < min(avail, 32); i++) {
-                Serial.printf("%02X ", Serial2.read());
-            }
-            Serial.println();
-        }
+        Serial.println("[GNSS] ERROR: Could not establish two-way UBX communication with NEO-M9N!");
         return false;
     }
+
+    Serial.println("[GNSS] Two-way UBX communication established successfully!");
 
     // If connected at baud != TARGET_BAUD, upgrade to TARGET_BAUD
     if (activeBaud != BaudConfig::GNSS_TARGET_BAUD) {
