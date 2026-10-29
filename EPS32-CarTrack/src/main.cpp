@@ -109,30 +109,29 @@ void setup() {
     Wire.begin(PinConfig::EXT_I2C_SDA, PinConfig::EXT_I2C_SCL, 400000);
     Wire.setTimeOut(25); // 25ms timeout so it never hangs if no external sensor
 
-    // Diagnostic scan of external M-Bus I2C to verify physical attachment of Module GNSS
-    Serial.println("\n[I2C] Scanning External M-Bus (Wire: SDA 32, SCL 33)...");
+    // Diagnostic scan of M-Bus I2C (Wire1: SDA 21, SCL 22)
+    Serial.println("\n[I2C] Scanning M-Bus I2C (Wire1: SDA 21, SCL 22)...");
     uint8_t nDevices = 0;
     for (uint8_t address = 1; address < 127; ++address) {
-        Wire.beginTransmission(address);
-        uint8_t error = Wire.endTransmission();
+        Wire1.beginTransmission(address);
+        uint8_t error = Wire1.endTransmission();
         if (error == 0) {
             Serial.printf("[I2C] Device found at 0x%02X", address);
             if (address == 0x76 || address == 0x77) Serial.print(" -> BMP280 Barometer (Module GNSS)");
             else if (address == 0x68 || address == 0x69) Serial.print(" -> BMI270 6-Axis IMU (Module GNSS)");
             else if (address == 0x10) Serial.print(" -> BMM150 Magnetometer (Module GNSS)");
             else if (address == 0x40 || address == 0x45) Serial.print(" -> INA226 Power Monitor (Base 16340)");
+            else if (address == 0x34) Serial.print(" -> AXP192 PMIC (Core2 Internal)");
+            else if (address == 0x38) Serial.print(" -> FT6336U Touch (Core2 Internal)");
+            else if (address == 0x51) Serial.print(" -> BM8563 RTC (Core2 Internal)");
             Serial.println();
             nDevices++;
         }
     }
-    if (nDevices == 0) {
-        Serial.println("[I2C] WARNING: No I2C devices found on external M-Bus (Wire)! Check if Module GNSS is firmly seated.");
-    } else {
-        Serial.printf("[I2C] Scan complete: %d device(s) detected.\n\n", nDevices);
-    }
+    Serial.printf("[I2C] Scan complete: %d device(s) detected.\n\n", nDevices);
 
-    BaroDriver::instance().init(&Wire);
-    PowerMonitorService::instance().init(&Wire);
+    BaroDriver::instance().init(&Wire1);
+    PowerMonitorService::instance().init(&Wire1);
 
     // GNSS NEO-M9N
     GnssDriver::instance().init();
