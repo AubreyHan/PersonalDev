@@ -44,7 +44,7 @@ void SubPageEditClock::draw(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.fillRoundRect(8, 46, 144, 26, 4, UiColors::COLOR_PANEL_BG);
     canvas.drawRoundRect(8, 46, 144, 26, 4, UiColors::COLOR_PRIMARY);
     canvas.setTextColor(UiColors::COLOR_PRIMARY, UiColors::COLOR_PANEL_BG);
-    canvas.drawCenterString("📍 GPS 自动时区", 80, 52);
+    canvas.drawCenterString("[GPS] 自动时区", 80, 52);
 
     // 2. Region Tabs (X: 8~312, Y: 78~100)
     static const char* const TABS[] = {"亚太", "美洲", "欧洲", "UTC"};

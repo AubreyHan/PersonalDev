@@ -7,7 +7,7 @@ void ToolGnss::draw(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.fillScreen(UiColors::COLOR_BG);
     canvas.setTextSize(1);
     canvas.setTextColor(UiColors::COLOR_SECONDARY, UiColors::COLOR_BG);
-    canvas.drawString("🛰️ GNSS 卫星详情与诊断", 8, 28);
+    canvas.drawString("[GPS] 卫星详情与诊断", 8, 28);
     canvas.setTextColor(UiColors::COLOR_MUTED, UiColors::COLOR_BG);
     canvas.drawRightString("[上滑返回]", 312, 28);
 

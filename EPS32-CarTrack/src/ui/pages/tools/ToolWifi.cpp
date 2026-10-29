@@ -8,7 +8,7 @@ void ToolWifi::draw(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.fillScreen(UiColors::COLOR_BG);
     canvas.setTextSize(1);
     canvas.setTextColor(UiColors::COLOR_SECONDARY, UiColors::COLOR_BG);
-    canvas.drawString("📶 Wi-Fi 网络管理", 8, 28);
+    canvas.drawString("[WiFi] 网络管理", 8, 28);
     canvas.setTextColor(UiColors::COLOR_MUTED, UiColors::COLOR_BG);
     canvas.drawRightString("[上滑返回]", 312, 28);
 
