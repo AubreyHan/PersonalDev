@@ -3,6 +3,12 @@
 
 void ButtonDriver::init() {
     _touchDown = false;
+    _startX = 0;
+    _startY = 0;
+    _lastX = 0;
+    _lastY = 0;
+    _longPressTriggered = false;
+    _swipeTriggered = false;
     _screenOn = true;
     _btnBPressedTime = 0;
     _btnBResetTriggered = false;
@@ -48,23 +54,48 @@ TouchEvent ButtonDriver::update() {
 
     // 3. Check screen surface touch gestures (FT6336U via M5Unified)
     auto count = M5.Touch.getCount();
+    auto detail = M5.Touch.getDetail(0);
+    bool isPressed = (count > 0) && detail.isPressed();
 
-    if (count > 0) {
-        auto detail = M5.Touch.getDetail(0);
+    if (isPressed) {
         int16_t currentX = detail.x;
         int16_t currentY = detail.y;
 
         if (!_touchDown) {
             _touchDown = true;
-            _startX = currentX;
-            _startY = currentY;
+            _startX = (detail.base_x > 0 || detail.base_y > 0) ? detail.base_x : currentX;
+            _startY = (detail.base_x > 0 || detail.base_y > 0) ? detail.base_y : currentY;
+            _lastX = currentX;
+            _lastY = currentY;
             _startTime = now;
             _longPressTriggered = false;
+            _swipeTriggered = false;
         } else {
-            if (!_longPressTriggered && (now - _startTime >= TripResetConfig::LONG_PRESS_MS)) {
-                int16_t dx = abs(currentX - _startX);
-                int16_t dy = abs(currentY - _startY);
-                if (dx < 20 && dy < 20) {
+            _lastX = currentX;
+            _lastY = currentY;
+            int16_t dx = _lastX - _startX;
+            int16_t dy = _lastY - _startY;
+
+            // Active drag swipe trigger: fires immediately as soon as finger drags past threshold
+            if (!_swipeTriggered && !_longPressTriggered) {
+                if (abs(dx) >= GestureConfig::SWIPE_DRAG_TRIGGER_PX && abs(dx) >= abs(dy) * GestureConfig::DIRECTION_RATIO) {
+                    _swipeTriggered = true;
+                    evt.type = (dx > 0) ? TOUCH_SWIPE_RIGHT : TOUCH_SWIPE_LEFT;
+                    evt.x = _startX;
+                    evt.y = _startY;
+                    return evt;
+                } else if (_startY < 240 && abs(dy) >= GestureConfig::SWIPE_DRAG_TRIGGER_PX && abs(dy) >= abs(dx) * GestureConfig::DIRECTION_RATIO) {
+                    _swipeTriggered = true;
+                    evt.type = (dy < 0) ? TOUCH_SWIPE_UP : TOUCH_SWIPE_DOWN;
+                    evt.x = _startX;
+                    evt.y = _startY;
+                    return evt;
+                }
+            }
+
+            // Long press detection (only inside 320x240 display area)
+            if (_startY < 240 && !_longPressTriggered && !_swipeTriggered && (now - _startTime >= TripResetConfig::LONG_PRESS_MS)) {
+                if (abs(dx) < 20 && abs(dy) < 20) {
                     _longPressTriggered = true;
                     evt.type = TOUCH_LONG_PRESS_2S;
                     evt.x = _startX;
@@ -76,27 +107,22 @@ TouchEvent ButtonDriver::update() {
     } else {
         if (_touchDown) {
             _touchDown = false;
-            if (!_longPressTriggered) {
+            if (count > 0) {
+                _lastX = detail.x;
+                _lastY = detail.y;
+            }
+            if (!_longPressTriggered && !_swipeTriggered) {
                 unsigned long duration = now - _startTime;
-                auto lastDetail = M5.Touch.getDetail(0);
-                int16_t endX = lastDetail.prev_x;
-                int16_t endY = lastDetail.prev_y;
-                int16_t dx = endX - _startX;
-                int16_t dy = endY - _startY;
+                int16_t dx = _lastX - _startX;
+                int16_t dy = _lastY - _startY;
+                if (abs(detail.distanceX()) > abs(dx)) dx = detail.distanceX();
+                if (abs(detail.distanceY()) > abs(dy)) dy = detail.distanceY();
 
-                if (abs(dx) > GestureConfig::SWIPE_HORIZ_THRESHOLD_PX && abs(dx) > abs(dy) * GestureConfig::DIRECTION_RATIO) {
-                    if (dx > 0) {
-                        evt.type = TOUCH_SWIPE_RIGHT;
-                    } else {
-                        evt.type = TOUCH_SWIPE_LEFT;
-                    }
-                } else if (abs(dy) > abs(GestureConfig::SWIPE_UP_THRESHOLD_PX) && abs(dy) > abs(dx) * GestureConfig::DIRECTION_RATIO) {
-                    if (dy < 0) {
-                        evt.type = TOUCH_SWIPE_UP;
-                    } else {
-                        evt.type = TOUCH_SWIPE_DOWN;
-                    }
-                } else if (duration < 500 && abs(dx) < 15 && abs(dy) < 15) {
+                if (abs(dx) >= GestureConfig::SWIPE_HORIZ_THRESHOLD_PX && abs(dx) >= abs(dy) * GestureConfig::DIRECTION_RATIO) {
+                    evt.type = (dx > 0) ? TOUCH_SWIPE_RIGHT : TOUCH_SWIPE_LEFT;
+                } else if (_startY < 240 && abs(dy) >= GestureConfig::SWIPE_DOWN_THRESHOLD_PX && abs(dy) >= abs(dx) * GestureConfig::DIRECTION_RATIO) {
+                    evt.type = (dy < 0) ? TOUCH_SWIPE_UP : TOUCH_SWIPE_DOWN;
+                } else if (_startY < 240 && duration < 650 && abs(dx) < 18 && abs(dy) < 18) {
                     evt.type = TOUCH_TAP;
                 }
                 evt.x = _startX;
