@@ -1,6 +1,6 @@
 #pragma once
 #include <Arduino.h>
-#include <Wire.h>
+#include <M5Unified.h>
 #include "model/SystemState.h"
 
 class PowerMonitorService {
@@ -10,7 +10,7 @@ public:
         return inst;
     }
 
-    bool init(TwoWire* wire = &Wire1);
+    bool init();
     void update();
 
     bool isAvailable() const { return _isAvailable; }
@@ -19,9 +19,8 @@ public:
     float getSocPercent() const { return _socPercent; }
 
 private:
-    PowerMonitorService() : _wire(&Wire1), _isAvailable(false), _busVoltageV(0.0f), _currentMa(0.0f), _powerMw(0.0f), _remainingMah(1200.0f), _socPercent(0.0f), _lastSampleMs(0), _standstillStartMs(0) {}
+    PowerMonitorService() : _isAvailable(false), _busVoltageV(0.0f), _currentMa(0.0f), _powerMw(0.0f), _remainingMah(1200.0f), _socPercent(0.0f), _lastSampleMs(0), _lastProbeMs(0), _standstillStartMs(0) {}
 
-    TwoWire*      _wire;
     bool          _isAvailable;
     float         _busVoltageV;
     float         _currentMa;
@@ -29,6 +28,7 @@ private:
     float         _remainingMah;
     float         _socPercent;
     unsigned long _lastSampleMs;
+    unsigned long _lastProbeMs;
     unsigned long _standstillStartMs;
 
     uint16_t readRegister16(uint8_t reg);
