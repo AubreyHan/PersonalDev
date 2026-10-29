@@ -285,9 +285,18 @@ namespace TripResetConfig {
     constexpr int16_t  HITBOX_TRIP_Y      = 180;
     constexpr int16_t  HITBOX_TRIP_W      = 152;
     constexpr int16_t  HITBOX_TRIP_H      = 50;  // X: 160~312, Y: 180~230
-    constexpr uint32_t LONG_PRESS_MS      = 2000; // 长按 2 秒判定门限
+    constexpr uint32_t LONG_PRESS_MS      = 1500; // 长按 1.5 秒判定门限 (按键2/TRIP)
     constexpr uint32_t VIBRATION_FEEDBACK_MS = 100; // 震动马达反馈持续时间
+    constexpr uint32_t SHORT_TAP_VIBRATE_MS = 40;   // 按键1/3轻微震动反馈
 }
+
+// 屏幕下方三按键映射 (Bottom 3 Red Circle Buttons - Core2 标准横屏)
+enum BottomButtonAction : uint8_t {
+    BTN_ACTION_NONE        = 0,
+    BTN_ACTION_GO_HOME     = 1, // 按钮1 (左键 BtnA): 短按一键直达 Page 1 (首页主仪表)
+    BTN_ACTION_TRIP_RESET  = 2, // 按钮2 (中键 BtnB): 长按 1.5 秒全链路行程数据清零
+    BTN_ACTION_GO_TOOLS    = 3  // 按钮3 (右键 BtnC): 短按一键直达 Page 8 (工具箱主页)
+};
 
 
 // -----------------------------------------------------------------------------
