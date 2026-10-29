@@ -37,17 +37,19 @@ void PageInit::draw(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.drawLine(centerX, centerY, beamX, beamY, UiColors::COLOR_PRIMARY);
 
     // Satellites Status
-    char satBuf[48];
-    snprintf(satBuf, sizeof(satBuf), "Sats: %2d | Fix: %s | HDOP: %.1f", 
+    char satBuf[32];
+    snprintf(satBuf, sizeof(satBuf), "SATS: %2d  %s", 
              ctx.gnss.numSats, 
-             (ctx.gnss.fixType >= 3) ? "3D LOCK" : "SEARCHING", 
-             ctx.gnss.hdop);
+             (ctx.gnss.fixType >= 3) ? "3D FIX" : "SEARCH");
     canvas.setTextColor(UiColors::COLOR_PRIMARY, UiColors::COLOR_BG);
-    canvas.drawCenterString(satBuf, 160, 165);
+    canvas.setTextSize(2);
+    canvas.drawCenterString(satBuf, 160, 160);
 
     // Hardware Icons Check
+    canvas.setTextSize(1);
     char hwBuf[64];
-    snprintf(hwBuf, sizeof(hwBuf), "SD: %s | Baro: OK | IMU: OK", 
+    snprintf(hwBuf, sizeof(hwBuf), "HDOP: %.1f | SD: %s | IMU: OK", 
+             ctx.gnss.hdop,
              ctx.isSdMounted ? "Mounted" : "No Card");
     canvas.setTextColor(UiColors::COLOR_MUTED, UiColors::COLOR_BG);
     canvas.drawCenterString(hwBuf, 160, 182);
