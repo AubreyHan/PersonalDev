@@ -4,91 +4,67 @@
 bool GnssDriver::init() {
     Serial.println("[GNSS] Initializing NEO-M9N GNSS module...");
 
-    // 1. Passive broadcast listener to find exact TX pin and baud rate from NEO-M9N
-    Serial.println("[GNSS] Step 1: Passively listening for NMEA/UBX stream on candidate pins...");
-    int candidatePins[] = {14, 13, 27, 19, 2, 34, 35};
-    uint32_t candidateBauds[] = {38400, 9600, 115200};
+    struct CandidateLink {
+        int rx;
+        int tx;
+        uint32_t baud;
+        const char* desc;
+    };
 
-    int detectedTxPin = -1;
-    uint32_t detectedBaud = 0;
+    CandidateLink links[] = {
+        {13, 14, 38400,  "Core2 RX=13, TX=14 @ 38400 (M5Stack Official)"},
+        {14, 13, 38400,  "Core2 RX=14, TX=13 @ 38400"},
+        {13, 14, 115200, "Core2 RX=13, TX=14 @ 115200"},
+        {14, 13, 115200, "Core2 RX=14, TX=13 @ 115200"},
+        {13, 14, 9600,   "Core2 RX=13, TX=14 @ 9600"},
+        {14, 13, 9600,   "Core2 RX=14, TX=13 @ 9600"},
+        {27, 19, 38400,  "Core2 RX=27, TX=19 @ 38400 (Basic M5 Default)"},
+        {19, 27, 38400,  "Core2 RX=19, TX=27 @ 38400"}
+    };
 
-    for (int pin : candidatePins) {
-        for (uint32_t baud : candidateBauds) {
-            Serial.printf("[GNSS]  -> Listening on GPIO %d @ %lu bps (1.2s)...\n", pin, (unsigned long)baud);
-            Serial2.begin(baud, SERIAL_8N1, pin, -1); // RX only
-            unsigned long t0 = millis();
-            int bytesRead = 0;
-            char sample[64] = {0};
-            while (millis() - t0 < 1200) {
-                while (Serial2.available()) {
-                    char c = (char)Serial2.read();
-                    if (bytesRead < 63) sample[bytesRead] = c;
-                    bytesRead++;
-                }
-            }
-            Serial2.end();
-            if (bytesRead >= 5) {
-                Serial.printf("[GNSS] *** SUCCESS: Detected GNSS stream on GPIO %d @ %lu bps! (%d bytes) ***\n", pin, (unsigned long)baud, bytesRead);
-                Serial.print("[GNSS] Stream sample: \"");
-                for (int i = 0; i < min(bytesRead, 60); i++) {
-                    if (sample[i] >= 32 && sample[i] <= 126) Serial.print(sample[i]);
-                    else Serial.printf("<%02X>", (uint8_t)sample[i]);
-                }
-                Serial.println("\"");
-                detectedTxPin = pin;
-                detectedBaud = baud;
-                break;
-            }
-        }
-        if (detectedTxPin >= 0) break;
-    }
+    bool connected = false;
+    UBX_MON_RF_data_t rfInfo;
 
-    int activeRx = (detectedTxPin >= 0) ? detectedTxPin : PinConfig::GNSS_RX_PIN;
-    int activeTx = (detectedTxPin == 14) ? 13 : ((detectedTxPin == 13) ? 14 : ((detectedTxPin == 27) ? 19 : PinConfig::GNSS_TX_PIN));
-    uint32_t activeBaud = (detectedBaud > 0) ? detectedBaud : BaudConfig::GNSS_DEFAULT_BAUD;
-
-    Serial.printf("[GNSS] Step 2: Connecting u-blox driver with Core2 RX=%d, TX=%d @ %lu bps...\n", 
-                  activeRx, activeTx, (unsigned long)activeBaud);
-
-    Serial2.begin(activeBaud, SERIAL_8N1, activeRx, activeTx);
-    delay(100);
-
-    bool connected = _myGNSS.begin(Serial2, 1200);
-    if (!connected) {
-        Serial.println("[GNSS] Retry 2 with assumeSuccess...");
-        connected = _myGNSS.begin(Serial2, 1200, true);
-    }
-
-    if (!connected) {
-        Serial.println("[GNSS] ERROR: Could not establish two-way UBX communication with NEO-M9N!");
-        return false;
-    }
-
-    Serial.println("[GNSS] Two-way UBX communication established successfully!");
-
-    // If connected at baud != TARGET_BAUD, upgrade to TARGET_BAUD
-    if (activeBaud != BaudConfig::GNSS_TARGET_BAUD) {
-        Serial.printf("[GNSS] Switching module baud rate from %u to %u bps...\n", activeBaud, BaudConfig::GNSS_TARGET_BAUD);
-        _myGNSS.setSerialRate(BaudConfig::GNSS_TARGET_BAUD);
-        Serial2.end();
-        delay(50);
-        Serial2.begin(BaudConfig::GNSS_TARGET_BAUD, SERIAL_8N1, activeRx, activeTx);
+    for (const auto& link : links) {
+        Serial.printf("[GNSS] Probing %s...\n", link.desc);
+        Serial2.begin(link.baud, SERIAL_8N1, link.rx, link.tx);
         delay(100);
-        if (!_myGNSS.begin(Serial2, 800)) {
-            Serial.println("[GNSS] Target baud sync failed, reverting to previous baud...");
-            Serial2.end();
-            Serial2.begin(activeBaud, SERIAL_8N1, activeRx, activeTx);
-            _myGNSS.begin(Serial2, 800);
-        } else {
-            Serial.println("[GNSS] High-speed UART link verified at 115200 bps.");
+
+        _myGNSS.begin(Serial2, 500, true); // Initialize driver with assumeSuccess
+
+        // Direct test: Query Antenna & RF Information via UBX-MON-RF
+        if (_myGNSS.getRFinformation(&rfInfo, 800) && rfInfo.header.nBlocks > 0) {
+            Serial.printf("[GNSS] >>> SUCCESS on %s! <<<\n", link.desc);
+            connected = true;
+            break;
         }
+
+        // Also check if any raw NMEA bytes are arriving
+        int avail = Serial2.available();
+        if (avail > 0) {
+            Serial.printf("[GNSS]   [Incoming traffic detected: %d bytes]\n", avail);
+            char buf[32];
+            int n = Serial2.readBytes(buf, min(avail, 31));
+            buf[n] = '\0';
+            Serial.printf("[GNSS]   [Data: %s]\n", buf);
+            connected = true;
+            break;
+        }
+
+        Serial2.end();
+        delay(30);
+    }
+
+    if (!connected) {
+        Serial.println("[GNSS] Warning: Direct MON-RF probe failed. Defaulting to Core2 RX=13, TX=14 @ 38400.");
+        Serial2.begin(38400, SERIAL_8N1, 13, 14);
+        _myGNSS.begin(Serial2, 500, true);
     }
 
     _isInitialized = true;
     configureAutomotiveParams();
 
-    // Query GNSS Antenna & RF Status
-    UBX_MON_RF_data_t rfInfo;
+    // Query Antenna Status and print comprehensive report
     if (_myGNSS.getRFinformation(&rfInfo, 1000) && rfInfo.header.nBlocks > 0) {
         uint8_t antStat = rfInfo.blocks[0].antStatus;
         uint8_t antPwr = rfInfo.blocks[0].antPower;
@@ -106,12 +82,14 @@ bool GnssDriver::init() {
         if (jamState == 2) jamStr = "WARNING (Interference Detected)";
         else if (jamState == 3) jamStr = "CRITICAL (Severe Jamming)";
 
-        Serial.println("---------------- GNSS Diagnostic Report ----------------");
-        Serial.printf("[GNSS] Antenna Connection Status : [%d] %s\n", antStat, antStatusStr);
-        Serial.printf("[GNSS] Antenna LNA Power Supply : %s\n", antPwr == 1 ? "ON (Active 3.3V DC Bias)" : (antPwr == 0 ? "OFF" : "UNKNOWN"));
-        Serial.printf("[GNSS] RF Jamming / Interference : [%d] %s\n", jamState, jamStr);
-        Serial.printf("[GNSS] RF Background Noise Level : %u\n", noise);
-        Serial.println("--------------------------------------------------------");
+        Serial.println("\n=======================================================");
+        Serial.println("           GNSS ANTENNA & RF TELEMETRY REPORT          ");
+        Serial.println("=======================================================");
+        Serial.printf("  Antenna Status   : [%d] %s\n", antStat, antStatusStr);
+        Serial.printf("  Antenna Power    : %s\n", antPwr == 1 ? "ON (Active 3.3V DC Bias)" : (antPwr == 0 ? "OFF" : "UNKNOWN"));
+        Serial.printf("  RF Jamming State : [%d] %s\n", jamState, jamStr);
+        Serial.printf("  Background Noise : %u\n", noise);
+        Serial.println("=======================================================\n");
 
         SystemState& state = SystemState::instance();
         state.lock();
@@ -120,10 +98,11 @@ bool GnssDriver::init() {
         state.getContextUnsafe().gnss.rfNoiseLevel = noise;
         state.unlock();
     } else {
-        Serial.println("[GNSS] MON-RF status query timed out or unsupported.");
+        Serial.println("[GNSS] MON-RF status query returned no response (UART offline).");
     }
 
     return true;
+}
 }
 
 bool GnssDriver::configureAutomotiveParams() {
