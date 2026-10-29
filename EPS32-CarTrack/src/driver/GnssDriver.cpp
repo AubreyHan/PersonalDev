@@ -103,7 +103,6 @@ bool GnssDriver::init() {
 
     return true;
 }
-}
 
 bool GnssDriver::configureAutomotiveParams() {
     if (!_isInitialized) return false;
