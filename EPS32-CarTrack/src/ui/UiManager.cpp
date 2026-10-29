@@ -6,7 +6,9 @@ void UiManager::init() {
     M5.Display.setRotation(1); // Standard Landscape 320x240, Type-C on left
     _canvas.setColorDepth(16);
     _canvas.createSprite(320, 240);
+    _canvas.setFont(&fonts::efontCN_10);
     _pageIndicator.wake();
+    _lastRenderMs = 0;
 }
 
 BasePage* UiManager::getActivePage(uint8_t idx) {
@@ -23,9 +25,9 @@ BasePage* UiManager::getActivePage(uint8_t idx) {
     }
 }
 
-void UiManager::handleTouchEvents() {
+bool UiManager::handleTouchEvents() {
     TouchEvent evt = ButtonDriver::instance().update();
-    if (evt.type == TOUCH_NONE) return;
+    if (evt.type == TOUCH_NONE) return false;
 
     _pageIndicator.wake();
 
@@ -37,14 +39,47 @@ void UiManager::handleTouchEvents() {
     uint8_t totalPages = ctx.totalMainPages;
     state.unlock();
 
+    // Global Hardware Buttons (BtnA = Home, BtnC = Tools) work from ANY state
+    if (evt.type == TOUCH_BTN_HOME) {
+        PowerDriver::instance().vibrate(30);
+        _page8Tools.resetToRoot();
+        state.lock();
+        ctx.mainPageIdx = 0;
+        if (ctx.currentState == STATE_BOOT_INIT) {
+            ctx.currentState = STATE_MAIN_APP;
+        }
+        state.unlock();
+        return true;
+    }
+
+    if (evt.type == TOUCH_BTN_TOOLS) {
+        PowerDriver::instance().vibrate(30);
+        _page8Tools.resetToRoot();
+        state.lock();
+        ctx.mainPageIdx = 7; // Page 8 (Index 7)
+        if (ctx.currentState == STATE_BOOT_INIT) {
+            ctx.currentState = STATE_MAIN_APP;
+        }
+        state.unlock();
+        return true;
+    }
+
     if (appState == STATE_BOOT_INIT) {
-        if (evt.type == TOUCH_TAP) _pageInit.handleTap(evt.x, evt.y);
-        return;
+        if (evt.type == TOUCH_TAP) {
+            _pageInit.handleTap(evt.x, evt.y);
+        } else if (evt.type == TOUCH_SWIPE_LEFT || evt.type == TOUCH_SWIPE_RIGHT || evt.type == TOUCH_SWIPE_UP) {
+            // Allow swiping directly out of boot screen into main dashboard
+            state.lock();
+            ctx.currentState = STATE_MAIN_APP;
+            ctx.mainPageIdx = 0;
+            state.unlock();
+        }
+        return true;
     }
 
     if (appState == STATE_WIFI_CONFIG) {
         if (evt.type == TOUCH_TAP) _pageWifi.handleTap(evt.x, evt.y);
-        return;
+        return true;
     }
 
     // In STATE_MAIN_APP
@@ -53,17 +88,13 @@ void UiManager::handleTouchEvents() {
     switch (evt.type) {
         case TOUCH_SWIPE_LEFT:
             state.lock();
-            if (ctx.mainPageIdx < totalPages - 1) {
-                ctx.mainPageIdx++;
-            }
+            ctx.mainPageIdx = (ctx.mainPageIdx + 1) % totalPages;
             state.unlock();
             break;
 
         case TOUCH_SWIPE_RIGHT:
             state.lock();
-            if (ctx.mainPageIdx > 0) {
-                ctx.mainPageIdx--;
-            }
+            ctx.mainPageIdx = (ctx.mainPageIdx + totalPages - 1) % totalPages;
             state.unlock();
             break;
 
@@ -91,18 +122,6 @@ void UiManager::handleTouchEvents() {
             if (page) page->handleLongPress(evt.x, evt.y);
             break;
 
-        case TOUCH_BTN_HOME:
-            // Button 1 (Left / BtnA): Go to Home Page (Page 1)
-            PowerDriver::instance().vibrate(40);
-            _page8Tools.resetToRoot();
-            state.lock();
-            ctx.mainPageIdx = 0;
-            if (ctx.currentState != STATE_MAIN_APP && ctx.gnss.isValid) {
-                ctx.currentState = STATE_MAIN_APP;
-            }
-            state.unlock();
-            break;
-
         case TOUCH_BTN_TRIP_RESET:
             // Button 2 (Middle / BtnB): 1.5s Long Press -> Full Trip Sync Reset
             PowerDriver::instance().vibrate(100);
@@ -115,25 +134,19 @@ void UiManager::handleTouchEvents() {
             _page1Dash.handleLongPress(200, 200); // Trigger feedback popup
             break;
 
-        case TOUCH_BTN_TOOLS:
-            // Button 3 (Right / BtnC): Go to Tools Page (Page 8)
-            PowerDriver::instance().vibrate(40);
-            _page8Tools.resetToRoot();
-            state.lock();
-            ctx.mainPageIdx = 7; // Page 8 (Index 7)
-            if (ctx.currentState != STATE_MAIN_APP && ctx.gnss.isValid) {
-                ctx.currentState = STATE_MAIN_APP;
-            }
-            state.unlock();
-            break;
-
         default:
             break;
     }
+    return true;
 }
 
 void UiManager::update() {
-    handleTouchEvents();
+    bool touched = handleTouchEvents();
+    unsigned long now = millis();
+    if (!touched && (now - _lastRenderMs < 50)) {
+        return; // Poll touch at ~125Hz, render display at 20 FPS or immediately on touch
+    }
+    _lastRenderMs = now;
 
     SystemState& state = SystemState::instance();
     state.lock();
