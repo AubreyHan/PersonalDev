@@ -42,11 +42,7 @@ void PageWifiConfig::handleTap(int16_t x, int16_t y) {
         SystemState& state = SystemState::instance();
         state.lock();
         SystemContext& ctx = state.getContextUnsafe();
-        if (ctx.gnss.isValid && ctx.gnss.fixType >= FIX_3D) {
-            ctx.currentState = STATE_MAIN_APP;
-        } else {
-            ctx.currentState = STATE_BOOT_INIT;
-        }
+        ctx.currentState = STATE_MAIN_APP;
         state.unlock();
     }
 }
