@@ -229,6 +229,6 @@ void ft6336_fw_updater(void)
     }
     else
     {
-        Serial.printf("[FT6336_FW] Touch firmware is already up-to-date (v%d >= v17). No upgrade needed.\n\n", fw_ver);
+        Serial.printf("[FT6336_FW] Touch firmware is healthy (fw_ver=0x%02X, not affected v16/0x10). No upgrade needed.\n\n", fw_ver);
     }
 }
