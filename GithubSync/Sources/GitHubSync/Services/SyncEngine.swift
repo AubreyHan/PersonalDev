@@ -108,13 +108,20 @@ public final class SyncEngine {
             _ = try await gitRunner.run(args: ["merge", "--ff-only", "origin/\(branch)"], at: repoURL)
         } else if ahead > 0 && behind > 0 {
             // 两侧均有提交（冲突分叉），进行智能合并
-            let mergeRes = try await gitRunner.execute(args: ["merge", "origin/\(branch)"], at: repoURL)
-            if !mergeRes.isSuccess {
+            let mergeRes = try await gitRunner.execute(
+                args: ["merge", "--allow-unrelated-histories", "origin/\(branch)"],
+                at: repoURL
+            )
+
+            let gitDir = repoURL.appendingPathComponent(".git")
+            let isMerging = FileManager.default.fileExists(atPath: gitDir.appendingPathComponent("MERGE_HEAD").path)
+
+            if !mergeRes.isSuccess || isMerging {
                 // 存在冲突，获取冲突文件清单
-                let conflictFilesStr = try await gitRunner.run(
+                let conflictFilesStr = (try? await gitRunner.run(
                     args: ["diff", "--name-only", "--diff-filter=U"],
                     at: repoURL
-                )
+                )) ?? ""
                 let conflictFiles = conflictFilesStr.components(separatedBy: .newlines)
                     .map { $0.trimmingCharacters(in: .whitespaces) }
                     .filter { !$0.isEmpty }
@@ -139,11 +146,17 @@ public final class SyncEngine {
                     }
                 }
 
-                _ = try await gitRunner.run(args: ["add", "-A"], at: repoURL)
-                _ = try await gitRunner.run(
-                    args: ["commit", "-m", "auto-sync: resolve conflict by newer timestamp"],
-                    at: repoURL
-                )
+                _ = try? await gitRunner.run(args: ["add", "-A"], at: repoURL)
+
+                // 若处于 MERGE 状态或有未暂存变更，执行 commit，避免空提交抛错
+                let statusAfterResolve = (try? await gitRunner.getStatusPorcelain(at: repoURL)) ?? []
+                let stillMerging = FileManager.default.fileExists(atPath: gitDir.appendingPathComponent("MERGE_HEAD").path)
+                if !statusAfterResolve.isEmpty || stillMerging {
+                    _ = try await gitRunner.run(
+                        args: ["commit", "-m", "auto-sync: resolve conflict by newer timestamp", "--allow-empty"],
+                        at: repoURL
+                    )
+                }
             }
 
             // 推送合并结果
