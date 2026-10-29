@@ -22,19 +22,19 @@ void PowerDriver::update() {
     if (now - _lastCheckTime < 200) return;
     _lastCheckTime = now;
 
-    // Check VBUS (USB external 5V)
-    bool currentVbus = M5.Power.getVBUSVoltage() > 4000;
+    // Check VBUS (USB external 5V): require both voltage drop and AXP192 VBUS status bit false
+    int16_t vbusMv = M5.Power.getVBUSVoltage();
+    bool currentVbus = (vbusMv > 4000) || M5.Power.Axp192.isVBUS();
     
     SystemState& state = SystemState::instance();
     state.lock();
     SystemContext& ctx = state.getContextUnsafe();
     ctx.vbusConnected = currentVbus;
 
-    // Detect VBUS disconnect
+    // Detect VBUS disconnect (only trigger auto-shutdown dialog if a track was actively being logged)
     if (_lastVbus && !currentVbus) {
-        // Just disconnected external power
         _countdownStartTime = now;
-        if (ctx.batteryMode == BATTERY_MODE_BASE_ATTACHED) {
+        if (ctx.isLogging && ctx.batteryMode == BATTERY_MODE_BASE_ATTACHED) {
             ctx.currentState = STATE_PWR_OFF_WARN;
             ctx.pwrCountdownSec = 10;
         }
