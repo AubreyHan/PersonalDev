@@ -51,9 +51,6 @@ void gnssTask(void* pvParameters) {
         TunnelService::instance().update(latE7, lonE7, heading, spdKmh, isValid);
         PowerMonitorService::instance().update();
 
-        // SD Track Logging
-        TrackLogger::instance().update();
-
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
@@ -156,8 +153,8 @@ void setup() {
     UiManager::instance().init();
 
     // 5. Create Background FreeRTOS Tasks on Core 0
-    xTaskCreatePinnedToCore(gnssTask, "gnssTask", 12288, NULL, 5, &gnssTaskHandle, 0);
-    xTaskCreatePinnedToCore(netTask, "netTask", 8192, NULL, 2, &netTaskHandle, 0);
+    xTaskCreatePinnedToCore(gnssTask, "gnssTask", 16384, NULL, 5, &gnssTaskHandle, 0);
+    xTaskCreatePinnedToCore(netTask, "netTask", 10240, NULL, 2, &netTaskHandle, 0);
 
     Serial.println("[SYSTEM] System initialization complete. Starting main loop.");
 }
@@ -165,13 +162,18 @@ void setup() {
 void loop() {
     M5.update();
     PowerDriver::instance().update();
+    // Run SD TrackLogger on Core 1 sequentially with UiManager to avoid cross-core
+    // SPI bus contention between SdFat and M5.Display (both share VSPI on Core2).
+    TrackLogger::instance().update();
     UiManager::instance().update();
 
     static uint32_t lastPrint = 0;
     if (millis() - lastPrint > 2000) {
         lastPrint = millis();
-        Serial.printf("[LOOP] Heartbeat: Free Heap = %d KB | VBUS = %d mV (%.1f mA) | VBAT = %d mV (%+d mA, %d%%, Chg=%d)\n", 
+        uint32_t gnssHwm = gnssTaskHandle ? (uint32_t)uxTaskGetStackHighWaterMark(gnssTaskHandle) : 0;
+        Serial.printf("[LOOP] Heartbeat: Free Heap = %d KB | gnssStackFree = %u B | VBUS = %d mV (%.1f mA) | VBAT = %d mV (%+d mA, %d%%, Chg=%d)\n", 
                       (int)(ESP.getFreeHeap() / 1024), 
+                      gnssHwm,
                       (int)M5.Power.getVBUSVoltage(),
                       M5.Power.Axp192.getVBUSCurrent(),
                       (int)M5.Power.getBatteryVoltage(),

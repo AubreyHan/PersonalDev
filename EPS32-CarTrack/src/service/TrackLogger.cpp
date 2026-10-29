@@ -1,4 +1,5 @@
 #include "service/TrackLogger.h"
+#include "driver/BaroDriver.h"
 #include <SPI.h>
 #include <math.h>
 
@@ -214,16 +215,27 @@ void TrackLogger::update() {
     if (now - _lastLogMs < 1000) return; // 1Hz logging
     _lastLogMs = now;
 
+    // IMPORTANT: Never copy the full SystemContext (~11.5 KB) onto the stack!
+    // Copy only the lightweight fields needed for GPX track logging.
+    GnssData gnss;
+    VehicleDynamics dyn;
+    float tempC = 25.0f;
+    uint8_t batPct = 100;
+
     SystemState& state = SystemState::instance();
     state.lock();
-    SystemContext ctx = state.getContextUnsafe();
+    const SystemContext& ctx = state.getContextUnsafe();
+    gnss = ctx.gnss;
+    dyn = ctx.dynamics;
+    tempC = ctx.weather.temperatureC;
+    batPct = ctx.batteryPercent;
     state.unlock();
 
-    bool canRecord = (ctx.gnss.isValid && ctx.gnss.fixType >= FIX_3D && ctx.gnss.hdop < GnssConfig::MAX_HDOP_FOR_RECORD);
+    bool canRecord = (gnss.isValid && gnss.fixType >= FIX_3D && gnss.hdop < GnssConfig::MAX_HDOP_FOR_RECORD);
 
     if (!_isLogging) {
         // Strict start condition: speed > 3.0 km/h AND 3D Fix (HDOP < 2.0)
-        if (canRecord && ctx.gnss.speedKmh > GnssConfig::RECORD_TRIGGER_SPEED_KMH) {
+        if (canRecord && gnss.speedKmh > GnssConfig::RECORD_TRIGGER_SPEED_KMH) {
             startNewTrackFiles();
         }
     } else {
@@ -234,7 +246,7 @@ void TrackLogger::update() {
         }
 
         // Standstill pause logic (0~15 mins pause, > 15 mins stop)
-        if (ctx.gnss.speedKmh < 1.0f) {
+        if (gnss.speedKmh < 1.0f) {
             _standstillSeconds++;
             if (_standstillSeconds >= 900) { // 15 mins
                 stopLogging();
@@ -248,7 +260,8 @@ void TrackLogger::update() {
         }
 
         // Append point
-        appendTrackPoint(ctx.gnss, ctx.gnss.altitudeMeters, ctx.weather.temperatureC,
-                         1013.25f, ctx.dynamics, ctx.batteryPercent);
+        float pressHpa = BaroDriver::instance().getPressureHpa();
+        appendTrackPoint(gnss, gnss.altitudeMeters, tempC,
+                         pressHpa, dyn, batPct);
     }
 }
