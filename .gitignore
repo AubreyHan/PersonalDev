@@ -1,0 +1,87 @@
+# ==========================================
+# macOS System Files
+# ==========================================
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+
+# ==========================================
+# Windows & Linux Files
+# ==========================================
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
+*~
+
+# ==========================================
+# IDEs & Editors
+# ==========================================
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# ==========================================
+# Swift / macOS Development
+# ==========================================
+.build/
+Packages/
+Package.pins
+DerivedData/
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+*.xcuserdatad/
+xcuserdata/
+*.xcscmblueprint
+.swiftpm/
+# dist/
+
+# ==========================================
+# ESP32 / Embedded / PlatformIO / ESP-IDF
+# ==========================================
+build/
+managed_components/
+.pio/
+.pioenvs/
+.piolibdeps/
+.clangd/
+sdkconfig.old
+sdkconfig.ci
+dependencies.lock
+
+# ==========================================
+# Python & 3D Modeling Tools
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ==========================================
+# Logs, Temp, and Cache
+# ==========================================
+*.log
+*.tmp
+*.bak
