@@ -7,10 +7,10 @@
 
 namespace PinConfig {
     // Module GNSS (M135) UART2 Pins (DIP Switch configured on Core2)
-    // GPIO 13: RX2 (TXD from GNSS)
-    // GPIO 14: TX2 (RXD to GNSS)
-    constexpr int GNSS_RX_PIN = 13;
-    constexpr int GNSS_TX_PIN = 14;
+    // GPIO 14: RX2 (Receives from GNSS Module TXD at G14)
+    // GPIO 13: TX2 (Transmits to GNSS Module RXD at G13)
+    constexpr int GNSS_RX_PIN = 14;
+    constexpr int GNSS_TX_PIN = 13;
 
     // External M-Bus I2C Pins (Wire1 on Core2)
     // Module GNSS onboard sensors: BMP280 (0x76), BMI270 (0x68), BMM150 (0x10)
