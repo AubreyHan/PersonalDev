@@ -7,6 +7,7 @@
 #include "driver/RtcDriver.h"
 #include "driver/GnssDriver.h"
 #include "driver/ButtonDriver.h"
+#include "driver/ft6336_fw_updater.h"
 #include "service/AltitudeFusion.h"
 #include "service/DeadReckoningService.h"
 #include "service/TunnelService.h"
@@ -92,6 +93,9 @@ void setup() {
     Serial.println("\n=======================================================");
     Serial.println("  M5Track-M9N High-Precision Vehicle Dashboard v1.0.0");
     Serial.println("=======================================================");
+
+    // 0. Check and upgrade Core2 FT6336U touch panel firmware (M5Tools v17)
+    ft6336_fw_updater();
 
     // 1. Initialize System State
     SystemState::instance().init();
