@@ -46,7 +46,7 @@ DerivedData/
 xcuserdata/
 *.xcscmblueprint
 .swiftpm/
-dist/
+# dist/
 
 # ==========================================
 # ESP32 / Embedded / PlatformIO / ESP-IDF
