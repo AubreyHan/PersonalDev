@@ -1,4 +1,5 @@
 #include "service/TimeService.h"
+#include "service/TrackLogger.h"
 #include <Preferences.h>
 #include <sys/time.h>
 #include <time.h>
