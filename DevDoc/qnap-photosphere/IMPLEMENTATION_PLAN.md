@@ -19,17 +19,17 @@
   # 验证输出 dist/qnap-photosphere_0.1.0_x86_64.qpkg
   ```
 
-### Task 1.2: 冷热数据分层配置与 SQLite 初始化
-- **目标**：实现配置文件解析器，支持指定 SSD 卷缓存路径与 HDD 归档路径，初始化内嵌 SQLite 并配置 WAL 模式。
+### Task 1.2: 存储路径配置与 SQLite 初始化
+- **目标**：实现配置文件解析器，支持指定应用数据路径与媒体归档路径，初始化内嵌 SQLite 并配置 WAL 模式。
 - **实施内容**：
   - 编写 `internal/config/config.go`，解析 YAML / 环境变量：
-    - `cache_path`: `/share/CACHEDEV1_DATA/.qphotosphere` (SSD)
-    - `storage_path`: `/share/CACHEDEV2_DATA/Photos` (HDD)
-  - 编写 `internal/database/db.go`，自动在 `cache_path` 下创建 SQLite 数据库文件并执行 `SPEC.md` 中的建表 DDL。
+    - `data_path`: `/share/Public/.qphotosphere` (存储 DB 与 WebP 缩略图，享受 QTS SSD 读缓存加速)
+    - `storage_path`: `/share/Photos` (主媒体库路径)
+  - 编写 `internal/database/db.go`，自动在 `data_path` 下创建 SQLite 数据库文件并执行 `SPEC.md` 中的建表 DDL。
 - **验收验证**：
   ```bash
   go run ./cmd/server/main.go --config test_config.yaml
-  sqlite3 test_cache/.qphotosphere/photosphere.db ".tables"
+  sqlite3 test_data/.qphotosphere/photosphere.db ".tables"
   # 输出 users, assets, albums, faces, persons
   ```
 

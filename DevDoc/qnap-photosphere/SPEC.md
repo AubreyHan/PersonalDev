@@ -2,7 +2,7 @@
 
 ## 1. 数据模型与 SQLite DDL
 
-数据库存放于 SSD 卷（如 `/share/CACHEDEV1_DATA/.qphotosphere/photosphere.db`），开启 WAL 模式以支持极速并发读写。
+数据库存放于应用数据目录（如 `/share/Public/.qphotosphere/photosphere.db`，由 QTS SSD 缓存层自动加速），开启 WAL 模式以支持极速并发读写。
 
 ```sql
 -- 用户表

@@ -1,8 +1,8 @@
 # 系统技术架构设计 - qnap-photosphere
 
-## 1. 架构总览与冷热分层
+## 1. 架构总览与存储设计
 
-针对威联通 TS-873A (AMD Ryzen V1500B x86_64, 无独显, M.2 NVMe SSD + 机械盘 HDD 混插) 的硬件特质，系统采取**彻底的冷热分层、I/O 解耦与单二进制原生运行模型**。
+针对威联通 TS-873A (AMD Ryzen V1500B x86_64, 无独显, M.2 NVMe SSD 配置为系统全局 SSD 读写缓存，机械盘 HDD 组成主存储池) 的硬件特质，系统采取**单存储池统一规划 + 依赖 QTS SSD 高速缓存自适应 + 单二进制原生运行模型**。
 
 ```mermaid
 flowchart TD
@@ -22,25 +22,31 @@ flowchart TD
             ONNXEngine["ONNX Runtime (CPU AVX2) - 人脸/CLIP/pHash"]
         end
 
-        subgraph SSD["热数据层 (M.2 NVMe SSD 卷: /share/CACHEDEV1_DATA/.qphotosphere)"]
-            SQLite[("SQLite 数据库 (WAL 模式) + sqlite-vec")]
-            ThumbCache["WebP 响应式缩略图缓存 (300px/1920px)"]
-            ModelFiles["ONNX AI 模型权重文件"]
+        subgraph SSDCache["QTS 系统级 SSD 读写缓存层 (M.2 NVMe SSD)"]
+            CacheLayer["自动加速高频热点小文件 (SQLite WAL, 热门 WebP 缩略图, AI 向量索引)"]
         end
 
-        subgraph HDD["冷数据层 (机械硬盘存储池: /share/CACHEDEV2_DATA/Photos)"]
-            Inbox["各用户待处理 Inbox 目录"]
-            UserLibraries["用户私有归档库: users/{username}/yyyymmdd/"]
-            FamilyLibrary["家庭共享库: family/yyyymmdd/"]
-            TrashDir[".trash/ 回收站"]
+        subgraph HDD["主存储池卷 (如: /share/CACHEDEV1_DATA)"]
+            subgraph AppData["应用数据目录 (./qphotosphere)"]
+                SQLite[("SQLite 数据库 (WAL 模式) + sqlite-vec")]
+                ThumbCache["WebP 响应式缩略图缓存 (300px/1920px)"]
+                ModelFiles["ONNX AI 模型权重文件"]
+            end
+
+            subgraph MediaPool["媒体资产目录 (./Photos)"]
+                Inbox["各用户待处理 Inbox 目录"]
+                UserLibraries["用户私有归档库: users/{username}/yyyymmdd/"]
+                FamilyLibrary["家庭共享库: family/yyyymmdd/"]
+                TrashDir[".trash/ 回收站"]
+            end
         end
     end
 
     WebUI --> Router
     ImmichApp --> ImmichCompat
     ImmichCompat --> IngestPipe
-    Router --> SQLite
-    Router --> ThumbCache
+    Router --> SSDCache
+    SSDCache --> AppData
 
     IngestPipe -->|极速提取 EXIF & 触发缩略图| ThumbCache
     IngestPipe -->|移动并落盘保持原文件名| UserLibraries
@@ -72,12 +78,14 @@ flowchart TD
   │   └── photosphere.sh     # 启停脚本 (init.d start/stop/status)
   ```
 
-### 2.2 冷热分层与硬盘休眠策略
-- **秒开不唤醒 HDD**：
-  - 用户在 Web 端刷新、滑动浏览数万张照片时间线、按月份缩放、查看人脸聚类时，**所有请求全部由 NVMe SSD 上的 SQLite 和 WebP 缩略图命中**。
-  - 只有当用户在 Web 端点击“下载原图”或放大查看 100% 原始 RAW/无损照片时，才触发 HDD 机械盘的物理 I/O，最大化减少磁头磨损与炒豆子噪音。
+### 2.2 存储设计与 QTS SSD 缓存自适应
+- **单存储池规划**：
+  - 应用运行时数据（SQLite DB、WebP 缩略图、模型文件）统一置于应用数据目录（如 `/share/Public/.qphotosphere` 或安装目录自身的 `/share/.../.qpkg/qnap-photosphere/data`）。
+  - 原图媒体库统一置于共享媒体文件夹（如 `/share/Photos`）。
+- **充分利用 QTS SSD 高速缓存**：
+  - 用户在 Web 端刷新、滑动浏览数万张照片时间线、按月份缩放、查看人脸聚类时，主要请求集中在 SQLite 数据库以及 WebP 小图。由于这些文件被高频、集中访问，**会被 QTS 的 SSD 读缓存机制自动吸附并常驻在 SSD 高速缓存中**，无需应用层硬编码指定独立的 SSD 物理卷。
 - **WebP 级联缩略图生成器**：
-  - `thumb_small`：300x300（质量 80%），用于时间线瀑布流网格，单张约 8KB ~ 15KB。
+  - `thumb_small`：300x300（质量 80%），用于时间线瀑布流网格，单张约 8KB ~ 15KB，小巧紧凑，极易被 SSD 缓存常驻。
   - `thumb_preview`：1920x1080（质量 85%），用于全屏灯箱挑片与查看，单张约 120KB ~ 250KB。
 
 ### 2.3 双轨任务流控引擎 (Load-Aware Scheduler)
