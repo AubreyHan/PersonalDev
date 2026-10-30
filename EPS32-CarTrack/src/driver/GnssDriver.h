@@ -14,6 +14,7 @@ public:
     bool injectUtcTime(uint16_t year, uint8_t month, uint8_t day, uint8_t hour, uint8_t minute, uint8_t second, uint32_t accuracyNs = 50000000);
     bool injectPosition(int32_t latE7, int32_t lonE7, int32_t altCm, uint32_t posAccCm = 50000);
     bool isOnline() const { return _isOnline; }
+    void processNavSatData(UBX_NAV_SAT_data_t* satData);
     bool consumeReinjectRequest() {
         bool r = _needAssistReinject;
         _needAssistReinject = false;
