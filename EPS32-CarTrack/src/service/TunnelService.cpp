@@ -11,6 +11,13 @@ static double distanceMeters(double lat1, double lon1, double lat2, double lon2)
 
 bool TunnelService::init() {
     _tunnelCount = TunnelDatabase::BUILTIN_TUNNEL_COUNT;
+    // Pre-allocate PSRAM memory for database
+    if (!_psramTunnels) {
+        _psramTunnels = (TunnelInfo*)ps_malloc(sizeof(TunnelInfo) * 64);
+        if (_psramTunnels) {
+            memcpy(_psramTunnels, TunnelDatabase::BUILTIN_TUNNELS, sizeof(TunnelDatabase::BUILTIN_TUNNELS));
+        }
+    }
     reloadFromLittleFS();
     return true;
 }
@@ -21,8 +28,13 @@ bool TunnelService::reloadFromLittleFS() {
         if (f && f.size() >= 4) {
             uint16_t count = 0;
             f.read((uint8_t*)&count, 2);
-            if (count > 0 && count < 1000) {
-                _tunnelCount = count;
+            if (count > 0 && count < 64 && _psramTunnels) {
+                // Load tunnel records into PSRAM
+                size_t readBytes = f.read((uint8_t*)_psramTunnels, sizeof(TunnelInfo) * count);
+                if (readBytes > 0) {
+                    _tunnelCount = count;
+                    Serial.printf("[TUNNEL] Loaded %u tunnels from LittleFS into 32MB PSRAM.\n", count);
+                }
             }
             f.close();
             return true;
@@ -43,10 +55,13 @@ bool TunnelService::checkAndSnapToTunnel(double& ioLat, double& ioLon, float& io
         return false;
     }
 
+    const TunnelInfo* tunnels = _psramTunnels ? _psramTunnels : TunnelDatabase::BUILTIN_TUNNELS;
+    size_t count = _tunnelCount;
+
     // If GNSS lost, check if within 200m of any tunnel entry
     if (!_activeTunnel) {
-        for (size_t i = 0; i < TunnelDatabase::BUILTIN_TUNNEL_COUNT; i++) {
-            const auto& t = TunnelDatabase::BUILTIN_TUNNELS[i];
+        for (size_t i = 0; i < count; i++) {
+            const auto& t = tunnels[i];
             double entryLat = t.entryLatE7 / 1e7;
             double entryLon = t.entryLonE7 / 1e7;
             double dist = distanceMeters(ioLat, ioLon, entryLat, entryLon);
