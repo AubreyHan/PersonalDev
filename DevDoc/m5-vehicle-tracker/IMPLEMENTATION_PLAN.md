@@ -32,12 +32,13 @@
 ### 验收与验证指令
 - **编译检查**：
   ```bash
-  pio run
+  ./.venv/bin/pio run
   ```
   *预期输出*：`SUCCESS`，无编译报错。
-- **烧录运行**：
+- **烧录前设备与全量传感器预检及自动化烧录（强制准入规范）**：
+  执行烧录时，必须先检查 ESP32-P4 主控设备状态（芯片型号、MAC、16MB Flash、32MB PSRAM）以及全部板载/堆叠传感器状态（Tab5 板载 `0x68` BMI270 Master、`0x32` RX8130CE RTC、`0x40` INA226 库仑计、MicroSD 卡槽，以及 Module GNSS 板载 `0x69` BMI270 Slave、`0x76` BMP280 气压计、`0x10` BMM150 物理连接 ACK 与 `NEO-M9N` 串口握手），确认无误后执行烧录与运行验证：
   ```bash
-  pio run -t upload
+  ./scripts/check_and_flash.py
   ```
 - **视觉验证**：屏幕 1280×720 横屏黑底绿字，文字清晰高分无错位；触摸屏幕四角与中央，串口输出精准的 `(X, Y)` 触控坐标。
 
