@@ -14,8 +14,10 @@ void AppNetworkManager::init() {
 }
 
 void AppNetworkManager::loadSavedNetworks() {
+    if (_netMutex) xSemaphoreTakeRecursive(_netMutex, portMAX_DELAY);
     Preferences prefs;
     _savedCount = 0;
+    memset(_saved, 0, sizeof(_saved));
     if (prefs.begin("m5track", true)) {
         uint8_t cnt = prefs.getUChar("wifi_count", 0);
         if (cnt > 5) cnt = 5;
@@ -26,42 +28,48 @@ void AppNetworkManager::loadSavedNetworks() {
             String s = prefs.getString(kSsid, "");
             String p = prefs.getString(kPwd,  "");
             if (s.length() > 0) {
-                _saved[_savedCount].ssid     = s;
-                _saved[_savedCount].password = p;
+                strncpy(_saved[_savedCount].ssid,     s.c_str(), sizeof(_saved[_savedCount].ssid) - 1);
+                strncpy(_saved[_savedCount].password, p.c_str(), sizeof(_saved[_savedCount].password) - 1);
                 _savedCount++;
             }
         }
         prefs.end();
     }
+    uint8_t sc = _savedCount;
+    if (_netMutex) xSemaphoreGiveRecursive(_netMutex);
 
     SystemState& state = SystemState::instance();
     state.lock();
-    state.getContextUnsafe().wifi.savedNetworkCount = _savedCount;
+    state.getContextUnsafe().wifi.savedNetworkCount = sc;
     state.unlock();
 }
 
-bool AppNetworkManager::saveNetworkCredential(const String& ssid, const String& pwd) {
-    if (ssid.length() == 0) return false;
+bool AppNetworkManager::saveNetworkCredential(const char* ssid, const char* pwd) {
+    if (!ssid || strlen(ssid) == 0) return false;
+    if (_netMutex) xSemaphoreTakeRecursive(_netMutex, portMAX_DELAY);
     loadSavedNetworks();
 
     int existingIdx = -1;
     for (uint8_t i = 0; i < _savedCount; i++) {
-        if (_saved[i].ssid == ssid) {
+        if (strcmp(_saved[i].ssid, ssid) == 0) {
             existingIdx = i;
             break;
         }
     }
 
     if (existingIdx >= 0) {
-        _saved[existingIdx].password = pwd;
+        memset(_saved[existingIdx].password, 0, sizeof(_saved[existingIdx].password));
+        strncpy(_saved[existingIdx].password, pwd ? pwd : "", sizeof(_saved[existingIdx].password) - 1);
     } else if (_savedCount < 5) {
-        _saved[_savedCount].ssid     = ssid;
-        _saved[_savedCount].password = pwd;
+        memset(&_saved[_savedCount], 0, sizeof(SavedWifiCredential));
+        strncpy(_saved[_savedCount].ssid,     ssid,           sizeof(_saved[_savedCount].ssid) - 1);
+        strncpy(_saved[_savedCount].password, pwd ? pwd : "", sizeof(_saved[_savedCount].password) - 1);
         _savedCount++;
     } else {
         for (int i = 0; i < 4; i++) _saved[i] = _saved[i + 1];
-        _saved[4].ssid     = ssid;
-        _saved[4].password = pwd;
+        memset(&_saved[4], 0, sizeof(SavedWifiCredential));
+        strncpy(_saved[4].ssid,     ssid,           sizeof(_saved[4].ssid) - 1);
+        strncpy(_saved[4].password, pwd ? pwd : "", sizeof(_saved[4].password) - 1);
     }
 
     Preferences prefs;
@@ -76,26 +84,32 @@ bool AppNetworkManager::saveNetworkCredential(const String& ssid, const String& 
         }
         prefs.end();
     }
+    uint8_t sc = _savedCount;
+    if (_netMutex) xSemaphoreGiveRecursive(_netMutex);
 
     SystemState& state = SystemState::instance();
     state.lock();
-    state.getContextUnsafe().wifi.savedNetworkCount = _savedCount;
+    state.getContextUnsafe().wifi.savedNetworkCount = sc;
     state.unlock();
 
-    WiFi.begin(ssid.c_str(), pwd.c_str());
+    WiFi.begin(ssid, pwd ? pwd : "");
     return true;
 }
 
-bool AppNetworkManager::deleteNetworkCredential(const String& ssid) {
+bool AppNetworkManager::deleteNetworkCredential(const char* ssid) {
+    if (!ssid) return false;
+    if (_netMutex) xSemaphoreTakeRecursive(_netMutex, portMAX_DELAY);
     loadSavedNetworks();
     uint8_t newCount = 0;
     SavedWifiCredential temp[5];
+    memset(temp, 0, sizeof(temp));
     for (uint8_t i = 0; i < _savedCount; i++) {
-        if (_saved[i].ssid != ssid) {
+        if (strcmp(_saved[i].ssid, ssid) != 0) {
             temp[newCount++] = _saved[i];
         }
     }
     _savedCount = newCount;
+    memset(_saved, 0, sizeof(_saved));
     for (uint8_t i = 0; i < _savedCount; i++) _saved[i] = temp[i];
 
     Preferences prefs;
@@ -110,27 +124,41 @@ bool AppNetworkManager::deleteNetworkCredential(const String& ssid) {
         }
         prefs.end();
     }
+    uint8_t sc = _savedCount;
+    if (_netMutex) xSemaphoreGiveRecursive(_netMutex);
 
     SystemState& state = SystemState::instance();
     state.lock();
-    state.getContextUnsafe().wifi.savedNetworkCount = _savedCount;
+    state.getContextUnsafe().wifi.savedNetworkCount = sc;
     state.unlock();
     return true;
 }
 
 uint8_t AppNetworkManager::getSavedNetworks(SavedWifiCredential* outArr, uint8_t maxCount) {
+    if (_netMutex) xSemaphoreTakeRecursive(_netMutex, portMAX_DELAY);
     uint8_t n = (_savedCount < maxCount) ? _savedCount : maxCount;
     for (uint8_t i = 0; i < n; i++) outArr[i] = _saved[i];
+    if (_netMutex) xSemaphoreGiveRecursive(_netMutex);
     return n;
 }
 
 void AppNetworkManager::tryAutoConnectMultiSsid() {
-    if (_savedCount == 0 || _portalRunning) return;
+    if (_portalRunning) return;
     if (WiFi.status() == WL_CONNECTED) return;
 
+    if (_netMutex) xSemaphoreTakeRecursive(_netMutex, portMAX_DELAY);
+    if (_savedCount == 0) {
+        if (_netMutex) xSemaphoreGiveRecursive(_netMutex);
+        return;
+    }
     uint8_t idx = _connectAttemptIdx % _savedCount;
     _connectAttemptIdx++;
-    WiFi.begin(_saved[idx].ssid.c_str(), _saved[idx].password.c_str());
+    char targetSsid[36], targetPwd[68];
+    strncpy(targetSsid, _saved[idx].ssid, sizeof(targetSsid));
+    strncpy(targetPwd,  _saved[idx].password, sizeof(targetPwd));
+    if (_netMutex) xSemaphoreGiveRecursive(_netMutex);
+
+    WiFi.begin(targetSsid, targetPwd);
 }
 
 void AppNetworkManager::startSetupPortal() {
@@ -307,8 +335,8 @@ void AppNetworkManager::setupHttpRoutes() {
     _server.on("/api/connect", HTTP_POST, [this]() {
         JsonDocument doc;
         deserializeJson(doc, _server.arg("plain"));
-        String ssid = doc["ssid"] | "";
-        String pwd  = doc["pwd"]  | "";
+        const char* ssid = doc["ssid"] | "";
+        const char* pwd  = doc["pwd"]  | "";
         bool ok = saveNetworkCredential(ssid, pwd);
         _server.send(200, "application/json", ok ? "{\"success\":true,\"message\":\"Connecting...\"}"
                                                  : "{\"success\":false,\"message\":\"Invalid SSID\"}");
@@ -317,7 +345,7 @@ void AppNetworkManager::setupHttpRoutes() {
     _server.on("/api/delete", HTTP_POST, [this]() {
         JsonDocument doc;
         deserializeJson(doc, _server.arg("plain"));
-        String ssid = doc["ssid"] | "";
+        const char* ssid = doc["ssid"] | "";
         deleteNetworkCredential(ssid);
         _server.send(200, "application/json", "{\"success\":true}");
     });
@@ -341,13 +369,16 @@ void AppNetworkManager::setupHttpRoutes() {
 
     _server.on("/api/download", HTTP_GET, [this]() {
         String fname = _server.arg("file");
+        TrackLogger::instance().lockSd();
         FsFile f;
         if (!TrackLogger::instance().openFileForRead(fname.c_str(), f)) {
+            TrackLogger::instance().unlockSd();
             _server.send(404, "text/plain", "Track file not found");
             return;
         }
+        uint64_t fSize = f.fileSize();
         _server.sendHeader("Content-Disposition", String("attachment; filename=\"") + fname + "\"");
-        _server.setContentLength(f.fileSize());
+        _server.setContentLength(fSize);
         _server.send(200, "application/gpx+xml", "");
 
         uint8_t buf[512];
@@ -358,6 +389,7 @@ void AppNetworkManager::setupHttpRoutes() {
             }
         }
         f.close();
+        TrackLogger::instance().unlockSd();
     });
 
     _server.on("/api/sd/format", HTTP_POST, [this]() {

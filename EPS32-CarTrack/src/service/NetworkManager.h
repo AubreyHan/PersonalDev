@@ -6,8 +6,8 @@
 #include "model/SystemState.h"
 
 struct SavedWifiCredential {
-    String ssid;
-    String password;
+    char ssid[36];
+    char password[68];
 };
 
 class AppNetworkManager {
@@ -25,12 +25,15 @@ public:
     void startSharePortal(); // SSID: "M5Track-Share", IP: 192.168.4.1
     void stopPortals();
 
-    bool saveNetworkCredential(const String& ssid, const String& pwd);
-    bool deleteNetworkCredential(const String& ssid);
+    bool saveNetworkCredential(const char* ssid, const char* pwd);
+    bool deleteNetworkCredential(const char* ssid);
     uint8_t getSavedNetworks(SavedWifiCredential* outArr, uint8_t maxCount);
 
 private:
-    AppNetworkManager() : _server(80) {}
+    AppNetworkManager() : _server(80) {
+        _netMutex = xSemaphoreCreateRecursiveMutex();
+        memset(_saved, 0, sizeof(_saved));
+    }
 
     void loadSavedNetworks();
     void tryAutoConnectMultiSsid();
@@ -38,6 +41,7 @@ private:
     void handleRootPage();
     void handleShareTracksPage();
 
+    SemaphoreHandle_t   _netMutex         = nullptr;
     WebServer           _server;
     DNSServer           _dnsServer;
     SavedWifiCredential _saved[5];
