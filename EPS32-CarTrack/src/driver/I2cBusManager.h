@@ -1,6 +1,8 @@
 #pragma once
 #include <Arduino.h>
 #include <M5Unified.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include "config.h"
 
 struct I2cScanReport {
@@ -19,6 +21,10 @@ public:
         return inst;
     }
 
+    void initMutex();
+    void lockBus();
+    void unlockBus();
+
     I2cScanReport scanBus();
     bool probeAddress(uint8_t addr, uint32_t freq = 400000);
     bool readReg8(uint8_t addr, uint8_t reg, uint8_t* val, uint32_t freq = 400000);
@@ -28,5 +34,8 @@ public:
     bool readReg16BE(uint8_t addr, uint8_t reg, uint16_t* val, uint32_t freq = 400000);
 
 private:
-    I2cBusManager() = default;
+    I2cBusManager() {
+        _i2cMutex = xSemaphoreCreateRecursiveMutex();
+    }
+    SemaphoreHandle_t _i2cMutex = nullptr;
 };
