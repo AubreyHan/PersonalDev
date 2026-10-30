@@ -115,7 +115,7 @@ struct HistoryBuffer {
 };
 
 struct TripStats {
-    float         tripDistanceKm;
+    double        tripDistanceKm;
     uint32_t      movingDurationSec;
     uint32_t      idleDurationSec;
     uint32_t      highwaySec;   // > 80 km/h
@@ -126,7 +126,7 @@ struct TripStats {
     float         currentAltitudeM;
     float         maxAltitudeM;
     float         minAltitudeM;
-    float         cumulativeClimbM;
+    double        cumulativeClimbM;
     float         verticalSpeedMps;
     float         roadSlopePercent;
 
@@ -316,7 +316,7 @@ public:
 
     void init() {
         if (!_mutex) {
-            _mutex = xSemaphoreCreateMutex();
+            _mutex = xSemaphoreCreateRecursiveMutex();
         }
         lock();
         memset(&_ctx, 0, sizeof(_ctx));
@@ -368,12 +368,12 @@ public:
 
     bool lock(TickType_t timeout = portMAX_DELAY) {
         if (!_mutex) return false;
-        return xSemaphoreTake(_mutex, timeout) == pdTRUE;
+        return xSemaphoreTakeRecursive(_mutex, timeout) == pdTRUE;
     }
 
     void unlock() {
         if (_mutex) {
-            xSemaphoreGive(_mutex);
+            xSemaphoreGiveRecursive(_mutex);
         }
     }
 
@@ -381,11 +381,15 @@ public:
         return _ctx;
     }
 
+    void copySnapshotTo(SystemContext& out) {
+        lock();
+        out = _ctx;
+        unlock();
+    }
+
     SystemContext getSnapshot() {
         SystemContext snap;
-        lock();
-        snap = _ctx;
-        unlock();
+        copySnapshotTo(snap);
         return snap;
     }
 
