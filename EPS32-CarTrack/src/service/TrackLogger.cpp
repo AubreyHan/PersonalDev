@@ -520,8 +520,112 @@ bool TrackLogger::openFileForRead(const char* filename, FsFile& outFile) {
     if (!_mounted || !filename) return false;
     lockSd();
     char path[72];
-    snprintf(path, sizeof(path), "%s/%s", StorageConfig::TRACKS_DIR, filename);
+    if (filename[0] == '/') {
+        snprintf(path, sizeof(path), "%s", filename);
+    } else {
+        snprintf(path, sizeof(path), "%s/%s", StorageConfig::TRACKS_DIR, filename);
+    }
     bool ok = outFile.open(path, O_RDONLY);
     unlockSd();
     return ok;
+}
+
+void TrackLogger::getFormattedUtcTimestamp(char* outBuf, size_t maxLen) {
+    if (!outBuf || maxLen == 0) return;
+    time_t nowSec = time(nullptr);
+    if (nowSec >= 1704067200) { // Year >= 2024
+        struct tm utcTm;
+        gmtime_r(&nowSec, &utcTm);
+        snprintf(outBuf, maxLen, "%04d-%02d-%02d %02d:%02d:%02d UTC",
+                 utcTm.tm_year + 1900, utcTm.tm_mon + 1, utcTm.tm_mday,
+                 utcTm.tm_hour, utcTm.tm_min, utcTm.tm_sec);
+    } else {
+        snprintf(outBuf, maxLen, "1970-01-01 00:00:00 UTC (UNCALIBRATED)");
+    }
+}
+
+void TrackLogger::prunePowerLogFifo(size_t incomingLen) {
+    if (!_mounted) return;
+    FsFile file;
+    if (!file.open(StorageConfig::POWER_LOG_PATH, O_RDONLY)) {
+        return;
+    }
+    uint64_t curSize = file.fileSize();
+    if (curSize + incomingLen <= StorageConfig::POWER_LOG_MAX_BYTES) {
+        file.close();
+        return;
+    }
+
+    // Must prune: target skip offset (at least StorageConfig::POWER_LOG_TRIM_BYTES)
+    uint64_t skipTarget = StorageConfig::POWER_LOG_TRIM_BYTES;
+    if (skipTarget >= curSize) {
+        skipTarget = curSize / 2;
+    }
+    file.seekSet(skipTarget);
+
+    // Advance to line boundary so we never produce truncated/broken lines
+    int c;
+    while ((c = file.read()) != -1) {
+        if (c == '\n') break;
+    }
+
+    // Stream remaining lines into temporary file
+    FsFile tmp;
+    if (!tmp.open(StorageConfig::POWER_LOG_TMP_PATH, O_RDWR | O_CREAT | O_TRUNC)) {
+        file.close();
+        return;
+    }
+
+    uint8_t buffer[512];
+    int nRead = 0;
+    while ((nRead = file.read(buffer, sizeof(buffer))) > 0) {
+        tmp.write(buffer, nRead);
+    }
+    file.close();
+    tmp.sync();
+    tmp.close();
+
+    _sd.remove(StorageConfig::POWER_LOG_PATH);
+    _sd.rename(StorageConfig::POWER_LOG_TMP_PATH, StorageConfig::POWER_LOG_PATH);
+    Serial.printf("[SD] Power log FIFO pruned (old: %llu bytes)\n", curSize);
+}
+
+bool TrackLogger::logPowerEvent(const char* eventType, const char* details) {
+    if (!eventType) return false;
+    lockSd();
+    if (!_mounted) {
+        unlockSd();
+        return false;
+    }
+
+    char timeStr[48];
+    getFormattedUtcTimestamp(timeStr, sizeof(timeStr));
+
+    char line[256];
+    int len = snprintf(line, sizeof(line), "[%s] %s: %s\n", timeStr, eventType, details ? details : "");
+    if (len <= 0) {
+        unlockSd();
+        return false;
+    }
+
+    if (!_sd.exists(StorageConfig::TRACKS_DIR)) {
+        _sd.mkdir(StorageConfig::TRACKS_DIR);
+    }
+
+    // Enforce FIFO size limit <= 100KB
+    prunePowerLogFifo((size_t)len);
+
+    FsFile file;
+    if (!file.open(StorageConfig::POWER_LOG_PATH, O_RDWR | O_CREAT | O_AT_END)) {
+        unlockSd();
+        return false;
+    }
+
+    file.write((const uint8_t*)line, len);
+    file.sync();
+    file.close();
+    unlockSd();
+
+    Serial.printf("[POWER_LOG] %s", line);
+    return true;
 }
