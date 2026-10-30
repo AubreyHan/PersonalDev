@@ -91,7 +91,7 @@
 
 ### 原子任务清单
 - [ ] **Task 3.1**：创建 `src/service/TimeService.h/.cpp`，封装 RX8130CE 硬件 RTC 读写与 `configTzTime()`。
-- [ ] **Task 3.2**：实现 NTP 授时逻辑：当 Wi-Fi 连接且 GPS 未定位时，拉取网络时间更新系统时钟与硬件 RTC；构建 `UBX-MGA-INI-TIME_UTC` 报文直接写向 M9N 串口。
+- [ ] **Task 3.2**：实现无 GPS 下 Wi-Fi NTP 自动校时逻辑：当 GPS 未定位（`!gnss.isValid`）但 Wi-Fi 已成功联网时，自动通过 `configTime` 向 `ntp.aliyun.com` / `pool.ntp.org` 拉取网络时间，更新系统时钟与 Tab5 板载 RX8130CE 硬件 RTC，并构建 `UBX-MGA-INI-TIME_UTC` 报文直接写向 M9N 串口。
 - [ ] **Task 3.3**：实现 GPS 授时反哺逻辑：当 `NAV-PVT` 报文显示 3D Fix 且时钟有效时，以 GPS 原子钟校准硬件 RTC。
 - [ ] **Task 3.4**：开发 `src/service/AgpsService.h/.cpp`，从 u-blox AssistNow 服务器拉取多星星历，分块写入串口，实现 3~5 秒冷启定位。
 
@@ -134,8 +134,8 @@
 
 ### 原子任务清单
 - [ ] **Task 6.1**：开发 `src/service/NetworkManager.h/.cpp`，支持 NVS 存储 5 组已知车载 Wi-Fi。
-- [ ] **Task 6.2**：开发 SoftAP Captive Portal 配网网页与 REST API（`/api/scan`, `/api/connect`, `/api/delete`）。
-- [ ] **Task 6.3**：开发专属文件共享服务：一键启动 `M5Track-Share`（`192.168.4.1`），手机直连浏览器免拔卡批量下载 W/C 轨迹，退出二级菜单即刻销毁热点。
+- [ ] **Task 6.2**：开发 SoftAP + DNS Captive Portal（端口 53 强制门户自动弹窗）配网网页与 REST API（`/api/scan`, `/api/connect`, `/api/delete`），并在屏幕绘制 `WIFI:T:nopass;S:M5Track-Setup;;` 与 `http://192.168.4.1/setup` 双二维码，支持手机扫码自动连网并打开配网界面。
+- [ ] **Task 6.3**：开发专属文件共享服务：一键启动 `M5Track-Share`（`192.168.4.1`），通过 Captive Portal 与屏幕双二维码（`WIFI:T:nopass;S:M5Track-Share;;` + `http://192.168.4.1/tracks`）支持手机扫码自动连网并打开 GPX 轨迹下载界面，退出二级菜单即刻销毁热点。
 
 ---
 
