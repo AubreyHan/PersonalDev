@@ -1,5 +1,6 @@
 #include "service/PowerMonitorService.h"
 #include "service/TrackLogger.h"
+#include "driver/I2cBusManager.h"
 #include <M5Unified.h>
 #include <Preferences.h>
 #include <math.h>
@@ -48,8 +49,10 @@ void PowerMonitorService::update() {
         inaOk = _ina->readMeasurements(vBus, vShunt, curMa, pwrMw);
     } else {
         // Fallback to M5.Power when INA226 is not yet probed
+        I2cBusManager::instance().lockBus();
         int16_t m5Mv = M5.Power.getBatteryVoltage();
         int32_t m5Ma = M5.Power.getBatteryCurrent();
+        I2cBusManager::instance().unlockBus();
         if (m5Mv > 3000) {
             vBus  = (m5Mv < 4500) ? (m5Mv * 2.0f / 1000.0f) : (m5Mv / 1000.0f);
             curMa = (float)m5Ma;
@@ -88,8 +91,13 @@ void PowerMonitorService::update() {
     if (socPct > 100.0f) socPct = 100.0f;
     if (socPct < 0.0f)   socPct = 0.0f;
 
-    bool isCharging = (curMa > 15.0f) || (M5.Power.isCharging());
-    bool hasExtPwr  = isCharging || (curMa >= -5.0f) || (M5.Power.getVBUSVoltage() > 4400);
+    I2cBusManager::instance().lockBus();
+    bool m5Chg  = M5.Power.isCharging();
+    int  vbusMv = M5.Power.getVBUSVoltage();
+    I2cBusManager::instance().unlockBus();
+
+    bool isCharging = (curMa > 15.0f) || m5Chg;
+    bool hasExtPwr  = isCharging || (curMa >= -5.0f) || (vbusMv > 4400);
 
     uint16_t remMin = 0;
     if (isCharging && _avgCurrentMa > 10.0f) {
@@ -136,13 +144,20 @@ void PowerMonitorService::enterStandstillDeepSleep() {
     Serial.println("[POWER] Standstill 20 minutes reached -> Closing GPX, saving NVS coordinates, entering Deep Sleep...");
     TrackLogger::instance().closeActiveStreams();
 
-    SystemContext snap = SystemState::instance().getSnapshot();
-    if (snap.gnss.isValid && snap.gnss.latE7 != 0) {
+    SystemState& state = SystemState::instance();
+    state.lock();
+    bool    gnssValid = state.getContextUnsafe().gnss.isValid;
+    int32_t latE7     = state.getContextUnsafe().gnss.latE7;
+    int32_t lonE7     = state.getContextUnsafe().gnss.lonE7;
+    int32_t altCm     = (int32_t)(state.getContextUnsafe().gnss.altitudeMeters * 100.0f);
+    state.unlock();
+
+    if (gnssValid && latE7 != 0) {
         Preferences prefs;
         if (prefs.begin("m5track", false)) {
-            prefs.putInt("last_lat_e7", snap.gnss.latE7);
-            prefs.putInt("last_lon_e7", snap.gnss.lonE7);
-            prefs.putInt("last_alt_cm", (int32_t)(snap.gnss.altitudeMeters * 100.0f));
+            prefs.putInt("last_lat_e7", latE7);
+            prefs.putInt("last_lon_e7", lonE7);
+            prefs.putInt("last_alt_cm", altCm);
             prefs.end();
         }
     }

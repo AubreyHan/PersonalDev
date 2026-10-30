@@ -64,9 +64,12 @@ void ImuDriver::update() {
     float axS = 0, ayS = 0, azS = 9.80665f, gxS = 0, gyS = 0, gzS = 0;
 
     bool okM = false;
-    if (M5.Imu.isEnabled() && M5.Imu.update()) {
+    I2cBusManager::instance().lockBus();
+    bool m5ImuOk = M5.Imu.isEnabled() && M5.Imu.update();
+    if (m5ImuOk) {
         M5.Imu.getAccel(&axM, &ayM, &azM);
         M5.Imu.getGyro(&gxM, &gyM, &gzM);
+        I2cBusManager::instance().unlockBus();
         // Convert G to m/s^2 and deg/s to rad/s
         axM *= 9.80665f;
         ayM *= 9.80665f;
@@ -75,8 +78,11 @@ void ImuDriver::update() {
         gyM *= 0.0174532925f;
         gzM *= 0.0174532925f;
         okM = true;
-    } else if (_status.masterOnline) {
-        okM = readBmi270Data(DualImuConfig::I2C_ADDR_MASTER, axM, ayM, azM, gxM, gyM, gzM);
+    } else {
+        I2cBusManager::instance().unlockBus();
+        if (_status.masterOnline) {
+            okM = readBmi270Data(DualImuConfig::I2C_ADDR_MASTER, axM, ayM, azM, gxM, gyM, gzM);
+        }
     }
 
     bool okS = false;
