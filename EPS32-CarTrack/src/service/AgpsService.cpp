@@ -56,8 +56,13 @@ void AgpsService::update() {
     if (now - _lastTryMs < 20000) return;
     _lastTryMs = now;
 
-    SystemContext snap = SystemState::instance().getSnapshot();
-    if (snap.wifi.isConnected && !snap.gnss.isValid) {
+    SystemState& state = SystemState::instance();
+    state.lock();
+    bool wifiConn  = state.getContextUnsafe().wifi.isConnected;
+    bool gnssValid = state.getContextUnsafe().gnss.isValid;
+    state.unlock();
+
+    if (wifiConn && !gnssValid) {
         Preferences prefs;
         String token = "";
         if (prefs.begin("m5track", true)) {

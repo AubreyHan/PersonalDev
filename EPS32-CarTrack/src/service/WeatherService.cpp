@@ -2,6 +2,7 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
+#include <time.h>
 
 void WeatherService::init() {
     WeatherData cached;
@@ -75,14 +76,29 @@ bool WeatherService::fetchOpenMeteo(double lat, double lon) {
     JsonArray probs = doc["hourly"]["precipitation_probability"].as<JsonArray>();
     JsonArray codes = doc["hourly"]["weather_code"].as<JsonArray>();
 
+    // Determine current local hour (0..23) so the 24-hour forecast starts from the current hour
+    time_t utcSec = time(nullptr);
+    int startHour = 0;
+    if (utcSec > 1700000000) {
+        SystemState& st = SystemState::instance();
+        st.lock();
+        int16_t tzMin = st.getContextUnsafe().clocks[0].tzOffsetMinutes;
+        st.unlock();
+        time_t locSec = utcSec + tzMin * 60;
+        struct tm lt;
+        gmtime_r(&locSec, &lt);
+        startHour = lt.tm_hour;
+    }
+
     int rainHourOffset = -1;
     uint8_t maxRainProb = 0;
 
     for (int i = 0; i < 24; i++) {
-        w.hourly[i].hour        = i % 24;
-        w.hourly[i].tempC       = (i < (int)temps.size()) ? (float)temps[i] : w.currentTempC;
-        w.hourly[i].precipProb  = (i < (int)probs.size()) ? (uint8_t)((int)probs[i]) : 0;
-        w.hourly[i].weatherCode = (i < (int)codes.size()) ? (uint8_t)((int)codes[i]) : 1;
+        int srcIdx = startHour + i;
+        w.hourly[i].hour        = (startHour + i) % 24;
+        w.hourly[i].tempC       = (srcIdx < (int)temps.size()) ? (float)temps[srcIdx] : w.currentTempC;
+        w.hourly[i].precipProb  = (srcIdx < (int)probs.size()) ? (uint8_t)((int)probs[srcIdx]) : 0;
+        w.hourly[i].weatherCode = (srcIdx < (int)codes.size()) ? (uint8_t)((int)codes[srcIdx]) : 1;
 
         if (w.hourly[i].precipProb >= 60 && rainHourOffset < 0) {
             rainHourOffset = i;
@@ -113,11 +129,18 @@ void WeatherService::update() {
     if (now - _lastFetchMs < interval && _lastFetchMs != 0) return;
     _lastFetchMs = now;
 
-    SystemContext snap = SystemState::instance().getSnapshot();
-    if (!snap.wifi.isConnected) return;
+    SystemState& state = SystemState::instance();
+    state.lock();
+    bool wifiOk   = state.getContextUnsafe().wifi.isConnected;
+    bool gnssOk   = state.getContextUnsafe().gnss.isValid;
+    double gLat   = state.getContextUnsafe().gnss.latitude;
+    double gLon   = state.getContextUnsafe().gnss.longitude;
+    state.unlock();
 
-    double lat = snap.gnss.isValid ? snap.gnss.latitude  : 31.2304;
-    double lon = snap.gnss.isValid ? snap.gnss.longitude : 121.4737;
+    if (!wifiOk) return;
+
+    double lat = gnssOk ? gLat : 31.2304;
+    double lon = gnssOk ? gLon : 121.4737;
 
     if (fetchOpenMeteo(lat, lon)) {
         _hasFetched = true;

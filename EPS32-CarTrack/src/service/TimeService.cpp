@@ -104,7 +104,21 @@ bool TimeService::syncFromNtpWhenNoGps() {
 
 void TimeService::update() {
     SystemState& state = SystemState::instance();
-    SystemContext snap = state.getSnapshot();
+    state.lock();
+    bool     gnssValid = state.getContextUnsafe().gnss.isValid;
+    uint16_t gYear     = state.getContextUnsafe().gnss.year;
+    uint8_t  gMonth    = state.getContextUnsafe().gnss.month;
+    uint8_t  gDay      = state.getContextUnsafe().gnss.day;
+    uint8_t  gHour     = state.getContextUnsafe().gnss.hour;
+    uint8_t  gMin      = state.getContextUnsafe().gnss.minute;
+    uint8_t  gSec      = state.getContextUnsafe().gnss.second;
+    int32_t  gLatE7    = state.getContextUnsafe().gnss.latE7;
+    int32_t  gLonE7    = state.getContextUnsafe().gnss.lonE7;
+    double   gLon      = state.getContextUnsafe().gnss.longitude;
+    float    gAltM     = state.getContextUnsafe().gnss.altitudeMeters;
+    bool     wifiConn  = state.getContextUnsafe().wifi.isConnected;
+    state.unlock();
+
     uint32_t now = millis();
 
     // Check if GnssDriver requested re-injecting time & position after 45s hot-start reset
@@ -113,13 +127,10 @@ void TimeService::update() {
     }
 
     // 1. If GPS has valid 3D Fix and valid year, calibrate hardware RTC & system clock
-    if (snap.gnss.isValid && snap.gnss.year >= 2024) {
+    if (gnssValid && gYear >= 2024) {
         if (!_gpsCalibratedRtc) {
             _gpsCalibratedRtc = true;
-            RtcDateTime dt = {
-                snap.gnss.year, snap.gnss.month, snap.gnss.day,
-                snap.gnss.hour, snap.gnss.minute, snap.gnss.second
-            };
+            RtcDateTime dt = { gYear, gMonth, gDay, gHour, gMin, gSec };
             if (_rtc) {
                 _rtc->writeTime(dt);
             }
@@ -137,8 +148,8 @@ void TimeService::update() {
             // Auto calculate longitude timezone for slot 0 if useGpsLongitude enabled
             state.lock();
             auto& ctx = state.getContextUnsafe();
-            if (ctx.clocks[0].useGpsLongitude && fabsf((float)snap.gnss.longitude) > 1.0f) {
-                int tzHours = (int)round(snap.gnss.longitude / 15.0);
+            if (ctx.clocks[0].useGpsLongitude && fabsf((float)gLon) > 1.0f) {
+                int tzHours = (int)round(gLon / 15.0);
                 ctx.clocks[0].tzOffsetMinutes = tzHours * 60;
             }
             state.unlock();
@@ -147,9 +158,9 @@ void TimeService::update() {
         // Periodically save valid 3D coordinates to NVS (every 60s) for garage warm-start
         if (now - _lastNvsPosSaveMs >= 60000) {
             _lastNvsPosSaveMs = now;
-            saveLastPositionToNvs(snap.gnss.latE7, snap.gnss.lonE7, (int32_t)(snap.gnss.altitudeMeters * 100.0f));
+            saveLastPositionToNvs(gLatE7, gLonE7, (int32_t)(gAltM * 100.0f));
         }
-    } else if (!snap.gnss.isValid && snap.wifi.isConnected) {
+    } else if (!gnssValid && wifiConn) {
         // 2. No GPS fix, but Wi-Fi is connected -> sync via NTP
         uint32_t retryInterval = _ntpSynced ? 600000 : 15000;
         if (now - _lastNtpAttemptMs >= retryInterval || _lastNtpAttemptMs == 0) {

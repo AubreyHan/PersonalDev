@@ -116,6 +116,7 @@ void setup() {
     g_uiManager.init();
 
     // Orthogonal I2C Bus Scan (SDA=G31, SCL=G32)
+    I2cBusManager::instance().initMutex();
     I2cScanReport i2cReport = I2cBusManager::instance().scanBus();
 
     // Initialize Hardware Drivers (Graceful non-blocking fallback if hardware unattached)
@@ -157,12 +158,12 @@ void setup() {
     Serial.printf("  [SD]    MicroSD Slot    (G39~G44) : %s\n", snap.storage.isMounted ? "MOUNTED (OK)" : "NO_CARD");
     Serial.println("-------------------------------------------------------");
 
-    // Launch FreeRTOS Dual-Core Tasks on ESP32-P4
-    xTaskCreatePinnedToCore(gnssTask,        "gnssTask",        8192,  nullptr, 5, nullptr, 0);
-    xTaskCreatePinnedToCore(netTask,         "netTask",         8192,  nullptr, 2, nullptr, 0);
-    xTaskCreatePinnedToCore(uiTask,          "uiTask",          12288, nullptr, 4, nullptr, 1);
-    xTaskCreatePinnedToCore(trackLoggerTask, "trackLoggerTask", 8192,  nullptr, 3, nullptr, 1);
-    xTaskCreatePinnedToCore(pwrTask,         "pwrTask",         4096,  nullptr, 1, nullptr, 1);
+    // Launch FreeRTOS Dual-Core Tasks on ESP32-P4 with generous stack headroom for 100+ hours stability
+    xTaskCreatePinnedToCore(gnssTask,        "gnssTask",        12288, nullptr, 5, nullptr, 0);
+    xTaskCreatePinnedToCore(netTask,         "netTask",         12288, nullptr, 2, nullptr, 0);
+    xTaskCreatePinnedToCore(uiTask,          "uiTask",          16384, nullptr, 4, nullptr, 1);
+    xTaskCreatePinnedToCore(trackLoggerTask, "trackLoggerTask", 12288, nullptr, 3, nullptr, 1);
+    xTaskCreatePinnedToCore(pwrTask,         "pwrTask",         8192,  nullptr, 1, nullptr, 1);
 
     Serial.println("[BOOT] All M5Track-Tab5 FreeRTOS tasks started.");
 }
