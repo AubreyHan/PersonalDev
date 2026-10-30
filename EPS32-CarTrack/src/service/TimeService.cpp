@@ -98,6 +98,10 @@ bool TimeService::syncFromNtpWhenNoGps() {
         _ntpSynced = true;
         Serial.printf("[TIME] Wi-Fi NTP Synced (No GPS) -> %04u-%02u-%02u %02u:%02u:%02u UTC (RTC & M9N Updated)\n",
                       dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second);
+        char ntpSyncMsg[80];
+        snprintf(ntpSyncMsg, sizeof(ntpSyncMsg), "NTP calibrated -> %04u-%02u-%02u %02u:%02u:%02u UTC",
+                 dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second);
+        TrackLogger::instance().logPowerEvent("TIME_SYNC_NTP", ntpSyncMsg);
         return true;
     }
     return false;
@@ -154,6 +158,11 @@ void TimeService::update() {
                 ctx.clocks[0].tzOffsetMinutes = tzHours * 60;
             }
             state.unlock();
+
+            char gnssSyncMsg[80];
+            snprintf(gnssSyncMsg, sizeof(gnssSyncMsg), "GNSS 3D Fix calibrated -> %04u-%02u-%02u %02u:%02u:%02u UTC",
+                     dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second);
+            TrackLogger::instance().logPowerEvent("TIME_SYNC_GNSS", gnssSyncMsg);
         }
 
         // Save valid 3D coordinates to NVS only when vehicle moves >= 200m or every 5 min
