@@ -278,7 +278,12 @@ body{background:#000;color:#00FFAA;font-family:sans-serif;margin:16px;}
 a.btn{display:inline-block;padding:10px 16px;background:#00FFAA;color:#000;font-weight:bold;text-decoration:none;border-radius:6px;margin-top:8px;}
 .badge{padding:3px 8px;border-radius:4px;font-size:12px;background:#283038;color:#FFD700;}
 </style></head><body>
-<h2>M5Track-Tab5 High-Speed GPX Download</h2>
+<h2>M5Track-Tab5 High-Speed File Download</h2>
+<div class='card' style='border-color:#38AEFF;'>
+  <div><b>power.log</b> <span class='badge' style='background:#38AEFF;color:#000'>System Power Log</span></div>
+  <div style='color:#aaa;margin-top:4px;'>Accurate Boot, Shutdown & Standby Event FIFO Log (&le; 100 KB)</div>
+  <a class='btn' style='background:#38AEFF;' href='/api/download?file=power.log' download='power.log'>Download System Log</a>
+</div>
 <div id="list">Loading GPX tracks...</div>
 <script>
 fetch('/api/tracks').then(r=>r.json()).then(d=>{
@@ -379,7 +384,8 @@ void AppNetworkManager::setupHttpRoutes() {
         uint64_t fSize = f.fileSize();
         _server.sendHeader("Content-Disposition", String("attachment; filename=\"") + fname + "\"");
         _server.setContentLength(fSize);
-        _server.send(200, "application/gpx+xml", "");
+        const char* mime = fname.endsWith(".log") ? "text/plain" : "application/gpx+xml";
+        _server.send(200, mime, "");
 
         uint8_t buf[512];
         while (f.available()) {
