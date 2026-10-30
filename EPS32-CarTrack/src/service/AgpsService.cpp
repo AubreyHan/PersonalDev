@@ -1,4 +1,5 @@
 #include "service/AgpsService.h"
+#include <WiFi.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
 
@@ -22,10 +23,10 @@ bool AgpsService::downloadAndInjectAssistNow(const char* token) {
 
     int code = http.GET();
     if (code == HTTP_CODE_OK) {
-        WiFiClient* stream = http.getStreamPtr();
+        NetworkClient* stream = http.getStreamPtr();
         uint8_t buf[256];
         size_t totalBytes = 0;
-        while (http.connected() && stream->available() > 0) {
+        while (http.connected() && stream && stream->available() > 0) {
             int n = stream->readBytes(buf, sizeof(buf));
             if (n > 0) {
                 _gnss->pushRawData(buf, n);

@@ -10,10 +10,10 @@ struct SavedWifiCredential {
     String password;
 };
 
-class NetworkManager {
+class AppNetworkManager {
 public:
-    static NetworkManager& instance() {
-        static NetworkManager inst;
+    static AppNetworkManager& instance() {
+        static AppNetworkManager inst;
         return inst;
     }
 
@@ -30,7 +30,7 @@ public:
     uint8_t getSavedNetworks(SavedWifiCredential* outArr, uint8_t maxCount);
 
 private:
-    NetworkManager() : _server(80) {}
+    AppNetworkManager() : _server(80) {}
 
     void loadSavedNetworks();
     void tryAutoConnectMultiSsid();
