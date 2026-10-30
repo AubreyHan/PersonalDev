@@ -2,6 +2,7 @@
 #include "driver/HapticDriver.h"
 #include "driver/I2cBusManager.h"
 #include "service/NetworkManager.h"
+#include "service/PowerMonitorService.h"
 #include <math.h>
 
 void UiManager::init() {

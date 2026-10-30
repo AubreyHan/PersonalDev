@@ -1,3 +1,6 @@
+#include "driver/GnssDriver.h"
+#include <math.h>
+
 extern GnssDriver g_gnssDriver;
 
 static void navSatCallback(UBX_NAV_SAT_data_t* satData) {
