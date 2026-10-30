@@ -176,20 +176,33 @@ void TimeService::update() {
             struct timeval tv = { .tv_sec = epoch, .tv_usec = 0 };
             settimeofday(&tv, nullptr);
 
-            // Auto calculate longitude timezone for slot 0 if useGpsLongitude enabled
-            state.lock();
-            auto& ctx = state.getContextUnsafe();
-            if (ctx.clocks[0].useGpsLongitude && fabsf((float)gLon) > 1.0f) {
-                int tzHours = (int)round(gLon / 15.0);
-                ctx.clocks[0].tzOffsetMinutes = tzHours * 60;
-            }
-            state.unlock();
-
             char gnssSyncMsg[80];
             snprintf(gnssSyncMsg, sizeof(gnssSyncMsg), "GNSS 3D Fix calibrated -> %04u-%02u-%02u %02u:%02u:%02u UTC",
                      dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second);
             TrackLogger::instance().logPowerEvent("TIME_SYNC_GNSS", gnssSyncMsg);
         }
+
+        // Dynamically update GPS position-derived timezone for slot 0 whenever longitude changes
+        state.lock();
+        auto& ctx = state.getContextUnsafe();
+        if (ctx.clocks[0].useGpsLongitude && fabsf((float)gLon) > 1.0f) {
+            int tzHours = (int)round(gLon / 15.0);
+            int16_t targetTzMin = tzHours * 60;
+            if (gLon >= 73.0 && gLon <= 135.0 && (gLatE7 / 1e7) >= 18.0 && (gLatE7 / 1e7) <= 54.0) {
+                targetTzMin = 480; // China Standard Time (UTC+8)
+            }
+            if (ctx.clocks[0].tzOffsetMinutes != targetTzMin) {
+                ctx.clocks[0].tzOffsetMinutes = targetTzMin;
+                Preferences prefs;
+                if (prefs.begin("m5track", false)) {
+                    prefs.putShort("tz_offset_min", targetTzMin);
+                    prefs.end();
+                }
+                Serial.printf("[TIME] Updated GPS local timezone: %+03d:%02d (Lon: %.4f)\n",
+                              targetTzMin / 60, abs(targetTzMin % 60), gLon);
+            }
+        }
+        state.unlock();
 
         // Save valid 3D coordinates to NVS only when vehicle moves >= 200m or every 5 min
         if (now - _lastNvsPosSaveMs >= 300000 ||

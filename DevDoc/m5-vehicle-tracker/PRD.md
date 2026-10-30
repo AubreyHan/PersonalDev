@@ -515,9 +515,9 @@ stateDiagram-v2
 
 ### 3.15 TF 卡系统开关机事件日志与 100KB FIFO 滚动文件机制 (Power Event Logging & 100KB FIFO Limit)
 - **存储文件路径**：MicroSD 卡 `/tracks/power.log`；
-- **准确时标基准**：
-  - 依赖精准时钟引擎（RX8130CE RTC / GNSS 原子钟 / Wi-Fi NTP），每一条日志均标注文档规范的 ISO UTC 精准时间戳 `[YYYY-MM-DD HH:MM:SS UTC]`；
-  - 若开机瞬间硬件 RTC 尚未校准，标记为 `UNCALIBRATED`，并在后续 GNSS 3D 定位或 NTP 授时校准成功的第一瞬间追加 `TIME_SYNC_GNSS` 或 `TIME_SYNC_NTP` 事件记录时钟跳变；
+- **准确时标基准（采用 GPS 定位时区时间）**：
+  - 依赖精准时钟引擎（RX8130CE RTC / GNSS 原子钟 / Wi-Fi NTP），每一条日志均标注文档规范的 **GPS 定位时区时间戳 `[YYYY-MM-DD HH:MM:SS ±HH:MM]`**（根据车辆 GPS 经纬度动态推算时区，中国大陆范围统一采用北京时间 UTC+8，跨国自驾按 $15^\circ$ 太阳时区自动偏移，且开机时预读 NVS 历史坐标提前就绪时区）；
+  - 若冷启动瞬间硬件 RTC 尚未校准，标记为 `UNCALIBRATED`，并在后续 GNSS 3D 定位或 NTP 授时校准成功的第一瞬间追加 `TIME_SYNC_GNSS` 或 `TIME_SYNC_NTP` 事件记录时钟跳变；
 - **核心记录事件类型**：
   1. `BOOT`：系统上电启动，记录复位原因（Power-on / Watchdog / Software / DeepSleep）、供电状态（车载 USB / 电池）、电池电压与电量百分比；
   2. `STANDBY_ENTER`：车辆在纯电池供电下静止满 20 分钟切入低功耗待机，记录触发时电池剩余电量与电压；

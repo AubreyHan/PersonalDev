@@ -564,18 +564,18 @@ littlefs, data, spiffs,  0xc90000,0x300000,
 - **尺寸硬约束**：`POWER_LOG_MAX_BYTES = 100 * 1024` (102,400 字节，100KB)
 - **FIFO 淘汰步长**：`POWER_LOG_TRIM_BYTES = 20 * 1024` (20,480 字节，20KB)
 
-### 7.2 日志格式规范
-每条记录占一行，格式如下：
+### 7.2 日志格式规范（采用 GPS 定位时区时间）
+每条记录占一行，时间采用车辆 GPS 定位推算出的当地时区时间（包含时区偏置 `±HH:MM`）：
 ```text
-[<YYYY-MM-DD HH:MM:SS UTC>] <EVENT_TYPE>: <DETAILS>
+[<YYYY-MM-DD HH:MM:SS ±HH:MM>] <EVENT_TYPE>: <DETAILS>
 ```
 示例：
 ```text
-[2026-10-30 14:15:20 UTC] BOOT: System startup (Reset: 1, Batt: 8.15V, 95%, Pwr: ExtUSB, TF: Mounted)
-[2026-10-30 14:15:25 UTC] TIME_SYNC_GNSS: GNSS 3D Fix calibrated -> 2026-10-30 14:15:25 UTC
-[2026-10-30 14:35:25 UTC] STANDBY_ENTER: Standstill 20min timeout on battery (Batt: 7.82V, 76%)
-[2026-10-30 15:02:10 UTC] STANDBY_WAKEUP: Car charger power restored (Batt: 7.95V, 78%)
-[2026-10-30 16:40:00 UTC] SHUTDOWN_LOW_BATT: Critical low battery (5.95V < 6.00V), auto shutdown
+[2026-10-30 22:15:20 +08:00] BOOT: System startup (Reset: 1, Batt: 8.15V, 95%, Pwr: ExtUSB, TF: Mounted)
+[2026-10-30 22:15:25 +08:00] TIME_SYNC_GNSS: GNSS 3D Fix calibrated -> 2026-10-30 14:15:25 UTC
+[2026-10-30 22:35:25 +08:00] STANDBY_ENTER: Standstill 20min timeout on battery (Batt: 7.82V, 76%)
+[2026-10-30 23:02:10 +08:00] STANDBY_WAKEUP: Car charger power restored (Batt: 7.95V, 78%)
+[2026-10-30 23:40:00 +08:00] SHUTDOWN_LOW_BATT: Critical low battery (5.95V < 6.00V), auto shutdown
 ```
 
 ### 7.3 FIFO 淘汰算法与断电安全
