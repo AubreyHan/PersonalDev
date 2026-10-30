@@ -1,5 +1,6 @@
 #include "service/TrackLogger.h"
 #include <SPI.h>
+#include <time.h>
 #include <math.h>
 
 static constexpr double PI_VAL   = 3.14159265358979323846;
@@ -47,6 +48,7 @@ void TrackLogger::wgs84ToGcj02(double wgLat, double wgLon, double& mgLat, double
 }
 
 bool TrackLogger::init() {
+    lockSd();
     SPI.begin(PinConfig::SD_SPI_SCK, PinConfig::SD_SPI_MISO, PinConfig::SD_SPI_MOSI, PinConfig::SD_SPI_CS);
     SdSpiConfig spiCfg(PinConfig::SD_SPI_CS, SHARED_SPI, SD_SCK_MHZ(20));
 
@@ -66,13 +68,16 @@ bool TrackLogger::init() {
         state.getContextUnsafe().storage.needsFormat = false;
         state.unlock();
     }
+    unlockSd();
     return _mounted;
 }
 
 bool TrackLogger::formatFat32() {
+    lockSd();
     closeActiveStreams();
     SdSpiConfig spiCfg(PinConfig::SD_SPI_CS, SHARED_SPI, SD_SCK_MHZ(20));
     if (!_sd.cardBegin(spiCfg)) {
+        unlockSd();
         return false;
     }
     FatFormatter formatter;
@@ -82,8 +87,10 @@ bool TrackLogger::formatFat32() {
         _mounted = true;
         _sd.mkdir(StorageConfig::TRACKS_DIR);
         refreshStorageStats();
+        unlockSd();
         return true;
     }
+    unlockSd();
     return false;
 }
 
@@ -210,17 +217,10 @@ void TrackLogger::refreshStorageStats() {
     state.unlock();
 }
 
-bool TrackLogger::openNewTrackPair(const SystemContext& snap) {
+bool TrackLogger::openNewTrackPair(const SystemContext& snap, uint16_t y, uint8_t m, uint8_t d, uint8_t hh, uint8_t mm, uint8_t ss) {
     if (!_mounted) return false;
     closeActiveStreams();
     enforceStorageQuota50Percent();
-
-    uint16_t y = (snap.gnss.year >= 2024) ? snap.gnss.year : 2026;
-    uint8_t  m = (snap.gnss.month >= 1)   ? snap.gnss.month : 10;
-    uint8_t  d = (snap.gnss.day >= 1)     ? snap.gnss.day : 30;
-    uint8_t  hh = snap.gnss.hour;
-    uint8_t  mm = snap.gnss.minute;
-    uint8_t  ss = snap.gnss.second;
 
     char wName[40], cName[40];
     snprintf(wName, sizeof(wName), "W-%04u%02u%02u-%02u%02u%02u.gpx", y, m, d, hh, mm, ss);
@@ -276,7 +276,7 @@ bool TrackLogger::openNewTrackPair(const SystemContext& snap) {
     return true;
 }
 
-void TrackLogger::appendTrackPoint(FsFile& file, double lat, double lon, const SystemContext& snap) {
+void TrackLogger::appendTrackPoint(FsFile& file, double lat, double lon, const SystemContext& snap, uint16_t y, uint8_t m, uint8_t d, uint8_t hh, uint8_t mm, uint8_t ss) {
     if (!file.isOpen()) return;
     const char* footer = "    </trkseg>\n  </trk>\n</gpx>\n";
     uint64_t sz = file.fileSize();
@@ -291,7 +291,7 @@ void TrackLogger::appendTrackPoint(FsFile& file, double lat, double lon, const S
         "        <time>%04u-%02u-%02uT%02u:%02u:%02u.%03uZ</time>\n"
         "        <course>%.1f</course>\n"
         "        <speed>%.2f</speed>\n"
-        "        <fix>3d</fix>\n"
+        "        <fix>%s</fix>\n"
         "        <sat>%u</sat>\n"
         "        <hdop>%.2f</hdop>\n"
         "        <vdop>%.2f</vdop>\n"
@@ -315,12 +315,10 @@ void TrackLogger::appendTrackPoint(FsFile& file, double lat, double lon, const S
         "%s",
         lat, lon,
         snap.baro.fusedAltitudeM,
-        snap.gnss.year >= 2024 ? snap.gnss.year : 2026,
-        snap.gnss.month >= 1   ? snap.gnss.month : 10,
-        snap.gnss.day >= 1     ? snap.gnss.day : 30,
-        snap.gnss.hour, snap.gnss.minute, snap.gnss.second, snap.gnss.millisecond,
+        y, m, d, hh, mm, ss, snap.gnss.millisecond,
         snap.imu.fusedHeadingDeg,
         snap.gnss.speedKmh / 3.6f,
+        snap.gnss.isDeadReckoning ? "none" : "3d",
         snap.gnss.numSats,
         snap.gnss.hdop, snap.gnss.vdop, snap.gnss.pdop,
         snap.baro.temperatureC,
@@ -337,7 +335,11 @@ void TrackLogger::appendTrackPoint(FsFile& file, double lat, double lon, const S
 }
 
 void TrackLogger::writeNewSegmentTag() {
-    if (!_recording) return;
+    lockSd();
+    if (!_recording) {
+        unlockSd();
+        return;
+    }
     const char* footer = "    </trkseg>\n  </trk>\n</gpx>\n";
     const char* segTag = "    </trkseg>\n    <trkseg>\n    </trkseg>\n  </trk>\n</gpx>\n";
 
@@ -351,9 +353,11 @@ void TrackLogger::writeNewSegmentTag() {
         _fileGcj.write(segTag, strlen(segTag));
         _fileGcj.sync();
     }
+    unlockSd();
 }
 
 void TrackLogger::closeActiveStreams() {
+    lockSd();
     if (_fileWgs.isOpen()) {
         _fileWgs.sync();
         _fileWgs.close();
@@ -363,6 +367,7 @@ void TrackLogger::closeActiveStreams() {
         _fileGcj.close();
     }
     _recording = false;
+    unlockSd();
     SystemState& state = SystemState::instance();
     state.lock();
     state.getContextUnsafe().storage.isRecording = false;
@@ -382,34 +387,89 @@ void TrackLogger::update() {
     if (reqNewSeg) {
         state.getContextUnsafe().storage.requestNewSegment = false;
     }
+    state.copySnapshotTo(_snapBuf);
     state.unlock();
 
     if (reqNewSeg && _recording) {
         writeNewSegmentTag();
     }
 
-    SystemContext snap = state.getSnapshot();
-    bool canRecord = (snap.gnss.isValid || snap.gnss.isDeadReckoning) &&
-                     (snap.gnss.fixType >= FIX_3D || snap.gnss.isDeadReckoning) &&
-                     (snap.gnss.speedKmh >= MotionPowerConfig::RECORD_TRIGGER_SPEED_KMH);
+    bool canRecord = (_snapBuf.gnss.isValid || _snapBuf.gnss.isDeadReckoning) &&
+                     (_snapBuf.gnss.fixType >= FIX_3D || _snapBuf.gnss.isDeadReckoning) &&
+                     (_snapBuf.gnss.speedKmh >= MotionPowerConfig::RECORD_TRIGGER_SPEED_KMH);
 
     if (!canRecord) {
         return;
     }
 
+    // Strict Monotonic UTC Epoch Validation (SPEC 5.1)
+    uint16_t yr = _snapBuf.gnss.year;
+    uint8_t  mo = _snapBuf.gnss.month;
+    uint8_t  dy = _snapBuf.gnss.day;
+    uint8_t  hh = _snapBuf.gnss.hour;
+    uint8_t  mm = _snapBuf.gnss.minute;
+    uint8_t  ss = _snapBuf.gnss.second;
+
+    uint32_t pointEpoch = 0;
+    if (_snapBuf.gnss.isValid && yr >= 2024 && mo >= 1 && dy >= 1) {
+        struct tm t = {};
+        t.tm_year  = yr - 1900;
+        t.tm_mon   = mo - 1;
+        t.tm_mday  = dy;
+        t.tm_hour  = hh;
+        t.tm_min   = mm;
+        t.tm_sec   = ss;
+        pointEpoch = (uint32_t)mktime(&t);
+    } else {
+        time_t sysUtc = time(nullptr);
+        if (sysUtc < 1700000000) {
+            sysUtc = 1793342128 + curSec;
+        }
+        pointEpoch = (uint32_t)sysUtc;
+        struct tm utcTm;
+        gmtime_r(&sysUtc, &utcTm);
+        yr = utcTm.tm_year + 1900;
+        mo = utcTm.tm_mon + 1;
+        dy = utcTm.tm_mday;
+        hh = utcTm.tm_hour;
+        mm = utcTm.tm_min;
+        ss = utcTm.tm_sec;
+    }
+
+    // Reject non-increasing timestamp to guarantee 100% strictly increasing GPX timeline
+    if (_lastRecordedEpochSec > 0 && pointEpoch <= _lastRecordedEpochSec) {
+        if (_snapBuf.gnss.isDeadReckoning) {
+            pointEpoch = _lastRecordedEpochSec + 1;
+            time_t drTime = (time_t)pointEpoch;
+            struct tm utcTm;
+            gmtime_r(&drTime, &utcTm);
+            yr = utcTm.tm_year + 1900;
+            mo = utcTm.tm_mon + 1;
+            dy = utcTm.tm_mday;
+            hh = utcTm.tm_hour;
+            mm = utcTm.tm_min;
+            ss = utcTm.tm_sec;
+        } else {
+            return;
+        }
+    }
+    _lastRecordedEpochSec = pointEpoch;
+
+    lockSd();
     if (!_recording || _pointsInFile >= MotionPowerConfig::HOURLY_SPLIT_POINTS) {
-        if (!openNewTrackPair(snap)) {
+        if (!openNewTrackPair(_snapBuf, yr, mo, dy, hh, mm, ss)) {
+            unlockSd();
             return;
         }
     }
 
-    double wLat = snap.gnss.latitude;
-    double wLon = snap.gnss.longitude;
+    double wLat = _snapBuf.gnss.latitude;
+    double wLon = _snapBuf.gnss.longitude;
     double cLat = wLat, cLon = wLon;
     wgs84ToGcj02(wLat, wLon, cLat, cLon);
 
-    appendTrackPoint(_fileWgs, wLat, wLon, snap);
-    appendTrackPoint(_fileGcj, cLat, cLon, snap);
+    appendTrackPoint(_fileWgs, wLat, wLon, _snapBuf, yr, mo, dy, hh, mm, ss);
+    appendTrackPoint(_fileGcj, cLat, cLon, _snapBuf, yr, mo, dy, hh, mm, ss);
 
     _pointsInFile++;
     _pointsSinceSync++;
@@ -420,13 +480,17 @@ void TrackLogger::update() {
         _fileGcj.sync();
         refreshStorageStats();
     }
+    unlockSd();
 }
 
 size_t TrackLogger::listTrackFiles(TrackFileEntry* outList, size_t maxEntries) {
     if (!_mounted || !outList || maxEntries == 0) return 0;
-
+    lockSd();
     FsFile dir;
-    if (!dir.open(StorageConfig::TRACKS_DIR)) return 0;
+    if (!dir.open(StorageConfig::TRACKS_DIR)) {
+        unlockSd();
+        return 0;
+    }
 
     size_t count = 0;
     FsFile entry;
@@ -444,12 +508,16 @@ size_t TrackLogger::listTrackFiles(TrackFileEntry* outList, size_t maxEntries) {
         entry.close();
     }
     dir.close();
+    unlockSd();
     return count;
 }
 
 bool TrackLogger::openFileForRead(const char* filename, FsFile& outFile) {
     if (!_mounted || !filename) return false;
+    lockSd();
     char path[72];
     snprintf(path, sizeof(path), "%s/%s", StorageConfig::TRACKS_DIR, filename);
-    return outFile.open(path, O_RDONLY);
+    bool ok = outFile.open(path, O_RDONLY);
+    unlockSd();
+    return ok;
 }
