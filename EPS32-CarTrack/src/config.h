@@ -187,6 +187,10 @@ namespace StorageConfig {
     constexpr const char* TRACKS_DIR           = "/tracks";
     constexpr const char* TUNNEL_LITTLEFS_PATH = "/littlefs/tunnels.bin";
     constexpr uint32_t    SYNC_INTERVAL_POINTS = 10;
+    constexpr const char* POWER_LOG_PATH       = "/tracks/power.log";
+    constexpr const char* POWER_LOG_TMP_PATH   = "/tracks/power.tmp";
+    constexpr uint32_t    POWER_LOG_MAX_BYTES  = 100 * 1024; // 100 KB hard limit
+    constexpr uint32_t    POWER_LOG_TRIM_BYTES = 20 * 1024;  // Prune oldest 20 KB when reaching 100 KB
 }
 
 namespace UiColors {
