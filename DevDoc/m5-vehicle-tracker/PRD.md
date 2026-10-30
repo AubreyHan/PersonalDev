@@ -510,3 +510,23 @@ stateDiagram-v2
 ### 3.14 车载 GPS 极限工况防御与硬件诊断体系
 - 动力学极限跳变过滤（速度突变 $>180\text{km/h}$ 或瞬态加速度 $>1.2\text{G}$ 点自动剔除）；
 - 具备双 IMU 异常互验预警、天线断开/短路探测、存储卡低水位告警与整机自愈机制。
+
+---
+
+### 3.15 TF 卡系统开关机事件日志与 100KB FIFO 滚动文件机制 (Power Event Logging & 100KB FIFO Limit)
+- **存储文件路径**：MicroSD 卡 `/tracks/power.log`；
+- **准确时标基准**：
+  - 依赖精准时钟引擎（RX8130CE RTC / GNSS 原子钟 / Wi-Fi NTP），每一条日志均标注文档规范的 ISO UTC 精准时间戳 `[YYYY-MM-DD HH:MM:SS UTC]`；
+  - 若开机瞬间硬件 RTC 尚未校准，标记为 `UNCALIBRATED`，并在后续 GNSS 3D 定位或 NTP 授时校准成功的第一瞬间追加 `TIME_SYNC_GNSS` 或 `TIME_SYNC_NTP` 事件记录时钟跳变；
+- **核心记录事件类型**：
+  1. `BOOT`：系统上电启动，记录复位原因（Power-on / Watchdog / Software / DeepSleep）、供电状态（车载 USB / 电池）、电池电压与电量百分比；
+  2. `STANDBY_ENTER`：车辆在纯电池供电下静止满 20 分钟切入低功耗待机，记录触发时电池剩余电量与电压；
+  3. `STANDBY_WAKEUP`：唤醒恢复运行，准确记录唤醒源（车充供电恢复 / 6轴 IMU 持续有效车身移动）与电池状态；
+  4. `SHUTDOWN_LOW_BATT`：电池达到截止保护电压（$<6.0\text{V}$）触发的主动安全关机；
+  5. `TIME_SYNC_NTP` / `TIME_SYNC_GNSS`：时钟源校时同步生效事件；
+- **严格 100KB FIFO 滚动与淘汰机制**：
+  - 文件最大尺寸硬性限制为 **100KB (102,400 字节)**；
+  - 当文件追加写将超过 100KB 时，触发 FIFO 头部淘汰算法：自动跳过头部最早的约 20KB 历史数据并对齐换行符（`\n`），通过原子临时文件（`/tracks/power.tmp`）流式转存剩余最新约 80KB 内容并执行安全原子重命名；
+  - 文件体积严格在 80KB ~ 100KB 之间循环滚动，永久保留最新且最关键的约 1000+ 次开关机与供电轨迹溯源；
+- **便捷无线排查支持**：
+  - 开启 `M5Track-Share` 热点后，手机访问轨迹下载页面顶部直接提供 `power.log` 单击下载入口，通过 `/api/download?file=power.log` 便捷离线分析。
