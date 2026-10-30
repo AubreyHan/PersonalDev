@@ -1,5 +1,49 @@
-#include "driver/GnssDriver.h"
-#include <math.h>
+extern GnssDriver g_gnssDriver;
+
+static void navSatCallback(UBX_NAV_SAT_data_t* satData) {
+    g_gnssDriver.processNavSatData(satData);
+}
+
+void GnssDriver::processNavSatData(UBX_NAV_SAT_data_t* satData) {
+    if (!satData) return;
+
+    uint8_t count = satData->header.numSvs;
+    uint8_t bds = 0, gps = 0, glo = 0, gal = 0;
+    uint8_t stored = 0;
+
+    SystemState& state = SystemState::instance();
+    state.lock();
+    auto& gnss = state.getContextUnsafe().gnss;
+
+    for (uint16_t i = 0; i < count && i < UBX_NAV_SAT_MAX_BLOCKS; i++) {
+        const auto& block = satData->blocks[i];
+        bool used = (block.flags.bits.svUsed != 0);
+
+        if (used) {
+            if (block.gnssId == 0) gps++;
+            else if (block.gnssId == 3) bds++;
+            else if (block.gnssId == 6) glo++;
+            else if (block.gnssId == 2) gal++;
+        }
+
+        if (stored < 32 && (block.cno > 0 || used)) {
+            gnss.sats[stored].gnssId = block.gnssId;
+            gnss.sats[stored].svId   = block.svId;
+            gnss.sats[stored].cno    = block.cno;
+            gnss.sats[stored].elev   = block.elev;
+            gnss.sats[stored].azim   = block.azim;
+            gnss.sats[stored].used   = used;
+            stored++;
+        }
+    }
+
+    gnss.activeSatCount = stored;
+    gnss.numBdsSats     = bds;
+    gnss.numGpsSats     = gps;
+    gnss.numGloSats     = glo;
+    gnss.numGalSats     = gal;
+    state.unlock();
+}
 
 bool GnssDriver::init() {
     if (!_uartMutex) {
@@ -152,8 +196,9 @@ bool GnssDriver::configureAutomotiveParams() {
     _myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GLONASS);
     _myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GALILEO);
 
-    // 7. Auto PVT polling
+    // 7. Auto PVT polling & NAV-SAT callback for genuine constellation and radar telemetry
     _myGNSS.setAutoPVT(true);
+    _myGNSS.setAutoNAVSATcallbackPtr(navSatCallback);
     return true;
 }
 
