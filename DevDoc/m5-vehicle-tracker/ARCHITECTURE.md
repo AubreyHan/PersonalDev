@@ -148,3 +148,152 @@ flowchart TB
     engine_pwr --> dock
     engine_weather --> MainPages
     engine_dr --> p4
+
+---
+
+## 4. FreeRTOS 多核多任务并发设计 (ESP32-P4 Dual RISC-V 400MHz)
+
+ESP32-P4 拥有双核高性能 RISC-V 处理器（主频高达 400MHz），具备超强算力与独立中断流水线。为确保 **10Hz/25Hz 高频 GPS 串口零丢包**、**1280×720 大画幅 60fps 丝滑双缓冲渲染** 与 **网络/写入不阻塞实时仪表**，任务划分如下：
+
+| 任务名称 (Task) | 运行核心 (Core) | 优先级 | 职责与周期 |
+| :--- | :--- | :--- | :--- |
+| **`gnssTask`** | **Core 0** | 优先级 5 (高) | 负责从 UART 高频读取 NEO-M9N 的 UBX 帧（5Hz/10Hz），实时解析 `NAV-PVT` 与 `NAV-SIG`，填充线程安全全局数据池。 |
+| **`netTask`** | **Core 0** | 优先级 2 (低) | 调度 ESP32-C6 协处理器执行 Wi-Fi 6 扫描、SoftAP 直连 Web 响应、NTP 时间同步与 AssistNow 星历下载。异步非阻塞。 |
+| **`uiTask`** | **Core 1** | 优先级 4 (中高) | 负责 M5GFX 双缓冲绘制（在 32MB PSRAM 中以 60fps 刷新 1120×720 画布）、调度左侧 Dock 点击与全屏滑动手势。 |
+| **`trackLoggerTask`** | **Core 1** | 优先级 3 (中) | 周期性（1Hz）读取最新位置，流式格式化 XML GPX 双文件追加至 TF 卡，定期触发 `file.sync()`。 |
+| **`pwrTask`** | **Core 1** | 优先级 1 (低) | 500ms 周期读取 INA226 (`0x40`) 寄存器，运行安时积分与 OCV 电池校准，监听车充电压通断。 |
+
+---
+
+## 5. 核心模块与业务算法设计
+
+### 5.1 双源高精时钟与地库极速热启动引擎 (Dual-Source Time & Warm-Start Engine)
+1. **地库出库极速温启动 (Fast Warm-Start)**：
+   - 熄火断电时，将最后一次有效 3D 坐标自动持久化至片上 Flash NVS；
+   - 再次冷开机时，系统从 **RX8130CE 硬件 RTC（I2C `0x32`）** 读取当前真实时间，结合 NVS 历史坐标，通过 `UBX-MGA-INI-POS_LLH` 与 `UBX-MGA-INI-TIME_UTC` 注入 M9N 串口；
+   - 驶出地库锁星耗时从 35s+ 骤降至 10~15s。
+2. **权威时钟闭环**：
+   - 定位成功后，NEO-M9N 卫星原子钟时间（纳秒级精度）接管系统主时钟，自动计算大地经度时区偏移（中国为 UTC+8），并反向校准 RX8130CE，保证长年离线精度。
+
+### 5.2 左侧常驻 Dock 与 1120×720 画布双缓冲 (UI Engine)
+- 利用 ESP32-P4 的 **32MB 超大 PSRAM**，分配完整的 1280×720 16-bit 显存双缓冲画布（每帧仅耗费约 1.8MB PSRAM，内存极度富余）；
+- **左侧 160px 常驻 Dock**：单点直达各个专职页面，完全解耦“主页”与“时钟/天气”手势冲突；
+- **右侧 1120×720 安全视口**：子页面在此画布中渲染，每一帧前调用 `canvas.fillRect(160, 0, 1120, 720, TFT_BLACK)`。
+
+### 5.3 轨迹流式写入、长文件名与断电自愈 (Safe GPX Logging & SdFat)
+- **底层文件系统引擎 (SdFat)**：选用 `SdFat` 库，开启长文件名 (LFN) 支持；
+- **双文件并行命名**：`W-yyyymmdd-hhmmss.gpx`（原始 WGS-84）与 `C-yyyymmdd-hhmmss.gpx`（国测局 GCJ-02 火星坐标，多项式转换 $<15\mu\text{s}$）；
+- **1 小时自动截断切片**：连续行驶每满 3600 秒（3600 点）自动闭合双文件并在下一秒新建分卷，保障长途自驾单文件体量适中且合并无缝；
+- **4 级断电自愈**：每点预写尾标签 `</trkseg></trk></gpx>`、10 秒定时 `file.sync()`，开机毫秒级扫描修复。
+
+### 5.4 板载 INA226 复合软硬件库仑计体系 (Power Management & INA226)
+
+```text
+       +--------------------------------------------------------------+
+       |               Tab5 主板板载电源与测量架构                    |
+       |  +--------------------+         +-------------------------+  |
+       |  | NP-F550 快拆电池组 | ------> | 20mΩ 精密分流电阻 (Rs)  |  |
+       |  | (2000mAh, 7.4V)    |         +------------+------------+  |
+       |  +--------------------+                      |               |
+       |                                              v               |
+       |                              +----------------------------+  |
+       |                              | TI INA226 (I2C: 0x40)      |  |
+       |                              | 16-bit ΔΣ ADC (Vbus, Ish)  |  |
+       |                              +---------------+------------+  |
+       +----------------------------------------------|---------------+
+                                                      | I2C (Wire)
+                                                      v
++---------------------------------------------------------------------+
+| ESP32-P4 主控 (Core 1 - pwrTask) - PowerMonitorService              |
+|                                                                     |
+|  +---------------------------------------------------------------+  |
+|  | 500ms 周期采样与物理量换算 (Physical Measurement)              |  |
+|  | - Vbus = REG_02 * 1.25 mV (总线实时电压)                       |  |
+|  | - I    = REG_04 * 0.1 mA  (充放电瞬态电流, CAL=2560)           |  |
+|  | - P    = REG_03 * 2.5 mW  (即时功耗)                           |  |
+|  +-------------------------------+-------------------------------+  |
+|                                  |                                  |
+|  +-------------------------------v-------------------------------+  |
+|  | 动态软件安时积分器 (Coulomb Integrator)                        |  |
+|  | - ΔQ = I * Δt * η (放电 η=1.0, 充电 η=0.95)                   |  |
+|  | - Q_rem = clamp(Q_rem + ΔQ, 0, 2000 mAh)                      |  |
+|  +-------------------------------+-------------------------------+  |
+|                                  |                                  |
+|  +-------------------------------v-------------------------------+  |
+|  | 静态开路电压漂移自动校准 (OCV Calibrator)                      |  |
+|  | - 条件: |I| < 20mA 持续 5 秒 (车辆静置/停车平稳态)             |  |
+|  | - 动作: 查表 11 节点锂电 OCV 曲线计算 SoC_ocv                  |  |
+|  | - 更新: Q_rem = 2000 * SoC_ocv / 100 (消除长时累积零漂)       |  |
+|  +-------------------------------+-------------------------------+  |
+|                                  |                                  |
+|  +-------------------------------v-------------------------------+  |
+|  | 状态派发与续航预测 (Event Broadcast)                          |  |
+|  | - SoC% = round(Q_rem / 2000 * 100)                             |  |
+|  | - 写入全局 SystemState，驱动左侧 Dock 电池图标平滑更新 (🔋/⚡)  |  |
+|  +---------------------------------------------------------------+  |
++---------------------------------------------------------------------+
+```
+
+1. **芯片配置与校准推导**：
+   - 寄存器配置字 `0x4127`（16次平均采样，1.1ms 转换周期）；
+   - 分流电阻 $R_{\text{shunt}} = 20\text{ m}\Omega$，选取电流分辨率 $\text{Current\_LSB} = 0.1\text{ mA/bit}$，推导出校准寄存器：
+     $$\text{CAL} = \text{trunc}\left(\frac{0.00512}{0.0001 \times 0.02}\right) = 2560\ (0\text{x}0\text{A}00)$$
+2. **复合算法优势**：
+   - **动态抗压降**：行车大功率时电压波动不引起电量跳变，积分电量极度稳定；
+   - **静态抗漂移**：静置（$|I| < 20\text{mA}$ 保持 5 秒）自动以 11 节点 OCV 标定表对冲归零，长效精准。
+
+---
+
+## 6. 代码工程目录结构设计 (PlatformIO 推荐结构)
+
+```text
+m5-vehicle-tracker/
+├── platformio.ini              # PlatformIO 项目依赖与编译配置 (board = m5stack-tab5)
+├── src/
+│   ├── main.cpp                # 系统入口、FreeRTOS 任务初始化与分发
+│   ├── config.h                # 引脚配置、常量参数、波特率
+│   ├── model/
+│   │   └── SystemState.h       # 全局系统状态结构体（线程安全数据交换池）
+│   ├── driver/
+│   │   ├── GnssDriver.h/.cpp   # NEO-M9N 串口与车载模式/死区调优
+│   │   ├── BaroDriver.h/.cpp   # Module GNSS 板载 BMP280 气压/温度 I2C 驱动
+│   │   ├── CompassDriver.h/.cpp# Module GNSS 板载 BMM150 地磁电子罗盘驱动
+│   │   ├── ImuDriver.h/.cpp    # Tab5 板载 BMI270 6 轴姿态驱动
+│   │   ├── RtcDriver.h/.cpp    # Tab5 板载 RX8130CE 硬件 RTC 读写
+│   │   ├── Ina226Driver.h/.cpp # Tab5 板载 INA226 (0x40) 寄存器底层驱动
+│   │   └── HapticDriver.h/.cpp # 触觉马达震动控制
+│   ├── service/
+│   │   ├── AltitudeFusion.h/.cpp # 气压计与 GNSS 高程互补滤波算法
+│   │   ├── DeadReckoningService.h/.cpp # 盲区 6 轴 IMU 陀螺仪偏航角与速度推算
+│   │   ├── TunnelService.h/.cpp  # 全国特长隧道自动吸附与单维轴线约束引擎
+│   │   ├── TunnelDb.h            # 全国特长隧道微型数据库 (LittleFS / PSRAM)
+│   │   ├── PowerMonitorService.h/.cpp # INA226 复合库仑计服务 (安时积分 + OCV)
+│   │   ├── TimeService.h/.cpp  # 双源时钟调度（NTP / GPS / RTC 闭环）
+│   │   ├── AgpsService.h/.cpp  # u-blox AssistNow 网络拉取与注入
+│   │   ├── WeatherService.h/.cpp # GPS 坐标反查实时天气 (12h 双时段)
+│   │   ├── TrackLogger.h/.cpp  # GPX 轨迹双流并行落盘与自动切片
+│   │   └── NetworkManager.h/.cpp # ESP32-C6 Multi-SSID 管理、Web 配网与文件下载
+│   └── ui/
+│       ├── UiManager.h/.cpp    # 屏幕旋转设置、全宽 1120x720 视口管理
+│       ├── components/
+│       │   ├── LeftDock.h/.cpp       # 左侧 160px 常驻 Dock (主页/时钟/GPS/WiFi/电池/天气/工具)
+│       │   └── PageIndicator.h/.cpp  # 底部悬浮页码指示器 (8圆点，3秒自动隐藏)
+│       └── pages/
+│           ├── BasePage.h            # 页面基类（封装 1120x720 安全视口裁剪）
+│           ├── PageInit.h/.cpp       # 开机自检与初始化搜星页
+│           ├── PageWifiConfig.h/.cpp # Wi-Fi 配网二维码与引导页
+│           ├── Page1Dashboard.h/.cpp # 核心驾驶仪表盘 (360px大罗盘/车速热区/长按2s清零)
+│           ├── Page2Altitude.h/.cpp  # 海拔高度1050px宽连续折线图与极值详情
+│           ├── Page3Speed.h/.cpp     # 车速变化1050px宽连续折线图与最高时速 (MAX/AVG)
+│           ├── Page4Trail.h/.cpp     # 矢量自驾轨迹地图 (全画幅自适应铺满+悬浮HUD)
+│           ├── Page5Dynamics.h/.cpp  # 车辆动态G值圆 (400px靶图) 与姿态坡度水平仪
+│           ├── Page6Weather.h/.cpp   # 12小时大字双时段气象预报 (前后12h一键切换)
+│           ├── Page7WorldClock.h/.cpp # 多时区世界时钟 2x2 宽幅 530x320 大卡片
+│           ├── SubPageEditClock.h/.cpp # 世界时钟卡片修改子页 (GPS经度定位 / 区域大热区)
+│           ├── PageToolsGrid.h/.cpp  # 2x2 宽幅工具箱主页 (支持>4自动扩页)
+│           └── tools/
+│               ├── ToolTfManager.h/.cpp  # 工具1: TF卡存储管理 (格式化/轨迹列表/WiFi直传)
+│               ├── ToolWifi.h/.cpp       # 工具2: Wi-Fi网络管理 (已存列表/删除/增加网络)
+│               ├── ToolGnss.h/.cpp       # 工具3: GPS卫星详情 (四星分布/载噪比C/N0柱状图)
+│               └── ToolSettings.h/.cpp   # 工具4: 屏幕背光与系统偏好/库仑计实时功耗
+```
