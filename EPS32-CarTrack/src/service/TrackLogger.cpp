@@ -1,7 +1,10 @@
 #include "service/TrackLogger.h"
+#include "service/TimeService.h"
 #include <SPI.h>
 #include <time.h>
 #include <math.h>
+
+extern TimeService g_timeService;
 
 static constexpr double PI_VAL   = 3.14159265358979323846;
 static constexpr double EE_VAL   = 0.00669342162296594323;
