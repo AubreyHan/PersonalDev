@@ -57,7 +57,10 @@ bool GnssDriver::init() {
         _myGNSS.begin(Serial1, 200, true);
     }
 
-    _isInitialized = true;
+    _isInitialized    = true;
+    _lastValidFixMs   = millis();
+    _lastHotRestartMs = millis();
+
     if (_isOnline) {
         configureAutomotiveParams();
         queryMonRf();
@@ -69,6 +72,51 @@ bool GnssDriver::init() {
     state.unlock();
 
     return _isOnline;
+}
+
+void GnssDriver::setSignalFilterStage(bool strictTrackingMode) {
+    if (!_isOnline) return;
+    _strictFilterActive = strictTrackingMode;
+    if (strictTrackingMode) {
+        // Stage 2 (Stable 3D Fix Tracking): reject multipath reflections
+        _myGNSS.setVal8(UBLOX_CFG_NAVSPG_INFIL_MINELEV, 10);
+        _myGNSS.setVal8(UBLOX_CFG_NAVSPG_INFIL_MINCNO, 20);
+        Serial.println("[GNSS] Filter Stage -> TRACKING (minElev=10 deg, minCNO=20 dBHz)");
+    } else {
+        // Stage 1 (Fast Acquisition after indoor/garage exit): accept weak emerging satellites
+        _myGNSS.setVal8(UBLOX_CFG_NAVSPG_INFIL_MINELEV, 5);
+        _myGNSS.setVal8(UBLOX_CFG_NAVSPG_INFIL_MINCNO, 14);
+        Serial.println("[GNSS] Filter Stage -> ACQUISITION (minElev=5 deg, minCNO=14 dBHz)");
+    }
+}
+
+void GnssDriver::triggerHotStartReacquisition() {
+    if (!_isOnline) return;
+    Serial.println("[GNSS] Triggering Hot-Start Baseband Reset (UBX-CFG-RST, navBbrMask=0x0000) for fast indoor->outdoor lock...");
+
+    // UBX-CFG-RST (0x06, 0x04), length 4:
+    // navBbrMask = 0x0000 (Hotstart: preserve all ephemeris/almanac)
+    // resetMode  = 0x02   (Controlled software reset - GNSS only)
+    uint8_t frame[12] = {
+        0xB5, 0x62, 0x06, 0x04, 0x04, 0x00,
+        0x00, 0x00, 0x02, 0x00,
+        0x00, 0x00
+    };
+    uint8_t ck_a = 0, ck_b = 0;
+    for (int i = 2; i < 10; i++) {
+        ck_a += frame[i];
+        ck_b += ck_a;
+    }
+    frame[10] = ck_a;
+    frame[11] = ck_b;
+    Serial1.write(frame, 12);
+    delay(80);
+
+    // Ensure Stage 1 open acquisition filter and request fresh UTC + Position injection
+    setSignalFilterStage(false);
+    _myGNSS.setAutoPVT(true);
+    _needAssistReinject = true;
+    _lastHotRestartMs   = millis();
 }
 
 bool GnssDriver::configureAutomotiveParams() {
@@ -86,9 +134,8 @@ bool GnssDriver::configureAutomotiveParams() {
     // 4. Static Hold Threshold: 50 cm/s (0.5 m/s ~ 1.8 km/h)
     _myGNSS.setVal8(UBLOX_CFG_MOT_GNSSSPEED_THRS, 50);
 
-    // 5. Elevation Mask 12 deg & C/N0 Threshold 24 dBHz (SPEC 2.4)
-    _myGNSS.setVal8(UBLOX_CFG_NAVSPG_INFIL_MINELEV, 12);
-    _myGNSS.setVal8(UBLOX_CFG_NAVSPG_INFIL_MINCNO, 24);
+    // 5. Start in Stage 1 Acquisition Mode so emerging from indoor/garage locks immediately
+    setSignalFilterStage(false);
 
     // 6. Enable 4-Constellation Concurrent Tracking (BDS + GPS + GLO + GAL)
     _myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GPS);
@@ -161,7 +208,7 @@ bool GnssDriver::injectPosition(int32_t latE7, int32_t lonE7, int32_t altCm, uin
 void GnssDriver::queryMonRf() {
     if (!_isOnline) return;
     UBX_MON_RF_data_t rfInfo;
-    if (_myGNSS.getRFinformation(&rfInfo, 80) && rfInfo.header.nBlocks > 0) {
+    if (_myGNSS.getRFinformation(&rfInfo, 50) && rfInfo.header.nBlocks > 0) {
         uint8_t  antStat = rfInfo.blocks[0].antStatus;
         uint8_t  jam     = rfInfo.blocks[0].flags.bits.jammingState;
         uint16_t noise   = rfInfo.blocks[0].noisePerMS;
@@ -179,6 +226,7 @@ void GnssDriver::update() {
     if (!_isInitialized || !_isOnline) return;
 
     _myGNSS.checkUblox();
+    unsigned long now = millis();
 
     if (_myGNSS.getPVT()) {
         uint8_t fix     = _myGNSS.getFixType();
@@ -195,12 +243,26 @@ void GnssDriver::update() {
         float   vdop    = _myGNSS.getVerticalDOP() / 100.0f;
         uint8_t numSats = _myGNSS.getSIV();
 
+        // Two-Stage Dynamic Signal Filter Switching (Solves indoor->outdoor slow lock)
+        if (valid) {
+            _lastValidFixMs = now;
+            if (_firstValidFixMs == 0) _firstValidFixMs = now;
+            if (!_strictFilterActive && (now - _firstValidFixMs >= 10000) && numSats >= 6) {
+                setSignalFilterStage(true);
+            }
+        } else {
+            _firstValidFixMs = 0;
+            if (_strictFilterActive) {
+                setSignalFilterStage(false);
+            }
+        }
+
         if (speed < MotionPowerConfig::STANDSTILL_HEADING_LOCK_KMH) {
             speed = 0.0f;
         }
 
         // Kinematic outlier rejection (> 180 km/h step jump)
-        uint32_t nowEpoch = millis() / 1000;
+        uint32_t nowEpoch = now / 1000;
         bool isPlausible = true;
         if (valid && _lastPlausibleEpoch > 0) {
             uint32_t dt = nowEpoch - _lastPlausibleEpoch;
@@ -265,8 +327,14 @@ void GnssDriver::update() {
         state.unlock();
     }
 
-    unsigned long now = millis();
-    if (now - _lastMonRfTimeMs >= 2000) {
+    // 45-Second No-Fix Auto Hot-Start Watchdog (Prevents indoor Doppler divergence lock-up)
+    if ((now - _lastValidFixMs >= 45000) && (now - _lastHotRestartMs >= 45000)) {
+        triggerHotStartReacquisition();
+    }
+
+    // Only poll MON-RF every 5s when fixed, or every 10s when searching so PVT stream is never blocked
+    uint32_t monInterval = (_firstValidFixMs > 0) ? 5000 : 10000;
+    if (now - _lastMonRfTimeMs >= monInterval) {
         _lastMonRfTimeMs = now;
         queryMonRf();
     }
