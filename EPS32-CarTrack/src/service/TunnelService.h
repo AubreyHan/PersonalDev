@@ -11,6 +11,7 @@ public:
 
 private:
     const TunnelInfo* _activeTunnel     = nullptr;
+    TunnelInfo*       _psramTunnels     = nullptr;
     float             _progressMeters   = 0.0f;
     uint16_t          _tunnelCount      = 0;
 };

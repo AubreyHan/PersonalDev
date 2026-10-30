@@ -391,10 +391,13 @@ void GnssDriver::update() {
                 ctx.gnss.headingDeg = heading;
             }
 
-            ctx.gnss.numBdsSats = (numSats >= 4) ? (uint8_t)(numSats * 0.42f) : numSats;
-            ctx.gnss.numGpsSats = (numSats >= 4) ? (uint8_t)(numSats * 0.32f) : 0;
-            ctx.gnss.numGloSats = (numSats >= 4) ? (uint8_t)(numSats * 0.15f) : 0;
-            ctx.gnss.numGalSats = numSats - (ctx.gnss.numBdsSats + ctx.gnss.numGpsSats + ctx.gnss.numGloSats);
+            // Real constellation breakdown is continuously maintained by processNavSatData(UBX_NAV_SAT)
+            if (ctx.gnss.numBdsSats == 0 && ctx.gnss.numGpsSats == 0 && numSats > 0) {
+                ctx.gnss.numBdsSats = (numSats >= 4) ? (uint8_t)(numSats * 0.42f) : numSats;
+                ctx.gnss.numGpsSats = (numSats >= 4) ? (uint8_t)(numSats * 0.32f) : 0;
+                ctx.gnss.numGloSats = (numSats >= 4) ? (uint8_t)(numSats * 0.15f) : 0;
+                ctx.gnss.numGalSats = numSats - (ctx.gnss.numBdsSats + ctx.gnss.numGpsSats + ctx.gnss.numGloSats);
+            }
 
             ctx.gnss.year        = yr;
             ctx.gnss.month       = mo;
