@@ -148,11 +148,25 @@ void PowerMonitorService::update() {
     if (_isStandbySleep) {
         // In standby sleep mode: check for wake conditions
         if (chargerRestored || sustainedVehicleMotion) {
+            const char* wakeReason = chargerRestored ? "Car charger power restored" : "Sustained vehicle motion detected";
             state.unlock();
-            exitStandstillStandby();
+            exitStandstillStandby(wakeReason);
             return;
         }
     } else {
+        // Low battery critical cut-off protection (<6.0V on 2S battery)
+        if (vBus > 3.0f && vBus < CoulombCounterConfig::CUTOFF_VOLTAGE_V) {
+            char lowBattMsg[96];
+            snprintf(lowBattMsg, sizeof(lowBattMsg), "Critical low battery (%.2fV < %.2fV), auto shutdown",
+                     vBus, CoulombCounterConfig::CUTOFF_VOLTAGE_V);
+            state.unlock();
+            TrackLogger::instance().closeActiveStreams();
+            TrackLogger::instance().logPowerEvent("SHUTDOWN_LOW_BATT", lowBattMsg);
+            vTaskDelay(pdMS_TO_TICKS(50));
+            M5.Power.powerOff();
+            return;
+        }
+
         // Normal running mode: check for standstill sleep condition
         // If external power is connected (charging in car), never sleep!
         if (hasExtPwr || sustainedVehicleMotion || instantDisturbance) {
@@ -180,7 +194,14 @@ void PowerMonitorService::enterStandstillStandby() {
     int32_t lonE7     = state.getContextUnsafe().gnss.lonE7;
     int32_t altCm     = (int32_t)(state.getContextUnsafe().gnss.altitudeMeters * 100.0f);
     _savedBrightness  = state.getContextUnsafe().screenBrightness;
+    float   vBus      = state.getContextUnsafe().power.busVoltageV;
+    float   soc       = state.getContextUnsafe().power.batterySocPercent;
     state.unlock();
+
+    char standbyMsg[96];
+    snprintf(standbyMsg, sizeof(standbyMsg), "Standstill 20min timeout on battery (Batt: %.2fV, %u%%)",
+             vBus, (unsigned)soc);
+    TrackLogger::instance().logPowerEvent("STANDBY_ENTER", standbyMsg);
 
     if (gnssValid && latE7 != 0) {
         Preferences prefs;
@@ -201,11 +222,23 @@ void PowerMonitorService::enterStandstillStandby() {
     Serial.println("[POWER] Display turned off, CPU throttled to 80MHz (Monitoring 6-axis IMU & Charger Wakeup).");
 }
 
-void PowerMonitorService::exitStandstillStandby() {
-    Serial.println("[POWER] >>> WAKEUP TRIGGERED: Car Charger Restored OR Sustained Vehicle Movement! <<<");
+void PowerMonitorService::exitStandstillStandby(const char* reason) {
+    Serial.printf("[POWER] >>> WAKEUP TRIGGERED: %s <<<\n", reason ? reason : "Unknown");
     _isStandbySleep = false;
     _standstillStartMs = millis();
     _sustainedMoveStartMs = 0;
+
+    // Log Wakeup event to TF Card FIFO log
+    SystemState& state = SystemState::instance();
+    state.lock();
+    float vBus = state.getContextUnsafe().power.busVoltageV;
+    float soc  = state.getContextUnsafe().power.batterySocPercent;
+    state.unlock();
+
+    char wakeMsg[128];
+    snprintf(wakeMsg, sizeof(wakeMsg), "%s (Batt: %.2fV, %u%%)",
+             reason ? reason : "Wakeup", vBus, (unsigned)soc);
+    TrackLogger::instance().logPowerEvent("STANDBY_WAKEUP", wakeMsg);
 
     // Restore full 400MHz dual-core performance
     setCpuFrequencyMhz(400);
