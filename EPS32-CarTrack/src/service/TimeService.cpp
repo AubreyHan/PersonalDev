@@ -170,6 +170,39 @@ void TimeService::update() {
     }
 }
 
+// Calculate exact US/EU Daylight Saving Time (DST)
+// US DST: Second Sunday in March to First Sunday in November at 02:00
+static bool isUsDst(int year, int month, int day, int hour) {
+    if (month < 3 || month > 11) return false;
+    if (month > 3 && month < 11) return true;
+
+    // Helper: day of week (0 = Sunday, 1 = Monday, ...) via Zeller's-like formula
+    auto getDOW = [](int y, int m, int d) -> int {
+        struct tm t = {};
+        t.tm_year = y - 1900;
+        t.tm_mon  = m - 1;
+        t.tm_mday = d;
+        mktime(&t);
+        return t.tm_wday;
+    };
+
+    if (month == 3) {
+        // Second Sunday in March: falls between 8th and 14th
+        int secondSun = 8 + (7 - getDOW(year, 3, 8)) % 7;
+        if (day > secondSun) return true;
+        if (day == secondSun) return (hour >= 2);
+        return false;
+    }
+    if (month == 11) {
+        // First Sunday in November: falls between 1st and 7th
+        int firstSun = 1 + (7 - getDOW(year, 11, 1)) % 7;
+        if (day < firstSun) return true;
+        if (day == firstSun) return (hour < 2);
+        return false;
+    }
+    return false;
+}
+
 void TimeService::getLocalTimeParts(int16_t tzOffsetMin, bool autoDst, uint16_t& year, uint8_t& month, uint8_t& day, uint8_t& hour, uint8_t& minute, uint8_t& second, uint8_t& weekday) {
     time_t utcSec = time(nullptr);
     if (utcSec < 1700000000) {
@@ -177,13 +210,12 @@ void TimeService::getLocalTimeParts(int16_t tzOffsetMin, bool autoDst, uint16_t&
         utcSec = 1793342128 + (millis() / 1000);
     }
 
+    struct tm utcTm;
+    gmtime_r(&utcSec, &utcTm);
+
     int16_t effectiveOffsetMin = tzOffsetMin;
     if (autoDst) {
-        struct tm tmp;
-        gmtime_r(&utcSec, &tmp);
-        int m = tmp.tm_mon + 1;
-        // Approximate US/EU Daylight Saving Time window (March to November)
-        if (m >= 4 && m <= 10) {
+        if (isUsDst(utcTm.tm_year + 1900, utcTm.tm_mon + 1, utcTm.tm_mday, utcTm.tm_hour)) {
             effectiveOffsetMin += 60;
         }
     }
