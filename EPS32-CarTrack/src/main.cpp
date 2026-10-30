@@ -1,186 +1,142 @@
 #include <M5Unified.h>
-#include <Wire.h>
-#include "config.h"
-#include "model/SystemState.h"
-#include "driver/PowerDriver.h"
-#include "driver/BaroDriver.h"
-#include "driver/RtcDriver.h"
-#include "driver/GnssDriver.h"
-#include "driver/ButtonDriver.h"
-#include "driver/ft6336_fw_updater.h"
-#include "service/AltitudeFusion.h"
-#include "service/DeadReckoningService.h"
-#include "service/TunnelService.h"
-#include "service/PowerMonitorService.h"
-#include "service/TimeService.h"
-#include "service/WeatherService.h"
-#include "service/TrackLogger.h"
-#include "service/NetworkManager.h"
-#include "ui/UiManager.h"
-
-// FreeRTOS Task Handles
-TaskHandle_t gnssTaskHandle = NULL;
-TaskHandle_t netTaskHandle = NULL;
-TaskHandle_t uiTaskHandle = NULL;
-
-void gnssTask(void* pvParameters) {
-    for (;;) {
-        // High frequency sensor reading & navigation processing (approx 20Hz)
-        GnssDriver::instance().update();
-        BaroDriver::instance().update();
-
-        float altM = 0.0f, spdKmh = 0.0f, hdop = 99.0f, heading = 0.0f;
-        bool isValid = false;
-        int32_t latE7 = 0, lonE7 = 0;
-
-        SystemState& state = SystemState::instance();
-        state.lock();
-        const GnssData& g = state.getContextUnsafe().gnss;
-        altM = g.altitudeMeters;
-        spdKmh = g.speedKmh;
-        hdop = g.hdop;
-        heading = g.headingDeg;
-        isValid = g.isValid;
-        latE7 = g.latE7;
-        lonE7 = g.lonE7;
-        state.unlock();
-
-        // Sensor fusion
-        AltitudeFusion::instance().update(altM, isValid, hdop, spdKmh);
-        DeadReckoningService::instance().update(isValid, spdKmh, heading, latE7, lonE7);
-        TunnelService::instance().update(latE7, lonE7, heading, spdKmh, isValid);
-        PowerMonitorService::instance().update();
-
-        vTaskDelay(pdMS_TO_TICKS(50));
-    }
-}
-
-void netTask(void* pvParameters) {
-    for (;;) {
-        WifiNetworkManager::instance().update();
-
-        bool isWifi = false;
-        bool gnssValid = false;
-        double lat = 0.0, lon = 0.0;
-
-        SystemState& state = SystemState::instance();
-        state.lock();
-        const SystemContext& ctx = state.getContextUnsafe();
-        isWifi = ctx.isWifiConnected;
-        gnssValid = ctx.gnss.isValid;
-        lat = ctx.gnss.latitude;
-        lon = ctx.gnss.longitude;
-        state.unlock();
-
-        TimeService::instance().update(isWifi, gnssValid);
-        WeatherService::instance().update(isWifi, gnssValid, lat, lon);
-
-        vTaskDelay(pdMS_TO_TICKS(500));
-    }
-}
 
 void setup() {
     auto cfg = M5.config();
-    cfg.internal_imu = true;
+    cfg.internal_imu = false;
     M5.begin(cfg);
 
-    Serial.begin(BaudConfig::SERIAL_DEBUG_BAUD);
+    Serial.begin(115200);
     delay(200);
 
     Serial.println("\n=======================================================");
-    Serial.println("  M5Track-M9N High-Precision Vehicle Dashboard v1.0.0");
+    Serial.println("  M5Core2 + M5GO Bottom2 Battery Diagnostic Tool");
     Serial.println("=======================================================");
 
-    // 0. Check and upgrade Core2 FT6336U touch panel firmware (M5Tools v17)
-    ft6336_fw_updater();
+    // Make sure AXP192 battery detection and ADC are active
+    // Reg 0x32: bit 6 is Battery detection enable
+    uint8_t reg32 = M5.In_I2C.readRegister8(0x34, 0x32, 400000);
+    M5.In_I2C.writeRegister8(0x34, 0x32, reg32 | 0b01000010, 400000);
 
-    // 1. Initialize System State
-    SystemState::instance().init();
+    // Reg 0x82: ADC enable 1 (all on = 0xFF)
+    M5.In_I2C.writeRegister8(0x34, 0x82, 0xFF, 400000);
 
-    // 2. Initialize Hardware Drivers
-    // Module GNSS (M135) is powered by M-Bus +3.3V (AXP192 DCDC1, always ON).
-    // IMPORTANT: Keep ExtOutput FALSE on Core2! Enabling setExtOutput(true) drives
-    // N_VBUSEN high on AXP192, which disconnects USB VBUS input and drains the
-    // battery until AXP192 hits 3.0V VOFF auto-shutdown after a few minutes!
-    M5.Power.setExtOutput(false);
+    // Enable charging: 4.2V, 500mA
     M5.Power.setBatteryCharge(true);
-    M5.Power.setChargeCurrent(390);
     M5.Power.setChargeVoltage(4200);
-    delay(300); // Allow GNSS module & sensors to stabilize
+    M5.Power.setChargeCurrent(500);
 
-    PowerDriver::instance().init();
-    ButtonDriver::instance().init();
-    RtcDriver::instance().init();
-
-    // M-Bus I2C shares the Core2 internal bus (G21/G22) managed by M5.In_I2C.
-    // Diagnostic scan of M-Bus I2C (M5.In_I2C: SDA 21, SCL 22)
-    Serial.println("\n[I2C] Scanning M-Bus I2C (M5.In_I2C: SDA 21, SCL 22)...");
-    bool scanResult[120] = {false};
-    M5.In_I2C.scanID(scanResult, 400000);
-    uint8_t nDevices = 0;
-    for (uint8_t address = 8; address < 120; ++address) {
-        if (scanResult[address]) {
-            Serial.printf("[I2C] Device found at 0x%02X", address);
-            if (address == 0x76 || address == 0x77) Serial.print(" -> BMP280 Barometer (Module GNSS)");
-            else if (address == 0x68 || address == 0x69) Serial.print(" -> BMI270 6-Axis IMU (Module GNSS)");
-            else if (address == 0x10) Serial.print(" -> BMM150 Magnetometer (Module GNSS)");
-            else if (address == 0x40 || address == 0x45) Serial.print(" -> INA226 Power Monitor (Base 16340)");
-            else if (address == 0x34) Serial.print(" -> AXP192 PMIC (Core2 Internal)");
-            else if (address == 0x38) Serial.print(" -> FT6336U Touch (Core2 Internal)");
-            else if (address == 0x51) Serial.print(" -> BM8563 RTC (Core2 Internal)");
-            Serial.println();
-            nDevices++;
-        }
-    }
-    Serial.printf("[I2C] Scan complete: %d device(s) detected.\n\n", nDevices);
-
-    BaroDriver::instance().init();
-    PowerMonitorService::instance().init();
-
-    // GNSS NEO-M9N
-    GnssDriver::instance().init();
-
-    // 3. Initialize Services
-    AltitudeFusion::instance().init();
-    DeadReckoningService::instance().init();
-    TunnelService::instance().init();
-    TimeService::instance().init();
-    WeatherService::instance().init();
-    TrackLogger::instance().init();
-    WifiNetworkManager::instance().init();
-
-    // 4. Initialize UI Manager
-    UiManager::instance().init();
-
-    // 5. Create Background FreeRTOS Tasks on Core 0
-    xTaskCreatePinnedToCore(gnssTask, "gnssTask", 16384, NULL, 5, &gnssTaskHandle, 0);
-    xTaskCreatePinnedToCore(netTask, "netTask", 10240, NULL, 2, &netTaskHandle, 0);
-
-    Serial.println("[SYSTEM] System initialization complete. Starting main loop.");
+    M5.Display.setRotation(1);
+    M5.Display.fillScreen(TFT_BLACK);
+    M5.Display.setTextDatum(top_left);
+    M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
 }
 
 void loop() {
     M5.update();
-    PowerDriver::instance().update();
-    // Run SD TrackLogger on Core 1 sequentially with UiManager to avoid cross-core
-    // SPI bus contention between SdFat and M5.Display (both share VSPI on Core2).
-    TrackLogger::instance().update();
-    UiManager::instance().update();
 
+    // Read AXP192 status
+    int16_t vbatMv = M5.Power.getBatteryVoltage();
+    int32_t ibatMa = M5.Power.getBatteryCurrent();
+    int32_t soc    = M5.Power.getBatteryLevel();
+    bool    chg    = M5.Power.isCharging();
+    int16_t vbusMv = M5.Power.getVBUSVoltage();
+    float   ibusMa = M5.Power.Axp192.getVBUSCurrent();
+
+    uint8_t reg00 = M5.In_I2C.readRegister8(0x34, 0x00, 400000);
+    uint8_t reg01 = M5.In_I2C.readRegister8(0x34, 0x01, 400000);
+    uint8_t reg32 = M5.In_I2C.readRegister8(0x34, 0x32, 400000);
+    uint8_t reg33 = M5.In_I2C.readRegister8(0x34, 0x33, 400000);
+    uint8_t reg82 = M5.In_I2C.readRegister8(0x34, 0x82, 400000);
+
+    bool batPresent = (reg01 & 0x20) != 0;
+
+    // Print to Serial every 1 second
     static uint32_t lastPrint = 0;
-    if (millis() - lastPrint > 2000) {
+    if (millis() - lastPrint > 1000) {
         lastPrint = millis();
-        uint32_t gnssHwm = gnssTaskHandle ? (uint32_t)uxTaskGetStackHighWaterMark(gnssTaskHandle) : 0;
-        Serial.printf("[LOOP] Heartbeat: Free Heap = %d KB | gnssStackFree = %u B | VBUS = %d mV (%.1f mA) | VBAT = %d mV (%+d mA, %d%%, Chg=%d)\n", 
-                      (int)(ESP.getFreeHeap() / 1024), 
-                      gnssHwm,
-                      (int)M5.Power.getVBUSVoltage(),
-                      M5.Power.Axp192.getVBUSCurrent(),
-                      (int)M5.Power.getBatteryVoltage(),
-                      (int)M5.Power.getBatteryCurrent(),
-                      (int)M5.Power.getBatteryLevel(),
-                      (int)M5.Power.isCharging());
+        Serial.printf("[BATTERY] VBAT=%d mV | IBAT=%+d mA | SOC=%d%% | Chg=%d | Present=%d | VBUS=%d mV (%.1f mA) | Reg[00=%02X, 01=%02X, 32=%02X, 33=%02X, 82=%02X]\n",
+                      vbatMv, ibatMa, soc, (int)chg, (int)batPresent, vbusMv, ibusMa,
+                      reg00, reg01, reg32, reg33, reg82);
     }
 
-    delay(8); // Poll FT6336U touch at ~125Hz; UiManager renders at 20 FPS or immediately on touch
+    // Refresh LCD
+    static uint32_t lastDraw = 0;
+    if (millis() - lastDraw > 250) {
+        lastDraw = millis();
+
+        M5.Display.startWrite();
+        // Title banner
+        M5.Display.fillRect(0, 0, 320, 28, 0x18E3);
+        M5.Display.setTextColor(TFT_WHITE, 0x18E3);
+        M5.Display.setTextSize(1);
+        M5.Display.drawString("  Core2 + M5GO Bottom2 Power Monitor", 8, 6);
+
+        // Battery Voltage Card
+        uint16_t cardBg = (vbatMv > 3000) ? 0x0320 : 0x4000;
+        uint16_t vbatColor = (vbatMv > 3200) ? TFT_GREEN : ((vbatMv > 2500) ? TFT_YELLOW : TFT_RED);
+        M5.Display.fillRoundRect(8, 34, 150, 75, 6, cardBg);
+        M5.Display.drawRoundRect(8, 34, 150, 75, 6, vbatColor);
+        M5.Display.setTextColor(0xBDD7, cardBg);
+        M5.Display.drawString("BATTERY VOLTAGE", 16, 40);
+        M5.Display.setTextColor(vbatColor, cardBg);
+        M5.Display.setTextSize(2);
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%d mV", vbatMv);
+        M5.Display.drawString(buf, 16, 56);
+        M5.Display.setTextSize(1);
+        snprintf(buf, sizeof(buf), "%.2f V | %d%%", vbatMv / 1000.0f, soc);
+        M5.Display.drawString(buf, 16, 80);
+
+        // Status Card
+        M5.Display.fillRoundRect(164, 34, 148, 75, 6, 0x18E3);
+        M5.Display.drawRoundRect(164, 34, 148, 75, 6, TFT_WHITE);
+        M5.Display.setTextColor(0xBDD7, 0x18E3);
+        M5.Display.drawString("BATTERY STATUS", 172, 40);
+        M5.Display.setTextSize(1);
+        M5.Display.setTextColor(batPresent ? TFT_GREEN : TFT_RED, 0x18E3);
+        M5.Display.drawString(batPresent ? "Present: YES" : "Present: NO (0V)", 172, 58);
+        M5.Display.setTextColor(chg ? TFT_CYAN : TFT_WHITE, 0x18E3);
+        snprintf(buf, sizeof(buf), "Chg: %s (%+d mA)", chg ? "CHARGING" : "STANDBY", ibatMa);
+        M5.Display.drawString(buf, 172, 75);
+
+        // USB / VBUS Card
+        M5.Display.fillRoundRect(8, 114, 304, 40, 4, 0x10A2);
+        M5.Display.setTextColor(TFT_WHITE, 0x10A2);
+        snprintf(buf, sizeof(buf), "VBUS (USB): %d mV | Current: %.1f mA", vbusMv, ibusMa);
+        M5.Display.drawString(buf, 16, 126);
+
+        // Raw Registers Card
+        M5.Display.fillRoundRect(8, 158, 304, 45, 4, 0x0841);
+        M5.Display.setTextColor(TFT_YELLOW, 0x0841);
+        snprintf(buf, sizeof(buf), "AXP192 Regs: [00]=0x%02X [01]=0x%02X [32]=0x%02X", reg00, reg01, reg32);
+        M5.Display.drawString(buf, 16, 165);
+        snprintf(buf, sizeof(buf), "             [33]=0x%02X [82]=0x%02X", reg33, reg82);
+        M5.Display.drawString(buf, 16, 182);
+
+        // Bottom Touch Buttons Indicators
+        M5.Display.fillRect(0, 208, 320, 32, TFT_BLACK);
+        M5.Display.drawFastHLine(0, 208, 320, 0x39E7);
+        M5.Display.setTextColor(M5.BtnA.isPressed() ? TFT_GREEN : 0x7BEF, TFT_BLACK);
+        M5.Display.drawString("BtnA: 500mA", 20, 218);
+        M5.Display.setTextColor(M5.BtnB.isPressed() ? TFT_GREEN : 0x7BEF, TFT_BLACK);
+        M5.Display.drawString("BtnB: Chg On/Off", 120, 218);
+        M5.Display.setTextColor(M5.BtnC.isPressed() ? TFT_GREEN : 0x7BEF, TFT_BLACK);
+        M5.Display.drawString("BtnC: Vib Test", 230, 218);
+
+        M5.Display.endWrite();
+    }
+
+    if (M5.BtnC.wasPressed()) {
+        M5.Power.setVibration(200);
+        delay(150);
+        M5.Power.setVibration(0);
+    }
+
+    if (M5.BtnB.wasPressed()) {
+        static bool chgEnable = true;
+        chgEnable = !chgEnable;
+        M5.Power.setBatteryCharge(chgEnable);
+    }
+
+    delay(10);
 }
