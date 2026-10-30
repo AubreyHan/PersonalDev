@@ -78,6 +78,31 @@ void PageInit::render(M5Canvas& canvas, const SystemContext& ctx) {
     int sy = cy + (int)(sinf(angleRad) * r);
     canvas.drawLine(cx, cy, sx, sy, UiColors::COLOR_PRIMARY);
 
+    // Render active satellite constellation positions on radar
+    for (uint8_t i = 0; i < ctx.gnss.activeSatCount && i < 32; i++) {
+        const auto& sat = ctx.gnss.sats[i];
+        if (sat.elev < 0) continue;
+        // Project elevation (90 at center, 0 at edge) and azimuth
+        float satR = ((90.0f - (float)sat.elev) / 90.0f) * (r - 12);
+        float satRad = ((float)sat.azim - 90.0f) * 0.0174532925f;
+        int px = cx + (int)(cosf(satRad) * satR);
+        int py = cy + (int)(sinf(satRad) * satR);
+
+        // Constellation color: BDS = Cyan-Green, GPS = Racing Yellow, GLO = Ice Blue, GAL = Amber
+        uint16_t sColor = UiColors::COLOR_PRIMARY;
+        if (sat.gnssId == 0) sColor = UiColors::COLOR_SECONDARY;      // GPS
+        else if (sat.gnssId == 6) sColor = UiColors::COLOR_BLUE;      // GLONASS
+        else if (sat.gnssId == 2) sColor = UiColors::COLOR_WARN;      // Galileo
+        else if (sat.gnssId == 3) sColor = UiColors::COLOR_PRIMARY;   // BeiDou
+
+        if (sat.used) {
+            canvas.fillCircle(px, py, 6, sColor);
+            canvas.drawCircle(px, py, 8, UiColors::COLOR_WHITE);
+        } else {
+            canvas.drawCircle(px, py, 5, sColor);
+        }
+    }
+
     canvas.setTextDatum(top_center);
     canvas.setTextColor(UiColors::COLOR_WHITE);
     canvas.setTextSize(2);
