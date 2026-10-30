@@ -533,17 +533,36 @@ bool TrackLogger::openFileForRead(const char* filename, FsFile& outFile) {
     return ok;
 }
 
-void TrackLogger::getFormattedUtcTimestamp(char* outBuf, size_t maxLen) {
+void TrackLogger::getFormattedGpsTimezoneTimestamp(char* outBuf, size_t maxLen) {
     if (!outBuf || maxLen == 0) return;
-    time_t nowSec = time(nullptr);
-    if (nowSec >= 1704067200) { // Year >= 2024
-        struct tm utcTm;
-        gmtime_r(&nowSec, &utcTm);
-        snprintf(outBuf, maxLen, "%04d-%02d-%02d %02d:%02d:%02d UTC",
-                 utcTm.tm_year + 1900, utcTm.tm_mon + 1, utcTm.tm_mday,
-                 utcTm.tm_hour, utcTm.tm_min, utcTm.tm_sec);
+    time_t utcSec = time(nullptr);
+    bool uncalibrated = (utcSec < 1704067200);
+    if (uncalibrated) {
+        utcSec = 1793342128 + (millis() / 1000); // 2026-10-30 baseline
+    }
+
+    // Read GPS-derived local timezone offset from primary dashboard clock (clocks[0])
+    int16_t tzMin = 480; // default UTC+8
+    bool autoDst  = false;
+    SystemState& state = SystemState::instance();
+    state.lock();
+    tzMin   = state.getContextUnsafe().clocks[0].tzOffsetMinutes;
+    autoDst = state.getContextUnsafe().clocks[0].autoDst;
+    state.unlock();
+
+    uint16_t yr = 2026;
+    uint8_t  mo = 10, dy = 30, hh = 0, mm = 0, ss = 0, wd = 0;
+    g_timeService.getLocalTimeParts(tzMin, autoDst, yr, mo, dy, hh, mm, ss, wd);
+
+    int tzHours = tzMin / 60;
+    int tzRemMin = abs(tzMin % 60);
+
+    if (uncalibrated) {
+        snprintf(outBuf, maxLen, "%04u-%02u-%02u %02u:%02u:%02u %+03d:%02d (UNCALIBRATED)",
+                 yr, mo, dy, hh, mm, ss, tzHours, tzRemMin);
     } else {
-        snprintf(outBuf, maxLen, "1970-01-01 00:00:00 UTC (UNCALIBRATED)");
+        snprintf(outBuf, maxLen, "%04u-%02u-%02u %02u:%02u:%02u %+03d:%02d",
+                 yr, mo, dy, hh, mm, ss, tzHours, tzRemMin);
     }
 }
 
@@ -602,7 +621,7 @@ bool TrackLogger::logPowerEvent(const char* eventType, const char* details) {
     }
 
     char timeStr[48];
-    getFormattedUtcTimestamp(timeStr, sizeof(timeStr));
+    getFormattedGpsTimezoneTimestamp(timeStr, sizeof(timeStr));
 
     char line[256];
     int len = snprintf(line, sizeof(line), "[%s] %s: %s\n", timeStr, eventType, details ? details : "");
