@@ -394,9 +394,10 @@ struct DualImuStatus {
 - **静止死区锁定 (`staticHoldThresh`)**：
   - `staticHoldThresh = 50` ($0.5\text{ m/s} \approx 1.8\text{ km/h}$)。
   - 触发行为：车速低于门限时，水平航向固定、车速强制报告为 0，经纬度锁止不动。
-- **信号质量门限 (`UBX-CFG-NAV5` & `UBX-CFG-NMEA`)**：
-  - `minElev = 12` (截断 $\le 12^\circ$ 低仰角地平线/机盖杂波)。
-  - `cnoThresh = 24` (低于 24 dBHz 弱星不参与 PVT 最小二乘解算)。
+- **两阶段动态信号质量门限与室内转室外快速重捕获 (`UBX-CFG-NAVSPG` & `UBX-CFG-RST`)**：
+  - **阶段 1（未定位搜星态 Acquisition Mode）**：`minElev = 5°`, `cnoThresh = 14 dBHz`，避免刚从室内/地库驶出室外时弱星被一刀切拦截导致无法收敛；
+  - **阶段 2（稳定 3D Fix 巡航态 Tracking Mode）**：连续 3D Fix 满 10 秒且卫星数 $\ge 6$ 后，动态切换为 `minElev = 10°`, `cnoThresh = 20 dBHz` 抑制机盖与立交桥多径杂波；一旦失锁立即退回阶段 1；
+  - **搜星发散自动无损热启动看门狗 (`UBX-CFG-RST`, `0x06 0x04`)**：未定位持续每满 45 秒，自动下发 `navBbrMask = 0x0000 (Hotstart)` + `resetMode = 0x02 (Controlled GNSS-only software reset)`，清理室内积攒的伪距残差与发散频偏窗口，随后立即重发 `UBX-MGA-INI-TIME_UTC` 与 `UBX-MGA-INI-POS_LLH`。
 - **多星系统配置 (`UBX-CFG-GNSS`)**：
   - `GPS (L1C/A)`：启用 (min 8, max 16 追踪通道)
   - `BeiDou (B1I)`：启用 (min 8, max 16 追踪通道)

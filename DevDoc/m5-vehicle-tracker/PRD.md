@@ -417,12 +417,14 @@ stateDiagram-v2
 
 ---
 
-### 3.4 双源自适应时钟引擎与无 GPS 下 Wi-Fi NTP 自动校时 (Dual-Source Time Engine & Wi-Fi NTP Sync)
+### 3.4 双源自适应时钟引擎与室内转室外极速重捕获机制 (Dual-Source Time Engine & Fast Re-Acquisition)
 - **底层时钟源**：NEO-M9N 卫星原子钟授时 + Tab5 板载 **RX8130CE 硬件 RTC**（I2C `0x32`，带 $70000\mu\text{F}$ 超级电容）+ 网络 NTP；
 - **无 GPS 信号下的 Wi-Fi NTP 自动校时**：
   - 当设备处于室内、地库或冷启动尚未捕获有效 GPS 信号（`!gnss.isValid`），但 **Wi-Fi 已成功联网**时，系统立即自动触发多服务器 NTP 校时（`ntp.aliyun.com` / `cn.pool.ntp.org` / `pool.ntp.org`）；
   - NTP 同步成功后，第一时间将精准 UTC 时间更新至系统时钟（`settimeofday`）并**反向写入校准 Tab5 板载 RX8130CE 硬件 RTC**，同时构建 `UBX-MGA-INI-TIME_UTC` 帧注入 NEO-M9N 串口辅助热启动；
-- **地库出库极速温启动**：熄火断电时最后坐标存入 NVS；冷启动时直接读取 RX8130CE RTC 真实时间注入 M9N 串口，驶出地库锁星耗时从 35s 降至 10~15s。
+- **室内/地库无信号驶出室外极速重捕获自愈机制（解决室内转室外不锁星顽疾）**：
+  1. **两阶段动态门限（Dynamic Two-Stage Filter）**：未定位搜星期间自动放宽捕获门限（`minElev = 5°`, `cnoThresh = 14 dBHz`），允许刚出地库时的边缘卫星立即参与快速收敛；待连续稳定 3D Fix 满 10 秒后再动态收紧至抗多径门限（`minElev = 10°`, `cnoThresh = 20 dBHz`），一旦丢星立即恢复宽松捕获门限；
+  2. **45 秒未锁星自动软热启动 + 重注时间坐标看门狗（Auto Hot-Start Watchdog）**：当在室内/地库长时间无星导致 M9N 内部多普勒搜索窗口发散时，系统每 45 秒自动向 M9N 发送仅重置 GNSS 基带捕获状态机的**无损热启动命令 (`UBX-CFG-RST`, `navBbrMask=0x0000` 保留全部星历)**，并立即重新注入最新 RTC/NTP UTC 时间与 NVS 历史坐标，无需重启设备即可在驶出室外瞬间秒级锁星。
 
 ---
 
