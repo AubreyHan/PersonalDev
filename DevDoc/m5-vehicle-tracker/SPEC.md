@@ -553,3 +553,34 @@ littlefs, data, spiffs,  0xc90000,0x300000,
 | `last_lat_e7`  | `int32_t` | 0   | 熄火断电时最后已知有效纬度 (*1e7)，用于地库开机极速温启动 |
 | `last_lon_e7`  | `int32_t` | 0   | 熄火断电时最后已知有效经度 (*1e7) |
 | `last_alt_cm`  | `int32_t` | 0   | 熄火断电时最后已知海拔高程 (厘米) |
+
+---
+
+## 7. TF 卡系统事件与开关机日志规范 (Power Event FIFO Log Specification)
+
+### 7.1 文件路径与尺寸契约
+- **目标文件**：`/tracks/power.log`
+- **临时转存文件**：`/tracks/power.tmp`
+- **尺寸硬约束**：`POWER_LOG_MAX_BYTES = 100 * 1024` (102,400 字节，100KB)
+- **FIFO 淘汰步长**：`POWER_LOG_TRIM_BYTES = 20 * 1024` (20,480 字节，20KB)
+
+### 7.2 日志格式规范
+每条记录占一行，格式如下：
+```text
+[<YYYY-MM-DD HH:MM:SS UTC>] <EVENT_TYPE>: <DETAILS>
+```
+示例：
+```text
+[2026-10-30 14:15:20 UTC] BOOT: System startup (Reset: 1, Batt: 8.15V, 95%, Pwr: ExtUSB, TF: Mounted)
+[2026-10-30 14:15:25 UTC] TIME_SYNC_GNSS: GNSS 3D Fix calibrated -> 2026-10-30 14:15:25 UTC
+[2026-10-30 14:35:25 UTC] STANDBY_ENTER: Standstill 20min timeout on battery (Batt: 7.82V, 76%)
+[2026-10-30 15:02:10 UTC] STANDBY_WAKEUP: Car charger power restored (Batt: 7.95V, 78%)
+[2026-10-30 16:40:00 UTC] SHUTDOWN_LOW_BATT: Critical low battery (5.95V < 6.00V), auto shutdown
+```
+
+### 7.3 FIFO 淘汰算法与断电安全
+1. 追加写入新日志前，若当前文件大小 + 新行长度 $> 100\text{ KB}$，触发裁剪；
+2. 读取原文件，Seek 至 `POWER_LOG_TRIM_BYTES` 偏移处，继续向后扫描直至第一个换行符 `\n`，保证淘汰行完整性；
+3. 将剩余最新数据块（约 80KB）流式写入 `/tracks/power.tmp`，调用 `sync()` 刷盘并关闭；
+4. 移除原文件，并将临时文件原子重命名为 `/tracks/power.log`；
+5. 追加新日志行，调用 `file.sync()` 完成落盘。全流程由递归互斥锁 `_sdMutex` 严格保护。
