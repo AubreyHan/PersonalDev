@@ -52,9 +52,10 @@
 - [ ] **Task 2.1**：创建 `src/model/SystemState.h`，定义 `GnssData`、`SatInfo` 及互斥锁 `SemaphoreHandle_t`。
 - [ ] **Task 2.2**：实现 `src/driver/GnssDriver.h/.cpp`，初始化 `Serial2.begin(38400, SERIAL_8N1, 38, 37)`，下发 UBX 命令切换模组波特率至 115200 bps 并重新握手。
 - [ ] **Task 2.3**：配置 NEO-M9N 仅输出 UBX 二进制协议（关闭 NMEA），开启 5Hz 导航解算频度。
-- [ ] **Task 2.4**：实现车内工况专项固件调优：
+- [ ] **Task 2.4**：实现车内工况专项固件调优与 MagSafe 强磁免疫：
   - 动态平台切换为 `DYN_MODEL_AUTOMOTIVE`（车载模式，抗 4G 极限加减速）；
   - 设置 `setStaticHoldThreshold(50)`（0.5 m/s 静态门限，杜绝等红灯原地漂移）；
+  - **MagSafe 强磁免疫**：完全旁路并屏蔽 BMM150 地磁计，由 GPS 地面航向与 BMI270 六轴陀螺仪 Z 轴角速度（50Hz 积分）互补融合，车速 $\le 1.8\text{km/h}$ 停稳时激活静态航向锁死；
   - 设置卫星最低仰角掩码为 $12^\circ$，载噪比门限为 $24\text{ dBHz}$；
   - 开启 RAIM 完好性监测与多径抗扰抑制；
   - 增加动力学抗跳变离群滤波：剔除 1 秒内速度突变 $>180\text{km/h}$ 或加速度 $>1.2\text{G}$ 的粗大飞点；
