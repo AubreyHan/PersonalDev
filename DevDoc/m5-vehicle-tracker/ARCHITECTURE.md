@@ -11,9 +11,10 @@
 | 外部模块 / 内部外设 | 接口协议 | ESP32-P4 引脚映射 | 说明 |
 | :--- | :--- | :--- | :--- |
 | **u-blox NEO-M9N (M135)** | 高速 UART | **GPIO 38 (RX0)** $\leftarrow$ M9N TXD<br>**GPIO 37 (TX0)** $\rightarrow$ M9N RXD | 经由 M5-Bus 高速串口总线互联，波特率 38400 / 115200bps；SMA 标准外置天线接口引向前挡玻璃 |
+| **BMI270 (Tab5 板载主 IMU)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Tab5 主板板载集成，I2C 地址 `0x68`；作为系统 Master IMU，中断直连 P4 RTC 引脚用于微动唤醒、车身姿态角、G-Force 摩擦力靶图与隧道 DR 惯导推算 |
+| **BMI270 (Module GNSS 副 IMU)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Module GNSS 板载集成，硬件拨码开关设为 `0x69` (或断开)；软件彻底旁路不初始化，杜绝与 Tab5 板载 `0x68` 产生 I2C 地址冲突 |
+| **BMM150 (3轴地磁罗盘)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Module GNSS 板载集成，I2C 地址 `0x10`；因机身贴附 MagSafe 磁吸环在软件中彻底旁路，航向改由 GPS 航向与 BMI270 陀螺仪融合解算 |
 | **BMP280 (气压/高程计)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Module GNSS 板载集成，I2C 地址 `0x76`；用于 10Hz 气压定高互补融合与道路坡度计算 |
-| **BMM150 (3轴地磁罗盘)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Module GNSS 板载集成，I2C 地址 `0x10`；用于 0 车速静止状态下绝对磁北航向保持 |
-| **BMI270 (6轴 IMU 惯导)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Tab5 主板板载集成，I2C 地址 `0x68`；用于车身姿态角、G-Force 摩擦力靶图、隧道惯导推算与静默微动唤醒 |
 | **RX8130CE (硬件 RTC)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Tab5 主板板载集成，I2C 地址 `0x32`；由 $70000\mu\text{F}$ 超级电容维持掉电走时，实现冷启动秒级注入 |
 | **INA226 (高精度库仑计)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Tab5 主板板载集成，I2C 地址 `0x40`；经 $20\text{m}\Omega$ 精密分流电阻监测电压、充放电电流与整机功耗 |
 | **IP2326 + MP4560** | 电源与充放电管理 | 内部硬件管理电路 | 管理背部快拆 **NP-F550** (约 2000mAh/7.4V) 锂电池，支持 USB-C (PD/QC) 及 6~24V HVIN 宽压车载供电 |
@@ -23,10 +24,13 @@
 | **触觉马达 / 蜂鸣器** | 专用 PWM / GPIO | 专用控制引脚 | Page 1 里程卡片长按 2 秒归零短震触觉确认，超速/陡坡声音警示 |
 
 > [!TIP]
-> **I2C 物理总线正交架构**：
-> - Tab5 板载芯片：`BMI270` (`0x68`)、`RX8130CE` (`0x32`)、`INA226` (`0x40`)；
-> - Module GNSS 堆叠芯片：`BMM150` (`0x10`)、`BMP280` (`0x76`)；
-> 5 大传感器地址完全独立，I2C 总线零冲突，物理寻址极其轻量稳定。
+> **I2C 物理总线正交架构与重复传感器处理规范**：
+> 1. **重复传感器 (BMI270) 仲裁**：Tab5 主板与 Module GNSS 均包含 BMI270 芯片。硬件上将 Module GNSS 背部 I2C 拨码开关切换为 `0x69`（或断开）；软件中仅初始化 Tab5 板载 BMI270 (`0x68`) 作为 Master IMU，确保 RTC 硬件唤醒引脚与车身轴向基准完全统一。
+> 2. **MagSafe 磁干扰旁路**：BMM150 地磁计 (`0x10`) 因机身背部 MagSafe 强磁吸环饱和，固件完全旁路不读取，航向解算切换为 GPS 地面真航向与 Master BMI270 陀螺仪积分融合。
+> 3. **在线传感器物理地址完全正交**：
+>    - Tab5 板载：`BMI270` (`0x68`)、`RX8130CE` (`0x32`)、`INA226` (`0x40`)；
+>    - Module GNSS 扩展：`BMP280` (`0x76`)；
+>    全系统在线外设 I2C 物理地址零冲突，总线访问稳定可靠。
 
 ---
 
