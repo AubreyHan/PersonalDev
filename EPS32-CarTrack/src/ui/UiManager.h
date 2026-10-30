@@ -31,6 +31,7 @@ private:
     void applyDockAction(DockTouchAction act, SystemContext& ctx);
 
     M5Canvas*        _canvas         = nullptr;
+    SystemContext    _snapBuf        = {};
     LeftDock         _dock;
     PageIndicator    _indicator;
 

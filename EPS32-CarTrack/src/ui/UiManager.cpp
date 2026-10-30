@@ -1,5 +1,6 @@
 #include "ui/UiManager.h"
 #include "driver/HapticDriver.h"
+#include "driver/I2cBusManager.h"
 #include "service/NetworkManager.h"
 #include <math.h>
 
@@ -57,7 +58,9 @@ void UiManager::applyDockAction(DockTouchAction act, SystemContext& ctx) {
 }
 
 void UiManager::handleTouchAndGestures() {
+    I2cBusManager::instance().lockBus();
     M5.update();
+    I2cBusManager::instance().unlockBus();
     HapticDriver::instance().update();
 
     auto count = M5.Touch.getCount();
@@ -83,11 +86,10 @@ void UiManager::handleTouchAndGestures() {
             state.lock();
             SystemContext& ctx = state.getContextUnsafe();
             BasePage* page = getActivePage(ctx.currentPage);
-            state.unlock();
-
             if (page) {
-                page->onTouchHold(tx, ty, holdDuration, state.getContextUnsafe());
+                page->onTouchHold(tx, ty, holdDuration, ctx);
             }
+            state.unlock();
         }
     } else if (_touchDown) {
         _touchDown = false;
@@ -141,17 +143,17 @@ void UiManager::update() {
     handleTouchAndGestures();
     if (!_canvas) return;
 
-    SystemContext snap = SystemState::instance().getSnapshot();
+    SystemState::instance().copySnapshotTo(_snapBuf);
 
-    BasePage* page = getActivePage(snap.currentPage);
+    BasePage* page = getActivePage(_snapBuf.currentPage);
     if (page) {
-        page->render(*_canvas, snap);
+        page->render(*_canvas, _snapBuf);
     }
 
     // Render resident 160px Left Dock and floating OSD Indicator on all pages except full-screen Boot/QR Setup
-    if (snap.currentPage != PAGE_INIT && snap.currentPage != PAGE_WIFI_CONFIG) {
-        _dock.render(*_canvas, snap);
-        _indicator.render(*_canvas, snap.currentPage);
+    if (_snapBuf.currentPage != PAGE_INIT && _snapBuf.currentPage != PAGE_WIFI_CONFIG) {
+        _dock.render(*_canvas, _snapBuf);
+        _indicator.render(*_canvas, _snapBuf.currentPage);
     }
 
     _canvas->pushSprite(0, 0);
