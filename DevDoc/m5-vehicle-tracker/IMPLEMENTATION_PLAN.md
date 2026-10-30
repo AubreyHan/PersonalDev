@@ -62,10 +62,11 @@
   - 锁定使能 BDS + GPS + GLO + GAL 四星并发。
 - [ ] **Task 2.5**：开发 `src/driver/BaroDriver.h/.cpp`，通过硬件 I2C（地址 `0x76`）初始化模块板载 BMP280 传感器，实现 10Hz 超高分辨率气压与温度采样。
 - [ ] **Task 2.6**：开发 `src/service/AltitudeFusion.h/.cpp`，实现高程互补滤波算法：以 GPS 3D 高度动态修正海平面基准气压 $P_0$，以气压高频相对位移滤波生成分米级平滑定高。
-- [ ] **Task 2.7**：开发 `src/service/DeadReckoningService.h/.cpp`：
+- [ ] **Task 2.7**：开发 `src/driver/ImuDriver.h/.cpp` 与 `src/service/DeadReckoningService.h/.cpp`：
+  - 实现双 BMI270（主 `0x68` + 副 `0x69`）50Hz 并行采样、加权均值滤波（降噪 30%）与交叉互验；
+  - 实现 Master 芯片故障时 20ms 内无缝容灾热切换至 Slave 芯片；
   - 监听 GNSS 信号状态，当 3D Fix 跌落至 No Fix 时无缝切入推算模式；
-  - 读取 Tab5 板载 BMI270 陀螺仪 Z 轴（Yaw 角速度 $\omega_z$），高频（50Hz）积分推算实时偏航角；
-  - 结合失锁前平滑平均速度及纵向加速度进行平面位移几何递推；
+  - 结合双 IMU 融合后的角速度积分（Yaw $\omega_z$）与加速度进行平面航位递推（DR）；
   - 持续融合 BMP280 气压高度，出盲区后 2 秒低通平滑恢复。
 - [ ] **Task 2.8**：开发 `src/service/TunnelService.h/.cpp` 与 `src/service/TunnelDb.h`：
   - 从板载 Flash `LittleFS` (`/littlefs/tunnels.bin`) 读取并在 2ms 内载入 32MB PSRAM 内存缓存；
