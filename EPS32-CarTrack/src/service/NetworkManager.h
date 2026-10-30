@@ -21,9 +21,10 @@ public:
     void update();
 
     // SoftAP Modes with QR Code & Captive Portal Auto-Popup
-    void startSetupPortal(); // SSID: "M5Track-Setup", IP: 192.168.4.1
-    void startSharePortal(); // SSID: "M5Track-Share", IP: 192.168.4.1
-    void stopPortals();
+    // NOTE: These are thread-safe async requests; actual Wi-Fi operations run inside netTask (update()).
+    void startSetupPortal() { _pendingPortalCmd = 1; } // SSID: "M5Track-Setup", IP: 192.168.4.1
+    void startSharePortal() { _pendingPortalCmd = 2; } // SSID: "M5Track-Share", IP: 192.168.4.1
+    void stopPortals()      { _pendingPortalCmd = 3; }
 
     bool saveNetworkCredential(const char* ssid, const char* pwd);
     bool deleteNetworkCredential(const char* ssid);
@@ -35,12 +36,16 @@ private:
         memset(_saved, 0, sizeof(_saved));
     }
 
+    void doStartSetupPortal();
+    void doStartSharePortal();
+    void doStopPortals();
     void loadSavedNetworks();
     void tryAutoConnectMultiSsid();
     void setupHttpRoutes();
     void handleRootPage();
     void handleShareTracksPage();
 
+    volatile uint8_t    _pendingPortalCmd = 0;
     SemaphoreHandle_t   _netMutex         = nullptr;
     WebServer           _server;
     DNSServer           _dnsServer;

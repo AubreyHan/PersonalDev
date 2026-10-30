@@ -161,8 +161,8 @@ void AppNetworkManager::tryAutoConnectMultiSsid() {
     WiFi.begin(targetSsid, targetPwd);
 }
 
-void AppNetworkManager::startSetupPortal() {
-    stopPortals();
+void AppNetworkManager::doStartSetupPortal() {
+    doStopPortals();
     WiFi.mode(WIFI_AP_STA);
     IPAddress apIP(192, 168, 4, 1);
     WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
@@ -184,8 +184,8 @@ void AppNetworkManager::startSetupPortal() {
     Serial.println("[WIFI] Started Captive Portal SoftAP: M5Track-Setup (192.168.4.1)");
 }
 
-void AppNetworkManager::startSharePortal() {
-    stopPortals();
+void AppNetworkManager::doStartSharePortal() {
+    doStopPortals();
     WiFi.mode(WIFI_AP_STA);
     IPAddress apIP(192, 168, 4, 1);
     WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
@@ -207,7 +207,7 @@ void AppNetworkManager::startSharePortal() {
     Serial.println("[WIFI] Started Track Share SoftAP: M5Track-Share (192.168.4.1)");
 }
 
-void AppNetworkManager::stopPortals() {
+void AppNetworkManager::doStopPortals() {
     if (_portalRunning) {
         _dnsServer.stop();
         _server.stop();
