@@ -304,22 +304,28 @@ namespace GestureConfig {
     constexpr float   DIRECTION_RATIO          = 1.5f;// 主向位移/副向位移判定比率
 }
 
-// 车辆运动唤醒与静止休眠参数规范
+// 车辆运动唤醒、静止休眠与存储配额参数规范
 namespace MotionPowerConfig {
-    constexpr uint32_t HOURLY_SPLIT_POINTS       = 3600;    // 每小时截断生成新文件 (3600点)
-    constexpr uint32_t STANDSTILL_STOP_RECORD_MS = 900000;  // 15 分钟静止自动停止轨迹记录并闭合文件 (900s)
-    constexpr uint32_t STANDSTILL_TIMEOUT_MS     = 1800000; // 30 分钟无移动自动切入整机休眠 (1800s)
-    constexpr uint32_t SILENT_ASSESS_WINDOW_MS   = 3000;    // 3 秒静默评估窗口 (防误开机)
-    constexpr float    STATIC_VARIANCE_THRESH    = 0.005f;  // 地库无GPS时IMU静止方差门限 (m/s^2)
-    constexpr float    SUSTAINED_ACCEL_THRESH    = 0.12f;   // 真实起步持续推背加速度 (G)
-    constexpr uint32_t SUSTAINED_ACCEL_MS        = 1500;    // 持续推背时间门限 (ms)
-    constexpr uint16_t BATTERY_CAPACITY_MAH      = 2000;    // NP-F550 标准容量 (mAh)
-    constexpr float    BATTERY_CHARGE_MAX_TEMP_C = 55.0f;   // 高温停止充电保护温度 (°C)
-    constexpr float    BATTERY_CHARGE_RESUME_TEMP= 45.0f;   // 降温恢复充电温度 (°C)
-    constexpr uint32_t STORAGE_WARN_MB           = 500;     // 存储空间安全低水位告警 (MB)
-    constexpr uint32_t STORAGE_RECOVERY_MB       = 1000;    // 循环清理后目标安全水位 (MB)
-    constexpr float    KINEMATIC_MAX_SPEED_KMH   = 180.0f;  // 动力学最大合理车速突变门限 (km/h)
-    constexpr float    KINEMATIC_MAX_ACCEL_G     = 1.2f;    // 动力学最大合理加速度门限 (G)
+    constexpr uint32_t HOURLY_SPLIT_POINTS        = 3600;    // 每小时截断生成新文件 (3600点)
+    constexpr uint32_t STANDSTILL_TIMEOUT_MS      = 1200000; // 车辆停止移动满 20 分钟 (1200s) 自动停止轨迹、停止行程并休眠
+    constexpr uint32_t STANDSTILL_STOP_RECORD_MS  = 1200000; // 20 分钟静止自动闭合 GPX 文件 (1200s)
+    constexpr uint32_t SILENT_ASSESS_WINDOW_MS    = 3000;    // 3 秒静默评估窗口 (防误开机)
+    constexpr float    STATIC_VARIANCE_THRESH     = 0.005f;  // 地库无GPS时IMU静止方差门限 (m/s^2)
+    constexpr float    SUSTAINED_ACCEL_THRESH     = 0.12f;   // 真实起步持续推背加速度 (G)
+    constexpr uint32_t SUSTAINED_ACCEL_MS         = 1500;    // 持续推背时间门限 (ms)
+    constexpr uint16_t BATTERY_CAPACITY_MAH       = 2000;    // NP-F550 标准容量 (mAh)
+    constexpr float    BATTERY_CHARGE_MAX_TEMP_C  = 55.0f;   // 高温停止充电保护温度 (°C)
+    constexpr float    BATTERY_CHARGE_RESUME_TEMP = 45.0f;   // 降温恢复充电温度 (°C)
+    
+    // TF 卡存储配额与循环覆盖规范 (严格限制不超过卡容量一半)
+    constexpr float    TRACK_STORAGE_QUOTA_RATIO  = 0.50f;   // 轨迹数据总容量严格限制不超过 TF 卡总容量的 50%
+    constexpr float    TRACK_RECOVERY_QUOTA_RATIO = 0.40f;   // 触发循环清理时成对删除最旧 W/C 轨迹，回退释放至 40%
+    constexpr float    KINEMATIC_MAX_SPEED_KMH    = 180.0f;  // 动力学最大合理车速突变门限 (km/h)
+    constexpr float    KINEMATIC_MAX_ACCEL_G      = 1.2f;    // 动力学最大合理加速度门限 (G)
+    
+    // MagSafe 强磁免疫航向融合参数规范 (完全旁路地磁计)
+    constexpr bool     BYPASS_GEOMAGNETIC_BMM150  = true;    // 屏蔽地磁计，彻底免疫 MagSafe 磁吸环强磁干扰
+    constexpr float    STANDSTILL_HEADING_LOCK_KMH= 1.8f;    // 车速 <= 1.8km/h 触发静态航向物理锁死
 }
 ```
 
