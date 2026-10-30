@@ -26,12 +26,19 @@ bool AgpsService::downloadAndInjectAssistNow(const char* token) {
         NetworkClient* stream = http.getStreamPtr();
         uint8_t buf[256];
         size_t totalBytes = 0;
-        while (http.connected() && stream && stream->available() > 0) {
-            int n = stream->readBytes(buf, sizeof(buf));
-            if (n > 0) {
-                _gnss->pushRawData(buf, n);
-                totalBytes += n;
-                delay(5);
+        uint32_t lastReadMs = millis();
+        while (http.connected() && stream && (millis() - lastReadMs < 2000)) {
+            int avail = stream->available();
+            if (avail > 0) {
+                int toRead = (avail > (int)sizeof(buf)) ? sizeof(buf) : avail;
+                int n = stream->readBytes(buf, toRead);
+                if (n > 0) {
+                    _gnss->pushRawData(buf, n);
+                    totalBytes += n;
+                    lastReadMs = millis();
+                }
+            } else {
+                delay(10);
             }
         }
         http.end();
