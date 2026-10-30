@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <M5Unified.h>
 #include <LittleFS.h>
+#include <esp_task_wdt.h>
 #include "config.h"
 #include "model/SystemState.h"
 #include "driver/I2cBusManager.h"
@@ -45,7 +46,9 @@ UiManager            g_uiManager;
 
 // Core 0, Priority 5: High-frequency GNSS UART UBX parsing, Baro & Dual-IMU DR
 void gnssTask(void* pvParameters) {
+    esp_task_wdt_add(nullptr);
     for (;;) {
+        esp_task_wdt_reset();
         g_gnssDriver.update();
         g_altitudeFusion.update();
         g_drService.update();
@@ -55,7 +58,9 @@ void gnssTask(void* pvParameters) {
 
 // Core 0, Priority 2: Wi-Fi 6 Multi-SSID, SoftAP QR/Captive Portal, NTP Sync, AGPS & Weather
 void netTask(void* pvParameters) {
+    esp_task_wdt_add(nullptr);
     for (;;) {
+        esp_task_wdt_reset();
         AppNetworkManager::instance().update();
         g_timeService.update();
         g_agpsService.update();
@@ -66,7 +71,9 @@ void netTask(void* pvParameters) {
 
 // Core 1, Priority 4: 1280x720 Double-Buffered UI & Touch Gesture Engine
 void uiTask(void* pvParameters) {
+    esp_task_wdt_add(nullptr);
     for (;;) {
+        esp_task_wdt_reset();
         g_uiManager.update();
         vTaskDelay(pdMS_TO_TICKS(16)); // ~60 fps target
     }
@@ -74,7 +81,9 @@ void uiTask(void* pvParameters) {
 
 // Core 1, Priority 3: 1Hz Dual-Stream (WGS-84 / GCJ-02) GPX Track Logger
 void trackLoggerTask(void* pvParameters) {
+    esp_task_wdt_add(nullptr);
     for (;;) {
+        esp_task_wdt_reset();
         TrackLogger::instance().update();
         vTaskDelay(pdMS_TO_TICKS(200));
     }
@@ -82,7 +91,9 @@ void trackLoggerTask(void* pvParameters) {
 
 // Core 1, Priority 1: 500ms INA226 Coulomb Counter & Standstill Deep-Sleep Monitor
 void pwrTask(void* pvParameters) {
+    esp_task_wdt_add(nullptr);
     for (;;) {
+        esp_task_wdt_reset();
         g_powerService.update();
         vTaskDelay(pdMS_TO_TICKS(250));
     }
