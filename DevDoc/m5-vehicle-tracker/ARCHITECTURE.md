@@ -11,9 +11,9 @@
 | 外部模块 / 内部外设 | 接口协议 | ESP32-P4 引脚映射 | 说明 |
 | :--- | :--- | :--- | :--- |
 | **u-blox NEO-M9N (M135)** | 高速 UART | **GPIO 38 (RX0)** $\leftarrow$ M9N TXD<br>**GPIO 37 (TX0)** $\rightarrow$ M9N RXD | 经由 M5-Bus 高速串口总线互联，波特率 38400 / 115200bps；SMA 标准外置天线接口引向前挡玻璃 |
-| **BMI270 (Tab5 板载主 IMU)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Tab5 主板板载集成，I2C 地址 `0x68`；作为系统 Master IMU，中断直连 P4 RTC 引脚用于微动唤醒、车身姿态角、G-Force 摩擦力靶图与隧道 DR 惯导推算 |
-| **BMI270 (Module GNSS 副 IMU)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Module GNSS 板载集成，硬件拨码开关设为 `0x69` (或断开)；软件彻底旁路不初始化，杜绝与 Tab5 板载 `0x68` 产生 I2C 地址冲突 |
-| **BMM150 (3轴地磁罗盘)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Module GNSS 板载集成，I2C 地址 `0x10`；因机身贴附 MagSafe 磁吸环在软件中彻底旁路，航向改由 GPS 航向与 BMI270 陀螺仪融合解算 |
+| **BMI270 (Tab5 板载主 IMU)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Tab5 主板板载集成，I2C 地址 `0x68`；作为系统 Master IMU，中断直连 P4 RTC 引脚用于熄火微动唤醒，平时与副 IMU 并行采样加权均值融合，并在故障时提供基准源 |
+| **BMI270 (Module GNSS 板载副 IMU)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Module GNSS 板载集成，出厂 PCB 硬件将 SDO 上拉至高电平，默认 I2C 地址为 `0x69`；与主 IMU 组成双冗余互验降噪系统，主片故障时 20ms 内无缝热切换接管 |
+| **BMM150 (3轴地磁罗盘)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Module GNSS 板载集成，I2C 地址 `0x10`；因机身贴附 MagSafe 磁吸环在软件中彻底旁路，航向改由 GPS 航向与双 BMI270 融合陀螺仪解算 |
 | **BMP280 (气压/高程计)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Module GNSS 板载集成，I2C 地址 `0x76`；用于 10Hz 气压定高互补融合与道路坡度计算 |
 | **RX8130CE (硬件 RTC)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Tab5 主板板载集成，I2C 地址 `0x32`；由 $70000\mu\text{F}$ 超级电容维持掉电走时，实现冷启动秒级注入 |
 | **INA226 (高精度库仑计)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Tab5 主板板载集成，I2C 地址 `0x40`；经 $20\text{m}\Omega$ 精密分流电阻监测电压、充放电电流与整机功耗 |
@@ -24,13 +24,17 @@
 | **触觉马达 / 蜂鸣器** | 专用 PWM / GPIO | 专用控制引脚 | Page 1 里程卡片长按 2 秒归零短震触觉确认，超速/陡坡声音警示 |
 
 > [!TIP]
-> **I2C 物理总线正交架构与重复传感器处理规范**：
-> 1. **重复传感器 (BMI270) 仲裁**：Tab5 主板与 Module GNSS 均包含 BMI270 芯片。硬件上将 Module GNSS 背部 I2C 拨码开关切换为 `0x69`（或断开）；软件中仅初始化 Tab5 板载 BMI270 (`0x68`) 作为 Master IMU，确保 RTC 硬件唤醒引脚与车身轴向基准完全统一。
-> 2. **MagSafe 磁干扰旁路**：BMM150 地磁计 (`0x10`) 因机身背部 MagSafe 强磁吸环饱和，固件完全旁路不读取，航向解算切换为 GPS 地面真航向与 Master BMI270 陀螺仪积分融合。
-> 3. **在线传感器物理地址完全正交**：
->    - Tab5 板载：`BMI270` (`0x68`)、`RX8130CE` (`0x32`)、`INA226` (`0x40`)；
->    - Module GNSS 扩展：`BMP280` (`0x76`)；
->    全系统在线外设 I2C 物理地址零冲突，总线访问稳定可靠。
+> **I2C 物理总线正交架构与双 BMI270 冗余互验规范**：
+> 1. **双 IMU 天然正交与免调硬件**：M5Stack 官方在 Module GNSS (M135) 的 PCB 上已将 BMI270 的 SDO 引脚硬件拉高至 $V_{\text{DDIO}}$，出厂物理地址即为 `0x69`；与 Tab5 板载的 `0x68` 天然正交，插上即用，无需用户飞线或拨码。
+> 2. **双 IMU 冗余融合降噪与故障热切换 (Option A)**：
+>    - **日常行车**：以 50Hz 并行轮询 `0x68` 与 `0x69`，进行加权均值滤波，白噪声与机械抖动降低约 30%（$\sqrt{2}$ 倍），显著提升 G 值靶图与隧道 DR 推算精度；
+>    - **故障转移 (Failover)**：Master (`0x68`) 发生 I2C 超时或数据损坏时，20ms 内无缝切至 Slave (`0x69`)；
+>    - **休眠唤醒**：停车满 20 分钟休眠时，仅由直连 P4 RTC 唤醒引脚的 Tab5 板载 `0x68` 监听车辆起步微动。
+> 3. **MagSafe 磁干扰旁路**：BMM150 地磁计 (`0x10`) 因机身背部 MagSafe 强磁吸环饱和，固件完全旁路不读取，航向解算切换为 GPS 地面真航向与双 IMU 融合陀螺仪积分。
+> 4. **全系统在线外设物理地址完全正交**：
+>    - Tab5 板载：`BMI270(Master)` (`0x68`)、`RX8130CE` (`0x32`)、`INA226` (`0x40`)；
+>    - Module GNSS 扩展：`BMI270(Slave)` (`0x69`)、`BMP280` (`0x76`)；
+>    全系统所有在线传感器物理地址零冲突，总线访问稳定可靠。
 
 ---
 
