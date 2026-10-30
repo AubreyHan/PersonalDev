@@ -30,6 +30,32 @@ void TimeService::init(RtcDriver* rtc, GnssDriver* gnss) {
 
     // 2. Inject Warm-Start Time + Last NVS Position into NEO-M9N immediately
     injectWarmStartAssistance();
+
+    // 3. Initialize GPS Position-Derived Timezone from NVS
+    Preferences prefs;
+    if (prefs.begin("m5track", true)) {
+        int16_t savedTz   = prefs.getShort("tz_offset_min", 480);
+        int32_t lastLonE7 = prefs.getInt("last_lon_e7", 0);
+        int32_t lastLatE7 = prefs.getInt("last_lat_e7", 0);
+        prefs.end();
+
+        if (lastLonE7 != 0) {
+            double lastLon = lastLonE7 / 1e7;
+            double lastLat = lastLatE7 / 1e7;
+            int tzHours = (int)round(lastLon / 15.0);
+            savedTz = tzHours * 60;
+            // China national standard time (UTC+8) within China mainland borders
+            if (lastLon >= 73.0 && lastLon <= 135.0 && lastLat >= 18.0 && lastLat <= 54.0) {
+                savedTz = 480;
+            }
+        }
+        SystemState& state = SystemState::instance();
+        state.lock();
+        state.getContextUnsafe().clocks[0].tzOffsetMinutes = savedTz;
+        state.unlock();
+        Serial.printf("[TIME] Boot clock timezone seeded from GPS NVS: %+03d:%02d\n",
+                      savedTz / 60, abs(savedTz % 60));
+    }
 }
 
 void TimeService::injectWarmStartAssistance() {
