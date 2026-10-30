@@ -258,6 +258,37 @@ ESP32-P4 拥有双核高性能 RISC-V 处理器（主频高达 400MHz），具�
    - **动态抗压降**：行车大功率时电压波动不引起电量跳变，积分电量极度稳定；
    - **静态抗漂移**：静置（$|I| < 20\text{mA}$ 保持 5 秒）自动以 11 节点 OCV 标定表对冲归零，长效精准。
 
+### 5.5 双 BMI270 冗余互验与均值降噪架构 (Dual-IMU Redundancy & Fusion)
+
+```text
+  +--------------------------+          +--------------------------+
+  | Tab5 主板 BMI270 (0x68)  |          | Module GNSS BMI270(0x69) |
+  | (Master IMU, 直连RTC中断)|          | (Slave IMU, SDO上拉出厂)  |
+  +------------+-------------+          +------------+-------------+
+               | 50Hz I2C 采样                       | 50Hz I2C 采样
+               +------------------+  +---------------+
+                                  |  |
+                                  v  v
+        +-------------------------------------------------------+
+        | ImuDriver / DeadReckoningService (双芯片状态机)        |
+        |                                                       |
+        | 1. 健康心跳检测与交叉互验 (Cross-Checking)            |
+        |    - 校验两芯片角速度偏差: |ω_z1 - ω_z2| < 0.05 rad/s   |
+        |    - 若单芯片超时/校验失败: 触发 Failover 报警切单片   |
+        |                                                       |
+        | 2. 均值降噪数据融合 (Dual-IMU Noise Reduction)         |
+        |    - a_fused = 0.5 * (a_master + a_slave)             |
+        |    - ω_fused = 0.5 * (ω_master + ω_slave)             |
+        |    - 白噪声降低 √2 (约 30%)，大幅提升 G 值与姿态平滑度 |
+        |                                                       |
+        | 3. 故障容灾热切换 (Failover Hot-Standby)              |
+        |    - 0x68 异常时 20ms 内无缝将 0x69 提为主数据源      |
+        |                                                       |
+        | 4. 熄火深度休眠监听 (Deep Sleep Wakeup)               |
+        |    - 停车满 20 分钟休眠时，仅由 0x68 硬件中断监听微动 |
+        +-------------------------------------------------------+
+```
+
 ---
 
 ## 6. 代码工程目录结构设计 (PlatformIO 推荐结构)
@@ -273,8 +304,8 @@ m5-vehicle-tracker/
 │   ├── driver/
 │   │   ├── GnssDriver.h/.cpp   # NEO-M9N 串口与车载模式/死区调优
 │   │   ├── BaroDriver.h/.cpp   # Module GNSS 板载 BMP280 气压/温度 I2C 驱动
-│   │   ├── CompassDriver.h/.cpp# Module GNSS 板载 BMM150 地磁电子罗盘驱动
-│   │   ├── ImuDriver.h/.cpp    # Tab5 板载 BMI270 6 轴姿态驱动
+│   │   ├── CompassDriver.h/.cpp# Module GNSS 板载 BMM150 地磁电子罗盘驱动 (MagSafe 旁路)
+│   │   ├── ImuDriver.h/.cpp    # 双 BMI270 (0x68/0x69) 冗余采样、均值融合与容灾驱动
 │   │   ├── RtcDriver.h/.cpp    # Tab5 板载 RX8130CE 硬件 RTC 读写
 │   │   ├── Ina226Driver.h/.cpp # Tab5 板载 INA226 (0x40) 寄存器底层驱动
 │   │   └── HapticDriver.h/.cpp # 触觉马达震动控制
