@@ -55,7 +55,7 @@ void loop() {
     if (millis() - lastPrint > 1000) {
         lastPrint = millis();
         Serial.printf("[BATTERY] VBAT=%d mV | IBAT=%+d mA | SOC=%d%% | Chg=%d | Present=%d | VBUS=%d mV (%.1f mA) | Reg[00=%02X, 01=%02X, 32=%02X, 33=%02X, 82=%02X]\n",
-                      vbatMv, ibatMa, soc, (int)chg, (int)batPresent, vbusMv, ibusMa,
+                      (int)vbatMv, (int)ibatMa, (int)soc, (int)chg, (int)batPresent, (int)vbusMv, ibusMa,
                       reg00, reg01, reg32, reg33, reg82);
     }
 
@@ -63,6 +63,7 @@ void loop() {
     static uint32_t lastDraw = 0;
     if (millis() - lastDraw > 250) {
         lastDraw = millis();
+        char buf[64];
 
         M5.Display.startWrite();
         // Title banner
@@ -80,11 +81,10 @@ void loop() {
         M5.Display.drawString("BATTERY VOLTAGE", 16, 40);
         M5.Display.setTextColor(vbatColor, cardBg);
         M5.Display.setTextSize(2);
-        char buf[32];
-        snprintf(buf, sizeof(buf), "%d mV", vbatMv);
+        snprintf(buf, sizeof(buf), "%d mV", (int)vbatMv);
         M5.Display.drawString(buf, 16, 56);
         M5.Display.setTextSize(1);
-        snprintf(buf, sizeof(buf), "%.2f V | %d%%", vbatMv / 1000.0f, soc);
+        snprintf(buf, sizeof(buf), "%.2f V | %d%%", vbatMv / 1000.0f, (int)soc);
         M5.Display.drawString(buf, 16, 80);
 
         // Status Card
@@ -96,21 +96,21 @@ void loop() {
         M5.Display.setTextColor(batPresent ? TFT_GREEN : TFT_RED, 0x18E3);
         M5.Display.drawString(batPresent ? "Present: YES" : "Present: NO (0V)", 172, 58);
         M5.Display.setTextColor(chg ? TFT_CYAN : TFT_WHITE, 0x18E3);
-        snprintf(buf, sizeof(buf), "Chg: %s (%+d mA)", chg ? "CHARGING" : "STANDBY", ibatMa);
+        snprintf(buf, sizeof(buf), "Chg: %s (%+d mA)", chg ? "CHARGING" : "STANDBY", (int)ibatMa);
         M5.Display.drawString(buf, 172, 75);
 
         // USB / VBUS Card
         M5.Display.fillRoundRect(8, 114, 304, 40, 4, 0x10A2);
         M5.Display.setTextColor(TFT_WHITE, 0x10A2);
-        snprintf(buf, sizeof(buf), "VBUS (USB): %d mV | Current: %.1f mA", vbusMv, ibusMa);
+        snprintf(buf, sizeof(buf), "VBUS (USB): %d mV | Current: %.1f mA", (int)vbusMv, ibusMa);
         M5.Display.drawString(buf, 16, 126);
 
         // Raw Registers Card
         M5.Display.fillRoundRect(8, 158, 304, 45, 4, 0x0841);
         M5.Display.setTextColor(TFT_YELLOW, 0x0841);
-        snprintf(buf, sizeof(buf), "AXP192 Regs: [00]=0x%02X [01]=0x%02X [32]=0x%02X", reg00, reg01, reg32);
+        snprintf(buf, sizeof(buf), "AXP192: [00]=0x%02X [01]=0x%02X [32]=0x%02X", reg00, reg01, reg32);
         M5.Display.drawString(buf, 16, 165);
-        snprintf(buf, sizeof(buf), "             [33]=0x%02X [82]=0x%02X", reg33, reg82);
+        snprintf(buf, sizeof(buf), "        [33]=0x%02X [82]=0x%02X", reg33, reg82);
         M5.Display.drawString(buf, 16, 182);
 
         // Bottom Touch Buttons Indicators
