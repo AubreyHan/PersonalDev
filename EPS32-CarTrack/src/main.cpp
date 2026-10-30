@@ -169,6 +169,14 @@ void setup() {
     Serial.printf("  [SD]    MicroSD Slot    (G39~G44) : %s\n", snap.storage.isMounted ? "MOUNTED (OK)" : "NO_CARD");
     Serial.println("-------------------------------------------------------");
 
+    // Configure Task Watchdog Timer (TWDT) with 10-second timeout for fault recovery
+    esp_task_wdt_config_t wdt_config = {
+        .timeout_ms = 10000,
+        .idle_core_mask = (1 << 0) | (1 << 1),
+        .trigger_panic = true
+    };
+    esp_task_wdt_init(&wdt_config);
+
     // Launch FreeRTOS Dual-Core Tasks on ESP32-P4 with generous stack headroom for 100+ hours stability
     xTaskCreatePinnedToCore(gnssTask,        "gnssTask",        12288, nullptr, 5, nullptr, 0);
     xTaskCreatePinnedToCore(netTask,         "netTask",         12288, nullptr, 2, nullptr, 0);
