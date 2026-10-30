@@ -12,7 +12,7 @@ public:
 
 private:
     void enterStandstillStandby();
-    void exitStandstillStandby();
+    void exitStandstillStandby(const char* reason = "Wakeup event");
 
     Ina226Driver* _ina                    = nullptr;
     uint32_t      _lastSampleMs           = 0;

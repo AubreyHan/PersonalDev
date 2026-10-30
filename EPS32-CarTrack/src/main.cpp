@@ -169,6 +169,15 @@ void setup() {
     Serial.printf("  [SD]    MicroSD Slot    (G39~G44) : %s\n", snap.storage.isMounted ? "MOUNTED (OK)" : "NO_CARD");
     Serial.println("-------------------------------------------------------");
 
+    // Record System Boot / Startup Event into TF Card Power FIFO Log
+    esp_reset_reason_t rstReason = esp_reset_reason();
+    char bootMsg[128];
+    snprintf(bootMsg, sizeof(bootMsg), "System startup (Reset: %d, Batt: %.2fV, %u%%, Pwr: %s, TF: %s)",
+             (int)rstReason, snap.power.busVoltageV, (unsigned)snap.power.batterySocPercent,
+             snap.power.hasExternalPower ? "ExtUSB" : "Battery",
+             snap.storage.isMounted ? "Mounted" : "NoCard");
+    TrackLogger::instance().logPowerEvent("BOOT", bootMsg);
+
     // Configure Task Watchdog Timer (TWDT) with 10-second timeout for fault recovery
     esp_task_wdt_config_t wdt_config = {
         .timeout_ms = 10000,
