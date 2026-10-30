@@ -139,7 +139,15 @@ void UiManager::handleTouchAndGestures() {
     }
 }
 
+extern PowerMonitorService g_powerService;
+
 void UiManager::update() {
+    // If system is in low-power standby with display sleeping, skip rendering to save CPU/power
+    if (g_powerService.isSleeping()) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+        return;
+    }
+
     handleTouchAndGestures();
     if (!_canvas) return;
 

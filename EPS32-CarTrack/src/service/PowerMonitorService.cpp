@@ -126,22 +126,51 @@ void PowerMonitorService::update() {
     ctx.power.batterySocPercent = socPct;
     ctx.power.remainingMinutes  = remMin;
 
-    // 3. Standstill 20-Minute (1200s) Auto Stop & Deep Sleep Check (PRD 3.8)
-    bool moving = (ctx.gnss.speedKmh > MotionPowerConfig::STANDSTILL_HEADING_LOCK_KMH) ||
-                  (fabsf(ctx.imu.fusedGyroZ) > 0.04f) ||
-                  (fabsf(ctx.imu.totalG) > 0.08f);
-    if (moving) {
-        _standstillStartMs = now;
-    } else if (now - _standstillStartMs >= MotionPowerConfig::STANDSTILL_TIMEOUT_MS) {
-        state.unlock();
-        enterStandstillDeepSleep();
-        return;
+    // 3. Standby & Wakeup State Machine (Automotive Power Management)
+    // Vehicle movement threshold: Sustained >0.15G or >0.10 rad/s gyro for >=1.5s
+    // (Filtering out short cabin disturbances like sitting down, door slaps, or shifting in seat)
+    bool instantDisturbance = (fabsf(ctx.imu.fusedGyroZ) > 0.08f) || (ctx.imu.totalG > 0.12f) ||
+                             (ctx.gnss.speedKmh > MotionPowerConfig::STANDSTILL_HEADING_LOCK_KMH);
+
+    if (instantDisturbance) {
+        if (_sustainedMoveStartMs == 0) _sustainedMoveStartMs = now;
+    } else {
+        _sustainedMoveStartMs = 0;
+    }
+
+    bool sustainedVehicleMotion = (_sustainedMoveStartMs > 0) &&
+                                  (now - _sustainedMoveStartMs >= MotionPowerConfig::SUSTAINED_ACCEL_MS);
+
+    // Power Recovery Wakeup: External charger plugged in / vehicle engine started (Vbus rises)
+    bool chargerRestored = hasExtPwr && !_hadExternalPowerBefore;
+    _hadExternalPowerBefore = hasExtPwr;
+
+    if (_isStandbySleep) {
+        // In standby sleep mode: check for wake conditions
+        if (chargerRestored || sustainedVehicleMotion) {
+            state.unlock();
+            exitStandstillStandby();
+            return;
+        }
+    } else {
+        // Normal running mode: check for standstill sleep condition
+        // If external power is connected (charging in car), never sleep!
+        if (hasExtPwr || sustainedVehicleMotion || instantDisturbance) {
+            _standstillStartMs = now;
+        } else if (now - _standstillStartMs >= MotionPowerConfig::STANDSTILL_TIMEOUT_MS) {
+            state.unlock();
+            enterStandstillStandby();
+            return;
+        }
     }
     state.unlock();
 }
 
-void PowerMonitorService::enterStandstillDeepSleep() {
-    Serial.println("[POWER] Standstill 20 minutes reached -> Closing GPX, saving NVS coordinates, entering Deep Sleep...");
+void PowerMonitorService::enterStandstillStandby() {
+    Serial.println("[POWER] Standstill 20 minutes (battery only) reached -> Entering Low-Power Standby...");
+    _isStandbySleep = true;
+    _sustainedMoveStartMs = 0;
+
     TrackLogger::instance().closeActiveStreams();
 
     SystemState& state = SystemState::instance();
@@ -150,6 +179,7 @@ void PowerMonitorService::enterStandstillDeepSleep() {
     int32_t latE7     = state.getContextUnsafe().gnss.latE7;
     int32_t lonE7     = state.getContextUnsafe().gnss.lonE7;
     int32_t altCm     = (int32_t)(state.getContextUnsafe().gnss.altitudeMeters * 100.0f);
+    _savedBrightness  = state.getContextUnsafe().screenBrightness;
     state.unlock();
 
     if (gnssValid && latE7 != 0) {
@@ -162,7 +192,28 @@ void PowerMonitorService::enterStandstillDeepSleep() {
         }
     }
 
+    // Turn off high-power screen backlight and sleep LCD
     M5.Display.setBrightness(0);
     M5.Display.sleep();
-    M5.Power.deepSleep(0, true);
+
+    // Throttle CPU to low frequency for sub-20mA standby while background tasks monitor IMU & Vbus
+    setCpuFrequencyMhz(80);
+    Serial.println("[POWER] Display turned off, CPU throttled to 80MHz (Monitoring 6-axis IMU & Charger Wakeup).");
+}
+
+void PowerMonitorService::exitStandstillStandby() {
+    Serial.println("[POWER] >>> WAKEUP TRIGGERED: Car Charger Restored OR Sustained Vehicle Movement! <<<");
+    _isStandbySleep = false;
+    _standstillStartMs = millis();
+    _sustainedMoveStartMs = 0;
+
+    // Restore full 400MHz dual-core performance
+    setCpuFrequencyMhz(400);
+
+    // Wake display and restore backlight
+    M5.Display.wakeup();
+    uint8_t br = (_savedBrightness > 0) ? _savedBrightness : 200;
+    M5.Display.setBrightness(br);
+
+    Serial.printf("[POWER] Normal running mode restored. Screen brightness: %u\n", br);
 }
