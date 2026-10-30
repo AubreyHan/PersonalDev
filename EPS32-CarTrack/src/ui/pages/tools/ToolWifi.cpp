@@ -28,7 +28,7 @@ void ToolWifi::render(M5Canvas& canvas, const SystemContext& ctx) {
         if (i < count) {
             canvas.setTextColor(UiColors::COLOR_WHITE);
             char rowStr[64];
-            snprintf(rowStr, sizeof(rowStr), "Slot #%d: %s", i + 1, creds[i].ssid.c_str());
+            snprintf(rowStr, sizeof(rowStr), "Slot #%d: %s", i + 1, creds[i].ssid);
             canvas.drawString(rowStr, 210, ry + 37);
 
             // Delete button
