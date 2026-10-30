@@ -24,6 +24,7 @@ public:
     void writeNewSegmentTag();
     size_t listTrackFiles(TrackFileEntry* outList, size_t maxEntries);
     bool openFileForRead(const char* filename, FsFile& outFile);
+    bool logPowerEvent(const char* eventType, const char* details);
     void lockSd() { if (_sdMutex) xSemaphoreTakeRecursive(_sdMutex, portMAX_DELAY); }
     void unlockSd() { if (_sdMutex) xSemaphoreGiveRecursive(_sdMutex); }
 
@@ -39,6 +40,8 @@ private:
     void healUnclosedGpxFiles();
     void enforceStorageQuota50Percent();
     void refreshStorageStats();
+    void prunePowerLogFifo(size_t incomingLen);
+    void getFormattedUtcTimestamp(char* outBuf, size_t maxLen);
 
     SemaphoreHandle_t _sdMutex              = nullptr;
     volatile bool     _pendingFormat        = false;
