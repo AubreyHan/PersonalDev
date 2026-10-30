@@ -41,7 +41,7 @@ private:
     void enforceStorageQuota50Percent();
     void refreshStorageStats();
     void prunePowerLogFifo(size_t incomingLen);
-    void getFormattedUtcTimestamp(char* outBuf, size_t maxLen);
+    void getFormattedGpsTimezoneTimestamp(char* outBuf, size_t maxLen);
 
     SemaphoreHandle_t _sdMutex              = nullptr;
     volatile bool     _pendingFormat        = false;
