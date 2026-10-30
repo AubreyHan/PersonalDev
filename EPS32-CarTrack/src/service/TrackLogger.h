@@ -19,6 +19,7 @@ public:
     bool init();
     void update();
     bool formatFat32();
+    void requestFormat() { _pendingFormat = true; } // Thread-safe async request, executed in trackLoggerTask
     void closeActiveStreams();
     void writeNewSegmentTag();
     size_t listTrackFiles(TrackFileEntry* outList, size_t maxEntries);
@@ -40,6 +41,7 @@ private:
     void refreshStorageStats();
 
     SemaphoreHandle_t _sdMutex              = nullptr;
+    volatile bool     _pendingFormat        = false;
     SystemContext     _snapBuf              = {};
     SdFs              _sd;
     FsFile            _fileWgs;

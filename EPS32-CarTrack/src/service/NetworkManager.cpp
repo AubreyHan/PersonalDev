@@ -404,6 +404,15 @@ void AppNetworkManager::setupHttpRoutes() {
 }
 
 void AppNetworkManager::update() {
+    // Execute pending SoftAP portal commands requested by UI task (thread-safe hand-off)
+    uint8_t cmd = _pendingPortalCmd;
+    if (cmd != 0) {
+        _pendingPortalCmd = 0;
+        if (cmd == 1)      doStartSetupPortal();
+        else if (cmd == 2) doStartSharePortal();
+        else if (cmd == 3) doStopPortals();
+    }
+
     if (_portalRunning) {
         _dnsServer.processNextRequest();
         _server.handleClient();

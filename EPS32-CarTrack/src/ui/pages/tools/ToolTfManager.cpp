@@ -126,7 +126,7 @@ bool ToolTfManager::onTouchTap(int16_t x, int16_t y, SystemContext& ctx) {
                 _confirmFormatModal = true;
             } else {
                 _confirmFormatModal = false;
-                TrackLogger::instance().formatFat32();
+                TrackLogger::instance().requestFormat();
             }
             return true;
         }

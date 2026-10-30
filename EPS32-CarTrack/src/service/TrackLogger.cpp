@@ -375,6 +375,10 @@ void TrackLogger::closeActiveStreams() {
 }
 
 void TrackLogger::update() {
+    if (_pendingFormat) {
+        _pendingFormat = false;
+        formatFat32();
+    }
     if (!_mounted) return;
 
     uint32_t curSec = millis() / 1000;
