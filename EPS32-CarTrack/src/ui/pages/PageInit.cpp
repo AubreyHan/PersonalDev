@@ -150,7 +150,7 @@ bool PageInit::onTouchTap(int16_t x, int16_t y, SystemContext& ctx) {
     }
     // 3. Wi-Fi QR Code Setup button (X: 890..1236, Y: 465..535)
     if (x >= 890 && x <= 1236 && y >= 465 && y <= 535) {
-        NetworkManager::instance().startSetupPortal();
+        AppNetworkManager::instance().startSetupPortal();
         ctx.currentPage = PAGE_WIFI_CONFIG;
         return true;
     }

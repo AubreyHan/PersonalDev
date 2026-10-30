@@ -16,7 +16,7 @@ void ToolWifi::render(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.drawString("Back", 1157, 56);
 
     SavedWifiCredential creds[5];
-    uint8_t count = NetworkManager::instance().getSavedNetworks(creds, 5);
+    uint8_t count = AppNetworkManager::instance().getSavedNetworks(creds, 5);
 
     for (int i = 0; i < 5; i++) {
         int ry = 110 + i * 85;
@@ -61,17 +61,17 @@ bool ToolWifi::onTouchTap(int16_t x, int16_t y, SystemContext& ctx) {
     }
 
     SavedWifiCredential creds[5];
-    uint8_t count = NetworkManager::instance().getSavedNetworks(creds, 5);
+    uint8_t count = AppNetworkManager::instance().getSavedNetworks(creds, 5);
     for (int i = 0; i < count; i++) {
         int ry = 110 + i * 85;
         if (x >= 1060 && x <= 1230 && y >= ry + 13 && y <= ry + 61) {
-            NetworkManager::instance().deleteNetworkCredential(creds[i].ssid);
+            AppNetworkManager::instance().deleteNetworkCredential(creds[i].ssid);
             return true;
         }
     }
 
     if (x >= 185 && x <= 1255 && y >= 555 && y <= 670) {
-        NetworkManager::instance().startSetupPortal();
+        AppNetworkManager::instance().startSetupPortal();
         ctx.currentPage = PAGE_WIFI_CONFIG;
         return true;
     }

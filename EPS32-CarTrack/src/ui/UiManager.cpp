@@ -43,7 +43,7 @@ BasePage* UiManager::getActivePage(AppPageId id) {
 
 void UiManager::applyDockAction(DockTouchAction act, SystemContext& ctx) {
     if (act == DOCK_ACTION_NONE) return;
-    NetworkManager::instance().stopPortals();
+    AppNetworkManager::instance().stopPortals();
     switch (act) {
         case DOCK_ACTION_HOME:    ctx.currentPage = PAGE_1_DASHBOARD;   break;
         case DOCK_ACTION_TIME:    ctx.currentPage = PAGE_7_WORLD_CLOCK; break;

@@ -56,7 +56,7 @@ void gnssTask(void* pvParameters) {
 // Core 0, Priority 2: Wi-Fi 6 Multi-SSID, SoftAP QR/Captive Portal, NTP Sync, AGPS & Weather
 void netTask(void* pvParameters) {
     for (;;) {
-        NetworkManager::instance().update();
+        AppNetworkManager::instance().update();
         g_timeService.update();
         g_agpsService.update();
         g_weatherService.update();
@@ -139,7 +139,7 @@ void setup() {
     g_agpsService.init(&g_gnssDriver);
     g_powerService.init(&g_ina226Driver);
     g_weatherService.init();
-    NetworkManager::instance().init();
+    AppNetworkManager::instance().init();
 
     // Launch FreeRTOS Dual-Core Tasks on ESP32-P4
     xTaskCreatePinnedToCore(gnssTask,        "gnssTask",        8192,  nullptr, 5, nullptr, 0);

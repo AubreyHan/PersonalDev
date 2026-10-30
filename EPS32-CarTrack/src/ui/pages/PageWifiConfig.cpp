@@ -70,7 +70,7 @@ void PageWifiConfig::render(M5Canvas& canvas, const SystemContext& ctx) {
 bool PageWifiConfig::onTouchTap(int16_t x, int16_t y, SystemContext& ctx) {
     // Exit button (X: 1080..1256, Y: 10..54)
     if (x >= 1080 && x <= 1256 && y >= 10 && y <= 64) {
-        NetworkManager::instance().stopPortals();
+        AppNetworkManager::instance().stopPortals();
         ctx.currentPage = (ctx.gnss.isValid && ctx.gnss.numSats >= 4) ? PAGE_1_DASHBOARD : PAGE_INIT;
         return true;
     }

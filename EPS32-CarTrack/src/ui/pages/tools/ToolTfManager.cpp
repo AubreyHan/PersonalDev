@@ -102,7 +102,7 @@ void ToolTfManager::render(M5Canvas& canvas, const SystemContext& ctx) {
 bool ToolTfManager::onTouchTap(int16_t x, int16_t y, SystemContext& ctx) {
     // Back button
     if (x >= 1080 && x <= 1235 && y >= 32 && y <= 80) {
-        NetworkManager::instance().stopPortals();
+        AppNetworkManager::instance().stopPortals();
         _confirmFormatModal = false;
         ctx.currentPage = PAGE_8_TOOLS;
         return true;
@@ -111,13 +111,13 @@ bool ToolTfManager::onTouchTap(int16_t x, int16_t y, SystemContext& ctx) {
     if (ctx.wifi.apShareActive) {
         // Stop Share Hotspot button (X: 790..1195, Y: 515..579)
         if (x >= 790 && x <= 1195 && y >= 515 && y <= 579) {
-            NetworkManager::instance().stopPortals();
+            AppNetworkManager::instance().stopPortals();
             return true;
         }
     } else {
         // Start Wi-Fi QR Code Export button (X: 185..705, Y: 460..570)
         if (x >= 185 && x <= 705 && y >= 460 && y <= 570) {
-            NetworkManager::instance().startSharePortal();
+            AppNetworkManager::instance().startSharePortal();
             return true;
         }
         // Format FAT32 button (X: 735..1255, Y: 460..570)

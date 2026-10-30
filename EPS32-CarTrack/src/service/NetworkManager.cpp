@@ -5,7 +5,7 @@
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 
-void NetworkManager::init() {
+void AppNetworkManager::init() {
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
     loadSavedNetworks();
@@ -13,7 +13,7 @@ void NetworkManager::init() {
     tryAutoConnectMultiSsid();
 }
 
-void NetworkManager::loadSavedNetworks() {
+void AppNetworkManager::loadSavedNetworks() {
     Preferences prefs;
     _savedCount = 0;
     if (prefs.begin("m5track", true)) {
@@ -40,7 +40,7 @@ void NetworkManager::loadSavedNetworks() {
     state.unlock();
 }
 
-bool NetworkManager::saveNetworkCredential(const String& ssid, const String& pwd) {
+bool AppNetworkManager::saveNetworkCredential(const String& ssid, const String& pwd) {
     if (ssid.length() == 0) return false;
     loadSavedNetworks();
 
@@ -86,7 +86,7 @@ bool NetworkManager::saveNetworkCredential(const String& ssid, const String& pwd
     return true;
 }
 
-bool NetworkManager::deleteNetworkCredential(const String& ssid) {
+bool AppNetworkManager::deleteNetworkCredential(const String& ssid) {
     loadSavedNetworks();
     uint8_t newCount = 0;
     SavedWifiCredential temp[5];
@@ -118,13 +118,13 @@ bool NetworkManager::deleteNetworkCredential(const String& ssid) {
     return true;
 }
 
-uint8_t NetworkManager::getSavedNetworks(SavedWifiCredential* outArr, uint8_t maxCount) {
+uint8_t AppNetworkManager::getSavedNetworks(SavedWifiCredential* outArr, uint8_t maxCount) {
     uint8_t n = (_savedCount < maxCount) ? _savedCount : maxCount;
     for (uint8_t i = 0; i < n; i++) outArr[i] = _saved[i];
     return n;
 }
 
-void NetworkManager::tryAutoConnectMultiSsid() {
+void AppNetworkManager::tryAutoConnectMultiSsid() {
     if (_savedCount == 0 || _portalRunning) return;
     if (WiFi.status() == WL_CONNECTED) return;
 
@@ -133,7 +133,7 @@ void NetworkManager::tryAutoConnectMultiSsid() {
     WiFi.begin(_saved[idx].ssid.c_str(), _saved[idx].password.c_str());
 }
 
-void NetworkManager::startSetupPortal() {
+void AppNetworkManager::startSetupPortal() {
     stopPortals();
     WiFi.mode(WIFI_AP_STA);
     IPAddress apIP(192, 168, 4, 1);
@@ -156,7 +156,7 @@ void NetworkManager::startSetupPortal() {
     Serial.println("[WIFI] Started Captive Portal SoftAP: M5Track-Setup (192.168.4.1)");
 }
 
-void NetworkManager::startSharePortal() {
+void AppNetworkManager::startSharePortal() {
     stopPortals();
     WiFi.mode(WIFI_AP_STA);
     IPAddress apIP(192, 168, 4, 1);
@@ -179,7 +179,7 @@ void NetworkManager::startSharePortal() {
     Serial.println("[WIFI] Started Track Share SoftAP: M5Track-Share (192.168.4.1)");
 }
 
-void NetworkManager::stopPortals() {
+void AppNetworkManager::stopPortals() {
     if (_portalRunning) {
         _dnsServer.stop();
         _server.stop();
@@ -196,7 +196,7 @@ void NetworkManager::stopPortals() {
     }
 }
 
-void NetworkManager::handleRootPage() {
+void AppNetworkManager::handleRootPage() {
     if (_isShareMode) {
         handleShareTracksPage();
         return;
@@ -240,7 +240,7 @@ fetch('/api/scan').then(r=>r.json()).then(d=>{
     _server.send(200, "text/html", html);
 }
 
-void NetworkManager::handleShareTracksPage() {
+void AppNetworkManager::handleShareTracksPage() {
     const char* html = R"rawliteral(
 <!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>M5Track-Tab5 GPX Track Share</title>
@@ -267,7 +267,7 @@ fetch('/api/tracks').then(r=>r.json()).then(d=>{
     _server.send(200, "text/html", html);
 }
 
-void NetworkManager::setupHttpRoutes() {
+void AppNetworkManager::setupHttpRoutes() {
     // Primary entry & Captive Portal OS detection endpoints (iOS / Android / HarmonyOS / Windows)
     _server.on("/", HTTP_GET, [this]() { handleRootPage(); });
     _server.on("/setup", HTTP_GET, [this]() { _isShareMode = false; handleRootPage(); });
@@ -371,7 +371,7 @@ void NetworkManager::setupHttpRoutes() {
     });
 }
 
-void NetworkManager::update() {
+void AppNetworkManager::update() {
     if (_portalRunning) {
         _dnsServer.processNextRequest();
         _server.handleClient();
