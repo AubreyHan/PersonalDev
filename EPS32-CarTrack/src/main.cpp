@@ -141,6 +141,22 @@ void setup() {
     g_weatherService.init();
     AppNetworkManager::instance().init();
 
+    // Structured Hardware & Sensor Diagnostic Summary
+    SystemContext snap = SystemState::instance().getSnapshot();
+    Serial.println("-------------------------------------------------------");
+    Serial.println("[HW_SELF_TEST] Device & Sensor Diagnostic Summary:");
+    Serial.printf("  [MCU]   ESP32-P4 Flash: %u MB | PSRAM Free: %u KB\n",
+                  ESP.getFlashChipSize() / (1024 * 1024), ESP.getFreePsram() / 1024);
+    Serial.printf("  [IMU1]  Tab5 BMI270 Master (0x68) : %s\n", snap.imu.masterOnline ? "ONLINE (OK)" : "FAIL");
+    Serial.printf("  [IMU2]  M135 BMI270 Slave  (0x69) : %s\n", snap.imu.slaveOnline  ? "ONLINE (OK)" : "FAIL");
+    Serial.printf("  [RTC]   Tab5 RX8130CE      (0x32) : %s\n", snap.rtcOnline        ? "ONLINE (OK)" : "FAIL");
+    Serial.printf("  [PWR]   Tab5 INA226 Gauge  (0x40) : %s\n", snap.power.isAvailable ? "ONLINE (OK)" : "FAIL");
+    Serial.printf("  [BARO]  M135 BMP280        (0x76) : %s\n", snap.baro.isAvailable ? "ONLINE (OK)" : "FAIL");
+    Serial.printf("  [MAG]   M135 BMM150        (0x10) : %s (MagSafe Bypassed)\n", i2cReport.bmm150Mag0x10 ? "HW_ACK (OK)" : "OFFLINE");
+    Serial.printf("  [GNSS]  M135 NEO-M9N       (UART) : %s\n", snap.gnss.moduleOnline ? "ONLINE (OK)" : "FAIL");
+    Serial.printf("  [SD]    MicroSD Slot    (G39~G44) : %s\n", snap.storage.isMounted ? "MOUNTED (OK)" : "NO_CARD");
+    Serial.println("-------------------------------------------------------");
+
     // Launch FreeRTOS Dual-Core Tasks on ESP32-P4
     xTaskCreatePinnedToCore(gnssTask,        "gnssTask",        8192,  nullptr, 5, nullptr, 0);
     xTaskCreatePinnedToCore(netTask,         "netTask",         8192,  nullptr, 2, nullptr, 0);

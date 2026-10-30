@@ -44,15 +44,16 @@ I2cScanReport I2cBusManager::scanBus() {
                               probeAddress(I2cAddrConfig::ADDR_INA226_ALT);
     report.bmp280Baro0x76   = probeAddress(I2cAddrConfig::ADDR_BMP280_BARO) ||
                               probeAddress(I2cAddrConfig::ADDR_BMP280_ALT);
-    report.bmm150Mag0x10    = false; // Explicitly bypassed per MagSafe-immune spec
+    report.bmm150Mag0x10    = probeAddress(I2cAddrConfig::ADDR_BMM150_MAG);
 
     Serial.println("[I2C] Orthogonal Bus Scan Report (SDA=G31, SCL=G32):");
-    Serial.printf("  - 0x68 BMI270 Master (Tab5)  : %s\n", report.bmi270Master0x68 ? "ACK" : "OFFLINE");
-    Serial.printf("  - 0x69 BMI270 Slave  (M135)  : %s\n", report.bmi270Slave0x69  ? "ACK" : "OFFLINE");
-    Serial.printf("  - 0x32 RX8130CE RTC  (Tab5)  : %s\n", report.rx8130ceRtc0x32  ? "ACK" : "OFFLINE");
-    Serial.printf("  - 0x40 INA226 Gauge  (Tab5)  : %s\n", report.ina226Fuel0x40   ? "ACK" : "OFFLINE");
-    Serial.printf("  - 0x76 BMP280 Baro   (M135)  : %s\n", report.bmp280Baro0x76   ? "ACK" : "OFFLINE");
-    Serial.println("  - 0x10 BMM150 Compass        : BYPASSED (MagSafe Immunity Active)");
+    Serial.printf("  - 0x68 BMI270 Master (Tab5)  : %s\n", report.bmi270Master0x68 ? "ACK (OK)" : "OFFLINE");
+    Serial.printf("  - 0x69 BMI270 Slave  (M135)  : %s\n", report.bmi270Slave0x69  ? "ACK (OK)" : "OFFLINE");
+    Serial.printf("  - 0x32 RX8130CE RTC  (Tab5)  : %s\n", report.rx8130ceRtc0x32  ? "ACK (OK)" : "OFFLINE");
+    Serial.printf("  - 0x40 INA226 Gauge  (Tab5)  : %s\n", report.ina226Fuel0x40   ? "ACK (OK)" : "OFFLINE");
+    Serial.printf("  - 0x76 BMP280 Baro   (M135)  : %s\n", report.bmp280Baro0x76   ? "ACK (OK)" : "OFFLINE");
+    Serial.printf("  - 0x10 BMM150 Compass(M135)  : %s [Algorithm Bypassed for MagSafe]\n",
+                  report.bmm150Mag0x10 ? "ACK (HW OK)" : "OFFLINE");
 
     return report;
 }
