@@ -122,11 +122,15 @@ void DeadReckoningService::update() {
             }
 
             if (ctx.trip.hasStartAnchor && (gnssValid || ctx.gnss.isDeadReckoning)) {
+                if (ctx.trip.tripDistanceKm == 0.0 && _lastTripLat != ctx.trip.startLatitude) {
+                    _lastTripLat = ctx.trip.startLatitude;
+                    _lastTripLon = ctx.trip.startLongitude;
+                }
                 double dLatM = (lat - _lastTripLat) * 111139.0;
                 double dLonM = (lon - _lastTripLon) * 111139.0 * cos(lat * 0.0174532925);
                 double stepM = sqrt(dLatM * dLatM + dLonM * dLonM);
                 if (stepM >= 2.0 && stepM < 250.0) {
-                    ctx.trip.tripDistanceKm += (float)(stepM * 0.001);
+                    ctx.trip.tripDistanceKm += (stepM * 0.001);
                     _lastTripLat = lat;
                     _lastTripLon = lon;
                     state.unlock();
@@ -136,7 +140,7 @@ void DeadReckoningService::update() {
             }
 
             if (ctx.trip.movingDurationSec > 0) {
-                ctx.trip.avgSpeedKmh = (ctx.trip.tripDistanceKm * 3600.0f) / (float)ctx.trip.movingDurationSec;
+                ctx.trip.avgSpeedKmh = (float)((ctx.trip.tripDistanceKm * 3600.0) / (double)ctx.trip.movingDurationSec);
             }
         } else {
             ctx.trip.idleDurationSec += elapsedSec;
