@@ -22,19 +22,24 @@ public:
 
 private:
     void queryMonRf();
+    void executeHotStartReacquisition();
 
-    SFE_UBLOX_GNSS _myGNSS;
-    bool           _isInitialized       = false;
-    bool           _isOnline            = false;
-    bool           _strictFilterActive  = false;
-    bool           _needAssistReinject  = false;
-    int            _activeRxPin         = PinConfig::GNSS_RX_PIN_PRIMARY;
-    int            _activeTxPin         = PinConfig::GNSS_TX_PIN_PRIMARY;
-    unsigned long  _lastMonRfTimeMs     = 0;
-    unsigned long  _lastValidFixMs      = 0;
-    unsigned long  _firstValidFixMs     = 0;
-    unsigned long  _lastHotRestartMs    = 0;
-    double         _lastPlausibleLat    = 0.0;
-    double         _lastPlausibleLon    = 0.0;
-    uint32_t       _lastPlausibleEpoch  = 0;
+    SFE_UBLOX_GNSS    _myGNSS;
+    SemaphoreHandle_t _uartMutex           = nullptr;
+    volatile bool     _requestHotRestart   = false;
+    bool              _isInitialized       = false;
+    bool              _isOnline            = false;
+    bool              _strictFilterActive  = false;
+    volatile bool     _needAssistReinject  = false;
+    bool              _hadValidFixEver     = false;
+    uint8_t           _lastObservedSats    = 0;
+    int               _activeRxPin         = PinConfig::GNSS_RX_PIN_PRIMARY;
+    int               _activeTxPin         = PinConfig::GNSS_TX_PIN_PRIMARY;
+    unsigned long     _lastMonRfTimeMs     = 0;
+    unsigned long     _lastValidFixMs      = 0;
+    unsigned long     _firstValidFixMs     = 0;
+    unsigned long     _lastHotRestartMs    = 0;
+    double            _lastPlausibleLat    = 0.0;
+    double            _lastPlausibleLon    = 0.0;
+    uint32_t          _lastPlausibleEpoch  = 0;
 };

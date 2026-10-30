@@ -2,6 +2,9 @@
 #include <math.h>
 
 bool GnssDriver::init() {
+    if (!_uartMutex) {
+        _uartMutex = xSemaphoreCreateRecursiveMutex();
+    }
     Serial.println("[GNSS] Initializing NEO-M9N (M135) on Tab5 M5-Bus...");
 
     struct CandidateLink {
@@ -91,7 +94,12 @@ void GnssDriver::setSignalFilterStage(bool strictTrackingMode) {
 }
 
 void GnssDriver::triggerHotStartReacquisition() {
+    _requestHotRestart = true;
+}
+
+void GnssDriver::executeHotStartReacquisition() {
     if (!_isOnline) return;
+    if (_uartMutex) xSemaphoreTakeRecursive(_uartMutex, portMAX_DELAY);
     Serial.println("[GNSS] Triggering Hot-Start Baseband Reset (UBX-CFG-RST, navBbrMask=0x0000) for fast indoor->outdoor lock...");
 
     // UBX-CFG-RST (0x06, 0x04), length 4:
@@ -117,6 +125,7 @@ void GnssDriver::triggerHotStartReacquisition() {
     _myGNSS.setAutoPVT(true);
     _needAssistReinject = true;
     _lastHotRestartMs   = millis();
+    if (_uartMutex) xSemaphoreGiveRecursive(_uartMutex);
 }
 
 bool GnssDriver::configureAutomotiveParams() {
@@ -150,7 +159,9 @@ bool GnssDriver::configureAutomotiveParams() {
 
 void GnssDriver::pushRawData(const uint8_t* buffer, size_t size) {
     if (buffer && size > 0) {
+        if (_uartMutex) xSemaphoreTakeRecursive(_uartMutex, portMAX_DELAY);
         Serial1.write(buffer, size);
+        if (_uartMutex) xSemaphoreGiveRecursive(_uartMutex);
     }
 }
 
@@ -177,10 +188,12 @@ bool GnssDriver::injectUtcTime(uint16_t year, uint8_t month, uint8_t day, uint8_
     for (int i = 2; i < 6; i++)  { ck_a += header[i];  ck_b += ck_a; }
     for (int i = 0; i < 24; i++) { ck_a += payload[i]; ck_b += ck_a; }
 
+    if (_uartMutex) xSemaphoreTakeRecursive(_uartMutex, portMAX_DELAY);
     Serial1.write(header, 6);
     Serial1.write(payload, 24);
     Serial1.write(ck_a);
     Serial1.write(ck_b);
+    if (_uartMutex) xSemaphoreGiveRecursive(_uartMutex);
     return true;
 }
 
@@ -198,10 +211,12 @@ bool GnssDriver::injectPosition(int32_t latE7, int32_t lonE7, int32_t altCm, uin
     for (int i = 2; i < 6; i++)  { ck_a += header[i];  ck_b += ck_a; }
     for (int i = 0; i < 20; i++) { ck_a += payload[i]; ck_b += ck_a; }
 
+    if (_uartMutex) xSemaphoreTakeRecursive(_uartMutex, portMAX_DELAY);
     Serial1.write(header, 6);
     Serial1.write(payload, 20);
     Serial1.write(ck_a);
     Serial1.write(ck_b);
+    if (_uartMutex) xSemaphoreGiveRecursive(_uartMutex);
     return true;
 }
 
@@ -225,10 +240,20 @@ void GnssDriver::queryMonRf() {
 void GnssDriver::update() {
     if (!_isInitialized || !_isOnline) return;
 
+    if (_requestHotRestart) {
+        _requestHotRestart = false;
+        executeHotStartReacquisition();
+    }
+
+    if (_uartMutex) xSemaphoreTakeRecursive(_uartMutex, portMAX_DELAY);
     _myGNSS.checkUblox();
+    bool hasPvt = _myGNSS.getPVT();
+    if (_uartMutex) xSemaphoreGiveRecursive(_uartMutex);
+
     unsigned long now = millis();
 
-    if (_myGNSS.getPVT()) {
+    if (hasPvt) {
+        if (_uartMutex) xSemaphoreTakeRecursive(_uartMutex, portMAX_DELAY);
         uint8_t fix     = _myGNSS.getFixType();
         bool    valid   = (fix >= 3);
         int32_t latE7   = _myGNSS.getLatitude();
@@ -242,18 +267,33 @@ void GnssDriver::update() {
         float   pdop    = _myGNSS.getGeometricDOP() / 100.0f;
         float   vdop    = _myGNSS.getVerticalDOP() / 100.0f;
         uint8_t numSats = _myGNSS.getSIV();
+        uint16_t yr     = _myGNSS.getYear();
+        uint8_t  mo     = _myGNSS.getMonth();
+        uint8_t  dy     = _myGNSS.getDay();
+        uint8_t  hh     = _myGNSS.getHour();
+        uint8_t  mm     = _myGNSS.getMinute();
+        uint8_t  ss     = _myGNSS.getSecond();
+        uint16_t ms     = _myGNSS.getMillisecond();
+        if (_uartMutex) xSemaphoreGiveRecursive(_uartMutex);
+
+        _lastObservedSats = numSats;
 
         // Two-Stage Dynamic Signal Filter Switching (Solves indoor->outdoor slow lock)
         if (valid) {
-            _lastValidFixMs = now;
+            _hadValidFixEver = true;
+            _lastValidFixMs  = now;
             if (_firstValidFixMs == 0) _firstValidFixMs = now;
             if (!_strictFilterActive && (now - _firstValidFixMs >= 10000) && numSats >= 6) {
+                if (_uartMutex) xSemaphoreTakeRecursive(_uartMutex, portMAX_DELAY);
                 setSignalFilterStage(true);
+                if (_uartMutex) xSemaphoreGiveRecursive(_uartMutex);
             }
         } else {
             _firstValidFixMs = 0;
             if (_strictFilterActive) {
+                if (_uartMutex) xSemaphoreTakeRecursive(_uartMutex, portMAX_DELAY);
                 setSignalFilterStage(false);
+                if (_uartMutex) xSemaphoreGiveRecursive(_uartMutex);
             }
         }
 
@@ -311,13 +351,13 @@ void GnssDriver::update() {
             ctx.gnss.numGloSats = (numSats >= 4) ? (uint8_t)(numSats * 0.15f) : 0;
             ctx.gnss.numGalSats = numSats - (ctx.gnss.numBdsSats + ctx.gnss.numGpsSats + ctx.gnss.numGloSats);
 
-            ctx.gnss.year        = _myGNSS.getYear();
-            ctx.gnss.month       = _myGNSS.getMonth();
-            ctx.gnss.day         = _myGNSS.getDay();
-            ctx.gnss.hour        = _myGNSS.getHour();
-            ctx.gnss.minute      = _myGNSS.getMinute();
-            ctx.gnss.second      = _myGNSS.getSecond();
-            ctx.gnss.millisecond = _myGNSS.getMillisecond();
+            ctx.gnss.year        = yr;
+            ctx.gnss.month       = mo;
+            ctx.gnss.day         = dy;
+            ctx.gnss.hour        = hh;
+            ctx.gnss.minute      = mm;
+            ctx.gnss.second      = ss;
+            ctx.gnss.millisecond = ms;
 
             // Zero-intervention auto transition from PageInit to Page1Dashboard on 3D Fix (>=4 sats)
             if (ctx.currentPage == PAGE_INIT && numSats >= 4) {
@@ -327,15 +367,19 @@ void GnssDriver::update() {
         state.unlock();
     }
 
-    // 45-Second No-Fix Auto Hot-Start Watchdog (Prevents indoor Doppler divergence lock-up)
-    if ((now - _lastValidFixMs >= 45000) && (now - _lastHotRestartMs >= 45000)) {
-        triggerHotStartReacquisition();
+    // 45-Second No-Fix Auto Hot-Start Watchdog:
+    // Triggers when emerging from indoor/garage (sats visible or lost prior fix) without locking for 45s
+    if ((_firstValidFixMs == 0) && (_lastObservedSats > 0 || _hadValidFixEver) &&
+        (now - _lastValidFixMs >= 45000) && (now - _lastHotRestartMs >= 45000)) {
+        executeHotStartReacquisition();
     }
 
     // Only poll MON-RF every 5s when fixed, or every 10s when searching so PVT stream is never blocked
     uint32_t monInterval = (_firstValidFixMs > 0) ? 5000 : 10000;
     if (now - _lastMonRfTimeMs >= monInterval) {
         _lastMonRfTimeMs = now;
+        if (_uartMutex) xSemaphoreTakeRecursive(_uartMutex, portMAX_DELAY);
         queryMonRf();
+        if (_uartMutex) xSemaphoreGiveRecursive(_uartMutex);
     }
 }
