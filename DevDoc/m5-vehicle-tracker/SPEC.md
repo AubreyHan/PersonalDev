@@ -494,11 +494,17 @@ struct DualImuStatus {
 
 ---
 
-## 4. Web 配网与文件管理 API 规范 (Captive Portal & SoftAP)
+## 4. Web 配网与文件管理 API 及二维码规范 (Captive Portal, QR Codes & SoftAP)
 
-系统所有 Web 交互均以按需启动的独立 SoftAP 热点模式提供：
-- **配网模式**：AP SSID `M5Track-Setup`，IP: `192.168.4.1`。
-- **TF 卡文件下载模式**：AP SSID `M5Track-Share`，IP: `192.168.4.1`（仅在触发“通过 Wi-Fi 下载”时开启，退出菜单即关闭）。
+系统所有 Web 交互均以按需启动的独立 SoftAP 热点模式提供，并配合 **DNS Captive Portal (端口 53 全域名解析至 `192.168.4.1`)** 与 **`M5GFX` 原生屏幕二维码 (`canvas.qrcode()`)**：
+- **配网模式 (`PageWifiConfig`)**：
+  - AP SSID：`M5Track-Setup`，IP：`192.168.4.1`；
+  - **二维码 1（扫码自动连热点）**：`WIFI:T:nopass;S:M5Track-Setup;;`
+  - **二维码 2（扫码直达配网界面）**：`http://192.168.4.1/setup`（连上热点后手机 Captive Portal 也会自动唤起该界面）。
+- **TF 卡文件下载模式 (`ToolTfManager`)**：
+  - AP SSID：`M5Track-Share`，IP：`192.168.4.1`（仅在触发“通过 Wi-Fi 下载”时开启，退出菜单即关闭）；
+  - **二维码 1（扫码自动连热点）**：`WIFI:T:nopass;S:M5Track-Share;;`
+  - **二维码 2（扫码直达轨迹下载界面）**：`http://192.168.4.1/tracks`（连上热点后手机 Captive Portal 也会自动打开轨迹下载列表）。
 
 | 方法 | 路径 | 描述 | 请求格式 | 响应格式 (JSON) |
 | :--- | :--- | :--- | :--- | :--- |

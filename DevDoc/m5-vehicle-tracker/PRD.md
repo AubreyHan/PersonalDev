@@ -417,8 +417,11 @@ stateDiagram-v2
 
 ---
 
-### 3.4 双源自适应时钟引擎 (Dual-Source Time Engine)
+### 3.4 双源自适应时钟引擎与无 GPS 下 Wi-Fi NTP 自动校时 (Dual-Source Time Engine & Wi-Fi NTP Sync)
 - **底层时钟源**：NEO-M9N 卫星原子钟授时 + Tab5 板载 **RX8130CE 硬件 RTC**（I2C `0x32`，带 $70000\mu\text{F}$ 超级电容）+ 网络 NTP；
+- **无 GPS 信号下的 Wi-Fi NTP 自动校时**：
+  - 当设备处于室内、地库或冷启动尚未捕获有效 GPS 信号（`!gnss.isValid`），但 **Wi-Fi 已成功联网**时，系统立即自动触发多服务器 NTP 校时（`ntp.aliyun.com` / `cn.pool.ntp.org` / `pool.ntp.org`）；
+  - NTP 同步成功后，第一时间将精准 UTC 时间更新至系统时钟（`settimeofday`）并**反向写入校准 Tab5 板载 RX8130CE 硬件 RTC**，同时构建 `UBX-MGA-INI-TIME_UTC` 帧注入 NEO-M9N 串口辅助热启动；
 - **地库出库极速温启动**：熄火断电时最后坐标存入 NVS；冷启动时直接读取 RX8130CE RTC 真实时间注入 M9N 串口，驶出地库锁星耗时从 35s 降至 10~15s。
 
 ---
@@ -428,8 +431,13 @@ stateDiagram-v2
 
 ---
 
-### 3.6 Wi-Fi 凭证管理 (Multi-SSID, ESP32-C6)
-- 由协处理器 ESP32-C6 管理，支持最多 5 组车载热点/家庭网络循环自动重连与 Captive Portal 手机扫码配网。
+### 3.6 Wi-Fi 凭证管理与双二维码扫码自动连网并弹出界面 (Multi-SSID, QR Code Auto-Connect & Captive Portal)
+- 由协处理器 ESP32-C6 管理，支持最多 5 组车载热点/家庭网络循环自动重连；
+- **配网（`M5Track-Setup`）与轨迹无线导出（`M5Track-Share`）双模式二维码交互**：
+  1. **Step 1 · 扫码自动连 Wi-Fi 二维码**：屏幕渲染标准 `WIFI:T:nopass;S:<SSID>;;` 协议二维码，手机相机或微信一扫即可免输密码一键接入设备热点；
+  2. **Step 2 · 自动弹出 / 扫码直达网页二维码**：
+     - 底层内置 **DNS Captive Portal（强制门户 DNS 劫持服务，端口 53 全域名解析至 `192.168.4.1`）**，手机连上热点后系统会自动弹出配网页面或轨迹文件下载界面；
+     - 同时屏幕并排展示 **Step 2 网页直达二维码**（配网：`http://192.168.4.1/setup`，轨迹下载：`http://192.168.4.1/tracks`），若部分手机机型关闭了系统弹窗，再扫右侧二维码即可直接唤起浏览器进入对应功能界面。
 
 ---
 
