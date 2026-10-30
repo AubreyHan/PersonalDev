@@ -94,7 +94,8 @@ flowchart TB
         N9N["u-blox NEO-M9N<br>(M5-Bus UART 38/37)"]
         BARO["BMP280 Baro<br>(I2C 0x76)"]
         MAG["BMM150 Compass<br>(I2C 0x10)"]
-        IMU["BMI270 6-Axis<br>(I2C 0x68)"]
+        IMU1["BMI270 Master<br>(Tab5 0x68)"]
+        IMU2["BMI270 Slave<br>(M135 0x69)"]
         RTC["RX8130CE RTC<br>(I2C 0x32)"]
         INA["INA226 Fuel Gauge<br>(I2C 0x40)"]
         LCD["5.0寸 IPS LCD<br>(MIPI-DSI 1280x720)"]
@@ -104,7 +105,7 @@ flowchart TB
 
     subgraph Driver & HAL ["驱动与硬件抽象层 (M5Unified / HAL)"]
         drv_gnss["SparkFun u-blox GNSS Lib<br>(UBX-NAV-PVT / UBX-MGA)"]
-        drv_i2c["I2C Bus Manager<br>(0x68/0x32/0x40/0x76/0x10)"]
+        drv_i2c["I2C Bus Manager<br>(0x68/0x69/0x32/0x40/0x76/0x10)"]
         drv_rtc["RX8130CE RTC Driver"]
         drv_ina["INA226 Driver & Regs"]
         drv_gfx["M5GFX MIPI Engine<br>(32MB PSRAM Double Buffering)"]
@@ -120,7 +121,7 @@ flowchart TB
         engine_pwr["INA226 复合库仑计服务<br>(安时积分 + OCV 静态曲线校准)"]
         engine_weather["GPS 坐标反查实时气象引擎<br>(Open-Meteo REST / 12h双时段)"]
         engine_track["GPX 轨迹双流记录器<br>(WGS84+GCJ02/连续切片/自愈)"]
-        engine_dr["隧道盲区 IMU 航位推测与单维轴线锁死"]
+        engine_dr["双 IMU 均值融合降噪与隧道 DR 推算引擎"]
         engine_net["Wi-Fi 6 管理器 & SoftAP 导出<br>(Multi-SSID / 独立热点分享)"]
     end
 
@@ -145,7 +146,8 @@ flowchart TB
     N9N --> drv_gnss --> engine_gnss
     BARO --> drv_i2c --> engine_baro
     MAG --> drv_i2c --> engine_dr
-    IMU --> drv_i2c --> engine_dr
+    IMU1 --> drv_i2c --> engine_dr
+    IMU2 --> drv_i2c --> engine_dr
     RTC --> drv_rtc --> engine_time
     INA --> drv_ina --> engine_pwr
     SD --> drv_fs --> engine_track
