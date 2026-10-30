@@ -27,7 +27,7 @@
 - [ ] **Task 1.1**：创建 `platformio.ini` 与 `partitions.csv`，配置 `board = m5stack-tab5`，16MB Flash 分区表（包含 3MB 独立 `LittleFS` 分区），引入库依赖：`m5stack/M5Unified`, `m5stack/M5GFX`, `sparkfun/SparkFun u-blox GNSS Arduino Library`, `greiman/SdFat`。
 - [ ] **Task 1.2**：编写 `src/config.h` 与 `src/main.cpp`，调用 `M5.begin()`，挂载片上 `LittleFS`。
 - [ ] **Task 1.3**：配置屏幕方向 `M5.Display.setRotation(1)`（1280 × 720 标准高清横屏），全屏清屏为纯黑色 `TFT_BLACK`，绘制居中荧光绿文本 `"M5Track-Tab5 Ready"`，测试电容多点触控并打印串口日志。
-- [ ] **Task 1.4**：创建 `src/driver/I2cBusManager.h/.cpp`，扫描 I2C 硬件物理总线，确认 Tab5 板载外设（BMI270 `0x68`、RX8130CE `0x32`、INA226 `0x40`）与 Module GNSS 外设（BMM150 `0x10`、BMP280 `0x76`）均正常响应 ACK。
+- [ ] **Task 1.4**：创建 `src/driver/I2cBusManager.h/.cpp`，扫描 I2C 硬件物理总线，确认 Module GNSS DIP 拨码已切换至 `0x69`（或断开，消除与主板 `0x68` 冲突），确认 Tab5 板载外设（BMI270 主 IMU `0x68`、RX8130CE `0x32`、INA226 `0x40`）与 Module GNSS 外设（BMM150 `0x10`、BMP280 `0x76`）均正常响应 ACK。
 
 ### 验收与验证指令
 - **编译检查**：
