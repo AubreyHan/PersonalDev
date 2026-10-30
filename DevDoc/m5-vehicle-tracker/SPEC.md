@@ -328,6 +328,31 @@ namespace MotionPowerConfig {
     constexpr bool     BYPASS_GEOMAGNETIC_BMM150  = true;    // 屏蔽地磁计，彻底免疫 MagSafe 磁吸环强磁干扰
     constexpr float    STANDSTILL_HEADING_LOCK_KMH= 1.8f;    // 车速 <= 1.8km/h 触发静态航向物理锁死
 }
+
+// 双 BMI270 冗余互验与加权均值降噪参数规范 (Option A)
+namespace DualImuConfig {
+    constexpr uint8_t  I2C_ADDR_MASTER             = 0x68;    // Tab5 主板 Master IMU (RTC 唤醒源)
+    constexpr uint8_t  I2C_ADDR_SLAVE              = 0x69;    // Module GNSS Slave IMU (SDO 硬件拉高)
+    constexpr float    CROSS_CHECK_MAX_GYRO_DIFF   = 0.087f;  // 两芯片 Z 轴角速度最大允许互验偏差 (~5 deg/s)
+    constexpr float    CROSS_CHECK_MAX_ACCEL_DIFF  = 0.35f;   // 两芯片纵向加速度最大允许互验偏差 (~0.35 G)
+    constexpr uint32_t FAILOVER_TIMEOUT_MS         = 20;      // Master 故障判定与热切换至 Slave 超时门限 (ms)
+    constexpr float    DUAL_FUSION_WEIGHT_MASTER   = 0.50f;   // 主 IMU 融合权重 (0.50)
+    constexpr float    DUAL_FUSION_WEIGHT_SLAVE    = 0.50f;   // 副 IMU 融合权重 (0.50)
+}
+
+struct DualImuStatus {
+    bool     masterOnline;         // Tab5 板载 0x68 是否正常响应 ACK
+    bool     slaveOnline;          // Module GNSS 0x69 是否正常响应 ACK
+    bool     isDualFused;          // 当前是否处于双芯片均值融合工作模式 (降噪 ~30%)
+    bool     failoverActive;       // 是否因 Master 故障切换至单 Slave 工作模式
+    bool     crossCheckWarning;    // 交叉互验差值是否超出安全阈值
+    float    fusedAccelX;          // 融合后纵向加速度 (m/s^2)
+    float    fusedAccelY;          // 融合后横向加速度 (m/s^2)
+    float    fusedAccelZ;          // 融合后天向加速度 (m/s^2)
+    float    fusedGyroZ;           // 融合后航向角速度 (rad/s, 供航位推测与罗盘使用)
+    float    pitchDeg;             // 俯仰角 (车身前后倾斜, 度)
+    float    rollDeg;              // 侧倾角 (车身左右倾斜, 度)
+};
 ```
 
 ---
