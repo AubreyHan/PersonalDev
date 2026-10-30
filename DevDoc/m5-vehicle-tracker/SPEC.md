@@ -271,15 +271,23 @@ constexpr OcvLookupPoint OCV_TABLE[11] = {
 };
 
 enum BatteryPowerSource : uint8_t {
-    POWER_SOURCE_BATTERY_NPF550 = 0, // NP-F550 电池供电 (放电状态)
-    POWER_SOURCE_EXTERNAL_USB   = 1, // 车载 USB-C / HVIN 外部供电充电中
-    POWER_SOURCE_EXT_NO_BATTERY = 2  // 外部直供但未装载 NP-F550 电池
+    POWER_SOURCE_BATTERY_NPF550 = 0, // NP-F550 电池单独供电 (放电状态, 无外接电源 -> 显红色)
+    POWER_SOURCE_EXTERNAL_USB   = 1, // 车载 USB-C / HVIN 外部供电充电中 (有外接电源 -> 显绿色)
+    POWER_SOURCE_EXT_NO_BATTERY = 2  // 外部直供但未装载 NP-F550 电池 (有外接电源 -> 显绿色)
 };
+
+// 电池与外接供电状态颜色指示契约
+namespace PowerColorConfig {
+    constexpr uint16_t COLOR_EXTERNAL_POWER_GREEN = 0x07E0; // 有外接电源时显示绿色 (TFT_GREEN / #00FFAA)
+    constexpr uint16_t COLOR_BATTERY_ONLY_RED     = 0xF800; // 无外接电源 (纯电池) 时显示红色 (TFT_RED / #FF3B30)
+}
 
 struct PowerMonitorData {
     bool               isAvailable;        // INA226 是否在线 (0x40 ACK)
+    bool               hasExternalPower;   // 是否接通外接电源 (VBUS > 4.5V 或 Current > 0)
     bool               isCharging;         // 是否处于外部电源充电状态 (Current > +15mA)
     BatteryPowerSource powerSource;        // 供电源类型
+    uint16_t           uiDisplayColor;     // 状态颜色: 有外接电源时为绿色，无外接电源时为红色
     float              busVoltageV;        // 实时总线电压 (V, 正常范围 6.0 ~ 8.4V)
     float              shuntVoltageMv;     // 分流电阻压降 (mV)
     float              currentMa;          // 实时瞬态电流 (mA，正值充电，负值放电)
