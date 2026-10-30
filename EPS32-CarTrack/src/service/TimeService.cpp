@@ -155,9 +155,13 @@ void TimeService::update() {
             state.unlock();
         }
 
-        // Periodically save valid 3D coordinates to NVS (every 60s) for garage warm-start
-        if (now - _lastNvsPosSaveMs >= 60000) {
+        // Save valid 3D coordinates to NVS only when vehicle moves >= 200m or every 5 min
+        if (now - _lastNvsPosSaveMs >= 300000 ||
+            (_lastNvsPosSaveMs == 0) ||
+            (abs(gLatE7 - _lastSavedLatE7) > 1800 || abs(gLonE7 - _lastSavedLonE7) > 1800)) {
             _lastNvsPosSaveMs = now;
+            _lastSavedLatE7   = gLatE7;
+            _lastSavedLonE7   = gLonE7;
             saveLastPositionToNvs(gLatE7, gLonE7, (int32_t)(gAltM * 100.0f));
         }
     } else if (!gnssValid && wifiConn) {
