@@ -28,10 +28,29 @@ void DeadReckoningService::update() {
     float  spd = ctx.gnss.speedKmh;
     float  hdg = ctx.imu.fusedHeadingDeg;
 
+    // Prevent ghost speed when entering underground garage / losing GPS and parking
+    if (!gnssValid) {
+        bool imuQuiet = (fabsf(ctx.imu.fusedGyroZ) < 0.025f) && (ctx.imu.totalG < 0.04f);
+        if (imuQuiet) {
+            if (_noFixImuQuietMs == 0) _noFixImuQuietMs = now;
+            if (now - _noFixImuQuietMs >= 3000) {
+                spd *= 0.80f;
+                if (spd < MotionPowerConfig::STANDSTILL_HEADING_LOCK_KMH) {
+                    spd = 0.0f;
+                }
+                ctx.gnss.speedKmh = spd;
+            }
+        } else {
+            _noFixImuQuietMs = 0;
+        }
+    } else {
+        _noFixImuQuietMs = 0;
+    }
+
     if (!gnssValid && ctx.trip.hasStartAnchor && spd > MotionPowerConfig::STANDSTILL_HEADING_LOCK_KMH) {
         if (_drStartMs == 0) _drStartMs = now;
-        ctx.gnss.isDeadReckoning = true;
-        ctx.gnss.drDurationSec   = (now - _drStartMs) / 1000;
+        uint32_t drSec = (now - _drStartMs) / 1000;
+        ctx.gnss.drDurationSec = drSec;
 
         bool snapped = false;
         if (_tunnel) {
@@ -41,11 +60,21 @@ void DeadReckoningService::update() {
         }
 
         if (!snapped) {
-            // 2D Planar Dead Reckoning using Dual-IMU fused yaw heading & speed
-            double distM = (spd / 3.6) * dt;
-            double rad   = hdg * 0.0174532925;
-            lat += (distM * cos(rad)) / 111139.0;
-            lon += (distM * sin(rad)) / (111139.0 * cos(lat * 0.0174532925));
+            if (drSec <= 180) {
+                // 2D Planar Dead Reckoning using Dual-IMU fused yaw heading & speed (max 180s outside mapped tunnels)
+                double distM = (spd / 3.6) * dt;
+                double rad   = hdg * 0.0174532925;
+                lat += (distM * cos(rad)) / 111139.0;
+                lon += (distM * sin(rad)) / (111139.0 * cos(lat * 0.0174532925));
+                ctx.gnss.isDeadReckoning = true;
+            } else {
+                // Unassisted DR timeout (e.g., parked underground) -> cease ghost reckoning
+                ctx.gnss.isDeadReckoning = false;
+                ctx.gnss.speedKmh        = 0.0f;
+                spd                      = 0.0f;
+            }
+        } else {
+            ctx.gnss.isDeadReckoning = true;
         }
 
         ctx.gnss.latitude   = lat;
@@ -69,6 +98,8 @@ void DeadReckoningService::update() {
             state.pushTrailPoint(lat, lon, spd);
             state.lock();
         }
+    } else {
+        ctx.gnss.isDeadReckoning = false;
     }
 
     // Update 1Hz Trip distance, moving/idle timers, and speed structure stats
