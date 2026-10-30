@@ -20,4 +20,6 @@ private:
     bool        _ntpSynced            = false;
     uint32_t    _lastNtpAttemptMs     = 0;
     uint32_t    _lastNvsPosSaveMs     = 0;
+    int32_t     _lastSavedLatE7       = 0;
+    int32_t     _lastSavedLonE7       = 0;
 };
