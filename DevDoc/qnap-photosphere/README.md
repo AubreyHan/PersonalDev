@@ -10,9 +10,10 @@
 
 - **纯原生 QPKG 打包**：通过 QDK 打包为 `.qpkg` 原生格式，集成在 QTS / QuTS hero App Center 中，开箱即用，具备独立桌面图标，零 Docker/Python 污染。
 - **高并发极速单二进制架构**：后端采用 **Go (Golang)** 构建，静态编译并内嵌前端资源，单文件即可驱动全套业务与 I/O 流水线。
-- **冷热数据分层设计**：
-  - **热数据 (M.2 NVMe SSD 卷)**：存放内嵌 SQLite 数据库、向量索引、预生成的 WebP 响应式缩略图缓存，确保几万张照片的时间线秒开体验，杜绝机械硬盘频繁启停与杂音。
-  - **冷数据 (HDD 机械存储池)**：原图严格归档存放于 `/share/Photos/users/{username}/yyyymmdd/`，不修改原图文件名。
+- **单存储池与 QTS SSD 高速缓存自适应**：
+  - 由于 M.2 NVMe SSD 被 QTS 作为系统全局只读/读写高速缓存（SSD Cache Acceleration），所有应用数据与原图统一存放于机械硬盘主存储池（如 `/share/Photos` 与 `/share/.qphotosphere`）。
+  - 核心热数据（SQLite 数据库、高频访问的 WebP 响应式缩略图缓存、AI 向量索引）因高频顺序/随机读取，会**被 QTS 自动命中并钉在 SSD 缓存层**中，无需手动跨卷拆分配置，运维更省心且兼顾极致读取性能。
+  - **冷数据归档**：原图严格归档存放于 `/share/Photos/users/{username}/yyyymmdd/`，不修改原图文件名。
 - **Immich 移动端协议兼容**：后端原生模拟兼容 Immich 客户端移动端 API，家庭成员手机直接使用现成成熟的 Immich iOS/Android App，即可无感后台自动备份原图与 Live Photo。
 - **多用户隔离与家庭共享**：支持物理目录级的用户完全隔离，同时支持数据库级的家庭虚拟共享大相册。
 - **CPU 友好型轻量 AI 推理引擎**：
