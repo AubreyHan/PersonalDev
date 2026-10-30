@@ -1,4 +1,4 @@
-# 详细技术规范与数据契约 (SPEC) - M5Track-M9N
+# 详细技术规范与数据契约 (SPEC) - M5Track-Tab5
 
 ---
 
@@ -98,256 +98,131 @@ struct TunnelInfo {
 struct HistoryBuffer {
     static constexpr size_t CAPACITY = 120; // 30秒采样1次，120个点覆盖 60 分钟 (1小时)
     float    samples[CAPACITY];
-    size_t   headIdx;       // 环形缓冲区写入游标
-    size_t   count;         // 当前有效点数
-    uint32_t lastSampleEpoch;
+    uint16_t head;
+    uint16_t count;
+
+    void push(float val) {
+        samples[head] = val;
+        head = (head + 1) % CAPACITY;
+        if (count < CAPACITY) count++;
+    }
+
+    void reset() {
+        head = 0;
+        count = 0;
+    }
 };
 
 struct TripStats {
-    uint32_t startTimeSec;     // 行程开始时间戳
-    uint32_t durationSec;      // 行驶总持续秒数
-    float    distanceKm;       // 本次累计行驶里程 (km)
-    float    currentSpeedKmh;  // 当前车速
-    float    maxSpeedKmh;      // 本次最高时速 (km/h)
-    float    avgSpeedKmh;      // 平均车速 (移动时间加权)
-    float    startAltitude;    // 起点海拔 (米)
-    float    maxAltitude;      // 本次最高海拔 (米)
-    float    minAltitude;      // 本次最低海拔 (米)
-    float    cumulativeClimb;  // 累计爬升 (米)
+    float    tripDistanceKm;   // 本次行程总里程 (km)
+    uint32_t movingDurationSec;// 车速 > 1.8km/h 的纯行驶用时 (秒)
+    uint32_t idleDurationSec;  // 车辆静止怠速用时 (秒)
+    float    maxSpeedKmh;      // 本次行程最高车速 (km/h, 暖橙/红色高光)
+    float    avgSpeedKmh;      // 本次行程平均车速 (km/h)
+    float    currentAltitudeM; // 当前海拔高度 (米)
+    float    maxAltitudeM;     // 本次行程最高海拔 (米)
+    float    minAltitudeM;     // 本次行程最低海拔 (米)
+    float    cumulativeClimbM; // 本次累计爬升高度 (米)
+    float    verticalSpeedMps; // 实时垂直升降速度 (m/s)
     
-    // 过去 1 小时历史采样 (环形缓冲区)
-    HistoryBuffer altHistory;    // 海拔 1 小时曲线
-    HistoryBuffer speedHistory;  // 车速 1 小时曲线
+    // G-Force 赛车级极值记忆
+    float    maxLateralG;      // 本次最大横向转弯离心 G
+    float    maxLongitudinalG; // 本次最大纵向推背/制动 G
+    
+    // 过去 1 小时历史采样环形缓冲区 (覆盖 1050px 宽幅发光折线图)
+    HistoryBuffer altitudeHistory;
+    HistoryBuffer speedHistory;
 };
 ```
 
-### 1.4 车辆动态姿态模型 (`VehicleDynamics`)
+### 1.4 全链路行程重置广播契约 (`FullTripResetPayload`)
 ```cpp
-struct VehicleDynamics {
-    float lateralG;        // 实时横向 G 值 (+右转离心, -左转离心)
-    float longG;           // 实时纵向 G 值 (+推背加速, -急刹制动)
-    float totalG;          // 实时合成 G 值 sqrt(Gx^2 + Gy^2)
-    float maxLateralG;     // 本次行程峰值横向过弯 G
-    float maxLongG;        // 本次行程峰值纵向加速 G
-    float pitchDeg;        // 车身俯仰角 (-45° ~ +45°, 前倾/后仰)
-    float rollDeg;         // 车身侧倾角 (-45° ~ +45°, 左右侧倾)
-    float roadSlopePercent;// 道路真实坡度百分比 (如 +7.5% 陡坡)
-};
-```
-
-### 1.5 矢量自驾轨迹模型 (`TrailState`)
-```cpp
-enum TrailViewMode : uint8_t {
-    TRAIL_VIEW_FIT_ENTIRE = 0, // 远景全路径贴合 (自动外接矩形自适应，恰好显示整个路径)
-    TRAIL_VIEW_FOLLOW_5KM = 1  // 近景 5km 弯道巡航跟随
-};
-
-struct TrailPoint {
-    int32_t latE7;
-    int32_t lonE7;
-    int16_t altM;
-};
-
-struct TrailState {
-    static constexpr size_t MAX_POINTS = 800; // Douglas-Peucker 空间抽稀后驻留 PSRAM
-    TrailPoint points[MAX_POINTS];
-    size_t     count;
-    TrailViewMode viewMode;       // 当前缩放模式 (默认全貌整径贴合，点击一键切近景)
-    int32_t    minLatE7;          // 动态外接包围盒
-    int32_t    maxLatE7;
-    int32_t    minLonE7;
-    int32_t    maxLonE7;
-    float      distanceToStartKm; // 直线距起点 (km)
-    float      bearingToStartDeg; // 起点相对方位角 (度)
-};
-```
-
-### 1.6 系统状态机与全局上下文 (`SystemContext`)
-```cpp
-enum AppState : uint8_t {
-    STATE_BOOT_INIT,      // 开机自检与 GPS 搜星等待页
-    STATE_WIFI_CONFIG,    // 配网 AP 与 WebPortal 交互模式
-    STATE_MAIN_APP,       // 正式多页面系统运行模式
-    STATE_PWR_OFF_WARN,   // 外部断电 10 秒倒计时模式
-    STATE_SILENT_ASSESS,  // 移动唤醒静默评估状态 (纯黑防误触判定窗口)
-    STATE_DEEP_SLEEP      // 超低功耗深度睡眠待机模式 (<35uA)
-};
-
-struct HourlyForecastItem {
-    uint8_t hour;             // 小时 (0~23)
-    int8_t  tempC;            // 预测气温 (-40 ~ 50 °C)
-    uint8_t rainProbPercent;  // 降水概率 (0~100 %)
-    uint8_t weatherCode;      // WMO 天气代码 (0:晴, 1~3:多云, 51~67:雨, 71~77:雪, 95:雷暴)
-};
-
-struct WeatherInfo {
-    bool     hasData;          // 是否成功获取过气象数据
-    float    temperatureC;     // 当前摄氏度 (如 24.5)
-    uint8_t  relativeHumidity; // 相对湿度 (0~100 %)
-    uint8_t  currentWeatherCode;
-    float    windSpeedKmh;     // 风速 (km/h)
-    uint32_t lastUpdateEpoch;  // 上次更新时间戳
-    
-    // 未来 24 小时逐小时预报 (常驻内存，离线全天可用)
-    HourlyForecastItem hourly[24];
-    uint8_t            currentSlotIdx; // 当前展示的时段切片 (0: 当前0~8h, 1: 8~16h, 2: 16~24h，通过上下滑动切换)
-};
-
-struct ToolItem {
-    const char* id;          // 工具唯一标识 (如 "wifi", "gpx", "gnss", "settings")
-    const char* title;       // 工具主标题 (如 "Wi-Fi 管理")
-    const char* statusText;  // 状态小副标 (如 "192.168.1.10" 或 "12 Files")
-    uint16_t    iconColor;   // 图标主题色 (RGB565 发光色)
-    void (*onClick)();       // 点击回调处理函数
-};
-
-enum ClockSlotMode : uint8_t {
-    CLOCK_MODE_GPS_AUTO    = 0, // GPS 经度自适应本地时区
-    CLOCK_MODE_MANUAL_CITY = 1  // 预置世界城市列表点选
-};
-
-enum CityRegion : uint8_t {
-    REGION_ASIA_PACIFIC = 0, // 亚太 / 国内
-    REGION_AMERICAS     = 1, // 美洲
-    REGION_EUROPE       = 2, // 欧洲 / 中东
-    REGION_UTC_STANDARD = 3  // UTC / 世界标准
-};
-
-struct WorldCityDef {
-    const char* cityNameCn;             // 城市中文名 (如 "北京", "纽约")
-    const char* cityNameEn;             // 英文名或代号 (如 "Beijing", "New York")
-    int8_t      standardUtcOffsetHours; // 标准 UTC 偏移小时 (-12 ~ +14)
-    bool        hasDst;                 // 是否实行夏令时规则 (如美东夏令时+1h)
-    uint8_t     region;                 // 所属大区 CityRegion
-};
-
-struct WorldClockSlotConfig {
-    ClockSlotMode mode;                 // 模式: GPS自动 vs 城市点选
-    uint8_t       cityIndex;            // 关联预置城市库索引 (0~31)
-    int8_t        utcOffsetHours;       // 实际生效时区偏移小时 (-12 ~ +14)
-    char          displayName[16];      // 卡片显示名称 (如 "北京 Beijing")
-    bool          isDstActive;          // 当前是否处于夏令时生效状态
-};
-
-struct WorldClockState {
-    WorldClockSlotConfig slots[4];      // 2x2 网格 4 个时钟槽位 (持久化于 NVS)
-    uint8_t              activeEditSlot;   // 当前正在被点击编辑的槽位 (0~3)
-    uint8_t              activeEditRegion; // 城市选择面板当前激活的大类标签 (0~3)
-};
-
-struct SystemContext {
-    AppState    currentState;
-    uint8_t     mainPageIdx;      // 当前页面索引 (0:Dash, 1:Alt, 2:Speed, 3:Trail, 4:Dynamics, 5:Weather, 6:WorldClock, 7:Tools...)
-    uint8_t     totalMainPages;   // 动态总页数 (默认 8 页: 7业务页 + 1工具页)
-    bool        isWifiConnected;
-    int8_t      wifiRssi;         // Wi-Fi 信号强度 (dBm, -100 ~ -30)
-    String      wifiSsid;
-    IPAddress   localIp;
-    bool        isSdMounted;
-    bool        isLogging;        // 是否正在向 TF 卡记录 GPX
-    String      currentGpxName;   // 当前写入的 GPX 文件名
-    uint32_t    recordedPoints;   // 当前文件已记录点数
-    
-    // 动态姿态与自驾轨迹
-    VehicleDynamics dynamics;
-    TrailState      trail;
-    
-    // GPS 坐标反查的实时气象与24小时逐小时预报
-    WeatherInfo weather;
-    
-    // 多时区世界时钟
-    WorldClockState worldClock;
-    
-    // 电源管理
-    bool        vbusConnected;    // Type-C 是否供电
-    BatteryHardwareMode batteryMode; // 电池硬件自适应模式 (无底座为空 vs 有底座真实电量)
-    uint8_t     batteryPercent;   // 锂电池电量 (未装底座固定为 0，装底座为 0~100)
-    bool        isCharging;       // 是否正在充电
-    int8_t      pwrCountdownSec;  // 倒计时剩余秒数 (初始 10)
-};
-
-// 屏幕视口常量定义
-
-// Page 1 里程归零热区与手势常量
-
-// 全系统全链路行程重置广播契约 (Full Trip Sync Reset Contract)
-// 包含: Page 1 里程/时间, Page 2 海拔极值与折线, Page 3 车速极值与折线, Page 4 轨迹清空与新起点, Page 5 峰值G值
 struct FullTripResetPayload {
-    uint32_t resetEpoch;       // 归零发生时间戳
-    int32_t  currentLatE7;     // 当前坐标 (作为 Page 4 轨迹新起点)
-    int32_t  currentLonE7;
-    float    currentAltM;      // 当前海拔 (作为 Page 2 海拔极值基准)
+    uint32_t timestampUtc;     // 重置时刻 UTC 时间戳
+    double   newStartLatitude; // 重置时刻当前车位纬度 (作为 Page 4 矢量轨迹新起点)
+    double   newStartLongitude;// 重置时刻当前车位经度
+    float    currentAltitudeM; // 当前海拔 (作为 Page 2 极值新起点)
     float    currentSpeedKmh;  // 当前车速
 };
 
 namespace TripResetConfig {
-    constexpr int16_t  HITBOX_TRIP_X      = 160;
-    constexpr int16_t  HITBOX_TRIP_Y      = 180;
-    constexpr int16_t  HITBOX_TRIP_W      = 152;
-    constexpr int16_t  HITBOX_TRIP_H      = 50;  // X: 160~312, Y: 180~230
-    constexpr uint32_t LONG_PRESS_MS      = 1500; // 长按 1.5 秒判定门限 (按键2/TRIP)
-    constexpr uint32_t VIBRATION_FEEDBACK_MS = 100; // 震动马达反馈持续时间
-    constexpr uint32_t SHORT_TAP_VIBRATE_MS = 40;   // 按键1/3轻微震动反馈
+    // Page 1 仪表盘右下角 TRIP 卡片大触控热区 (1280x720 视口坐标)
+    constexpr int16_t  HITBOX_TRIP_X      = 740;
+    constexpr int16_t  HITBOX_TRIP_Y      = 460;
+    constexpr int16_t  HITBOX_TRIP_W      = 500;
+    constexpr int16_t  HITBOX_TRIP_H      = 220;
+    constexpr uint32_t LONG_PRESS_MS      = 2000; // 长按 2.0 秒触发清零
+    constexpr uint32_t VIBRATION_FEEDBACK_MS = 100; // 触觉震动马达反馈持续时间
 }
 
-// 屏幕下方三按键映射 (Bottom 3 Red Circle Buttons - Core2 标准横屏)
-enum BottomButtonAction : uint8_t {
-    BTN_ACTION_NONE        = 0,
-    BTN_ACTION_GO_HOME     = 1, // 按钮1 (左键 BtnA): 短按一键直达 Page 1 (首页主仪表)
-    BTN_ACTION_TRIP_RESET  = 2, // 按钮2 (中键 BtnB): 长按 1.5 秒全链路行程数据清零
-    BTN_ACTION_GO_TOOLS    = 3  // 按钮3 (右键 BtnC): 短按一键直达 Page 8 (工具箱主页)
+// 左侧常驻 Dock 触控功能枚举 (解耦无冲突设计)
+enum DockTouchAction : uint8_t {
+    DOCK_ACTION_NONE    = 0,
+    DOCK_ACTION_HOME    = 1, // 点击 🏠 仪表: 秒级返回 Page 1 核心仪表盘
+    DOCK_ACTION_TIME    = 2, // 点击 14:35 时钟: 秒级跳转至 Page 7 世界时钟
+    DOCK_ACTION_GNSS    = 3, // 点击 🛰️ 18 定位: 秒级跳转至 GPS 详情
+    DOCK_ACTION_WIFI    = 4, // 点击 📶 热点: 秒级跳转至 Wi-Fi 配网管理
+    DOCK_ACTION_BATTERY = 5, // 点击 🔋 95% 电源: 查看 INA226 实时功耗与电量
+    DOCK_ACTION_WEATHER = 6, // 点击 ☀️ 24℃ 气象: 秒级跳转至 Page 6 天气预报
+    DOCK_ACTION_TOOLS   = 7  // 点击 ⚙️ 工具: 秒级跳转至 Page 8 系统工具箱
 };
 
-
 // -----------------------------------------------------------------------------
-// I2C 硬件外设物理总线地址分配表 (三层长续航大电池版 - 含 Base Dual 16340)
+// I2C 硬件外设物理总线正交地址分配表 (Tab5 + Module GNSS)
 // -----------------------------------------------------------------------------
-// 0x34: AXP192 (PMIC 电源管理芯片)
-// 0x38: FT6336U (电容式触摸屏控制器)
-// 0x45: INA226 (Base Dual 16340 板载高精度电流/电压/功率计)
-// 0x51: BM8563 (实时硬件时钟芯片 RTC)
-// 0x68: BMI270 (Module GNSS 板载 6 轴 IMU 姿态传感器 - 独占标准地址，零冲突)
-// 0x10: BMM150 (Module GNSS 板载 3 轴地磁罗盘 - 挂载于 BMI270 Aux 总线)
-// 0x76: BMP280 (Module GNSS 板载气压计传感器)
+// 0x10: BMM150 (Module GNSS 板载 3 轴地磁电子罗盘)
+// 0x32: RX8130CE (Tab5 主板板载硬件实时时钟 RTC，带 70000uF 超级电容)
+// 0x40: INA226 (Tab5 主板板载高精度电流/电压/功率计)
+// 0x68: BMI270 (Tab5 主板板载 6 轴 IMU 姿态传感器)
+// 0x76: BMP280 (Module GNSS 板载高精度气压计传感器)
 // -----------------------------------------------------------------------------
 
 namespace Viewport {
-    constexpr int16_t SCREEN_W   = 320;
-    constexpr int16_t SCREEN_H   = 240;
+    constexpr int16_t SCREEN_W   = 1280;
+    constexpr int16_t SCREEN_H   = 720;
     
-    // 顶部状态栏与全局触控热区
-    constexpr int16_t TOP_BAR_X          = 0;
-    constexpr int16_t TOP_BAR_Y          = 0;
-    constexpr int16_t TOP_BAR_W          = 320;
-    constexpr int16_t TOP_BAR_H          = 24;
-    constexpr int16_t TOP_BAR_HIT_H      = 30;  // 纵向点击响应容差高度 (0~29)
-    constexpr int16_t HITBOX_TIME_W      = 95;  // X: 0~95 点击直达 Page 7 世界时钟 // X: 0~110 点击直达 Page 7 世界时钟
-    constexpr int16_t STATUS_BADGE_X     = 96;  // X: 96~225 常驻状态与电池区 // X: 111~208 中央微型状态徽章区
-    constexpr int16_t STATUS_BADGE_W     = 130;
-    constexpr int16_t HITBOX_WEATHER_X   = 226; // X: 226~319 点击直达 Page 6 天气预报 // X: 210~319 点击直达 Page 6 天气预报
-    constexpr int16_t HITBOX_WEATHER_W   = 94;
+    // 左侧 160px 常驻触控侧边栏 (Left Dock)
+    constexpr int16_t DOCK_X             = 0;
+    constexpr int16_t DOCK_Y             = 0;
+    constexpr int16_t DOCK_W             = 160;
+    constexpr int16_t DOCK_H             = 720;
     
-    // 页面全宽主内容区 (Full-Width Safe Area - 彻底释放两侧 8px)
-    constexpr int16_t SAFE_X     = 0;
-    constexpr int16_t SAFE_Y     = 24;
-    constexpr int16_t SAFE_W     = 320;
-    constexpr int16_t SAFE_H     = 216; // 纵向全画幅 (240 - 24)
+    // 侧边栏 7 大垂直触控功能热区
+    constexpr int16_t DOCK_HOME_Y        = 0;
+    constexpr int16_t DOCK_HOME_H        = 90;
+    constexpr int16_t DOCK_TIME_Y        = 90;
+    constexpr int16_t DOCK_TIME_H        = 110;
+    constexpr int16_t DOCK_GNSS_Y        = 200;
+    constexpr int16_t DOCK_GNSS_H        = 105;
+    constexpr int16_t DOCK_WIFI_Y        = 305;
+    constexpr int16_t DOCK_WIFI_H        = 105;
+    constexpr int16_t DOCK_BATTERY_Y     = 410;
+    constexpr int16_t DOCK_BATTERY_H     = 105;
+    constexpr int16_t DOCK_WEATHER_Y     = 515;
+    constexpr int16_t DOCK_WEATHER_H     = 105;
+    constexpr int16_t DOCK_TOOLS_Y       = 620;
+    constexpr int16_t DOCK_TOOLS_H       = 100;
+    
+    // 右侧全高主内容安全视口 (Main Content Safe Area)
+    constexpr int16_t SAFE_X     = 160;
+    constexpr int16_t SAFE_Y     = 0;
+    constexpr int16_t SAFE_W     = 1120;
+    constexpr int16_t SAFE_H     = 720; // 纵向全高 720px
     
     // 悬浮式底部指示器 (Floating OSD Overlay)
-    constexpr int16_t  INDICATOR_OSD_Y        = 228;
-    constexpr int16_t  INDICATOR_OSD_H        = 8;
+    constexpr int16_t  INDICATOR_OSD_Y        = 690;
+    constexpr int16_t  INDICATOR_OSD_H        = 20;
     constexpr uint32_t INDICATOR_AUTO_HIDE_MS = 3000; // 3 秒无交互自动彻底隐藏
 }
 
-
-// Base Dual 16340 板载 INA226 高精度功耗/电压/电流监测与软硬件库仑计配置
+// Tab5 板载 INA226 高精度功耗/电压/电流监测配置
 namespace Ina226Config {
-    constexpr uint8_t  I2C_ADDR           = 0x45;   // INA226 7位 I2C 物理从机地址
+    constexpr uint8_t  I2C_ADDR           = 0x40;   // Tab5 板载 INA226 物理地址
     constexpr float    SHUNT_RESISTOR_OHM = 0.02f;  // 20 毫欧精密分流采样电阻 (R_shunt)
     constexpr uint32_t SAMPLE_INTERVAL_MS = 500;   // 500ms (2Hz) 刷新一次功率与电流
     
     // INA226 内部寄存器地址映射
-    constexpr uint8_t  REG_CONFIG         = 0x00;   // 配置寄存器 (复位/平均次数/转换时间/工作模式)
+    constexpr uint8_t  REG_CONFIG         = 0x00;   // 配置寄存器
     constexpr uint8_t  REG_SHUNTVOLTAGE   = 0x01;   // 分流电压寄存器 (2.5 uV/LSB)
     constexpr uint8_t  REG_BUSVOLTAGE     = 0x02;   // 总线电压寄存器 (1.25 mV/LSB)
     constexpr uint8_t  REG_POWER          = 0x03;   // 功率寄存器 (25 * Current_LSB = 2.5 mW/LSB)
@@ -356,91 +231,85 @@ namespace Ina226Config {
     constexpr uint8_t  REG_MANUF_ID       = 0xFE;   // 制造商 ID (固定 0x5449)
     constexpr uint8_t  REG_DIE_ID         = 0xFF;   // 芯片 ID (固定 0x2260)
     
-    // 寄存器校准参数推导：
-    // Current_LSB = Max_Expected_Current(2.0A) / 2^15 ≈ 0.061 mA -> 取整选取 0.1 mA/LSB (0.0001 A)
     // CAL = trunc(0.00512 / (Current_LSB * R_shunt)) = trunc(0.00512 / (0.0001 * 0.02)) = 2560 (0x0A00)
     constexpr uint16_t CALIBRATION_VAL    = 2560;   // 0x0A00
     constexpr float    CURRENT_LSB_MA     = 0.1f;   // 0.1 mA / bit
     constexpr float    POWER_LSB_MW       = 2.5f;   // 2.5 mW / bit
     constexpr float    BUS_VOLT_LSB_MV    = 1.25f;  // 1.25 mV / bit
-    
-    // 配置寄存器字: 0x4127 (平均采样16次, VBUS 1.1ms, VSHUNT 1.1ms, 连续采样模式)
-    constexpr uint16_t CONFIG_WORD_DEFAULT= 0x4127;
+    constexpr uint16_t CONFIG_WORD_DEFAULT= 0x4127; // 16次平均采样, 1.1ms 转换周期
 }
 
-// 双 16340 电池组与软件库仑计积分参数规范
+// NP-F550 (2S 7.4V) 电池组与软件库仑计参数规范
 namespace CoulombCounterConfig {
-    constexpr float    BATTERY_RATED_MAH      = 1400.0f; // Base Dual 16340 双并联标称容量 (1400 mAh)
-    constexpr float    CHARGE_EFFICIENCY_ETA  = 0.95f;   // 锂电池充电库仑效率因数 (95%)
-    constexpr float    DISCHARGE_EFFICIENCY   = 1.00f;   // 锂电池放电效率因数 (100%)
-    constexpr float    STANDSTILL_CURRENT_MA  = 20.0f;   // 静置低电流门限 (|I| < 20mA 允许触发 OCV 校准)
-    constexpr uint32_t STANDSTILL_SETTLE_MS   = 5000;    // 静置平稳维持时间 (5 秒无大动态后执行 OCV 矫正)
-    constexpr float    CUTOFF_VOLTAGE_V       = 3.00f;   // 电池截止放电下限保护电压 (0%)
-    constexpr float    FULL_VOLTAGE_V         = 4.20f;   // 电池满电浮充上限电压 (100%)
+    constexpr float    BATTERY_RATED_MAH      = 2000.0f; // 快拆 NP-F550 标准容量 (2000 mAh)
+    constexpr float    CHARGE_EFFICIENCY_ETA  = 0.95f;   // 锂电池充电库仑效率 (95%)
+    constexpr float    DISCHARGE_EFFICIENCY   = 1.00f;   // 放电效率因数 (100%)
+    constexpr float    STANDSTILL_CURRENT_MA  = 20.0f;   // 静置低电流门限 (|I| < 20mA 触发 OCV 校准)
+    constexpr uint32_t STANDSTILL_SETTLE_MS   = 5000;    // 静置平稳维持时间 (5 秒无大动态)
+    constexpr float    CUTOFF_VOLTAGE_V       = 6.00f;   // 2串锂电放电截止电压 (0%)
+    constexpr float    FULL_VOLTAGE_V         = 8.40f;   // 2串锂电满电浮充上限电压 (100%)
 }
 
-// 3.7V 锂电池 11 节点分段开路电压 (OCV) 查表校准契约
+// 7.4V (2S) 锂电池 11 节点分段开路电压 (OCV) 查表校准契约
 struct OcvLookupPoint {
-    uint16_t voltageMv;    // 开路电压 (mV)
+    uint16_t voltageMv;    // 开路总线电压 (mV)
     uint8_t  socPercent;   // 对应电量百分比 (0 ~ 100%)
 };
 
-// 标准 16340 锂电开路电压对照表 (降序排列，用于静态零漂校准)
 constexpr OcvLookupPoint OCV_TABLE[11] = {
-    { 4200, 100 },
-    { 4100,  90 },
-    { 4000,  80 },
-    { 3900,  70 },
-    { 3820,  60 },
-    { 3760,  50 },
-    { 3700,  40 },
-    { 3650,  30 },
-    { 3580,  20 },
-    { 3450,  10 },
-    { 3000,   0 }
+    { 8400, 100 },
+    { 8200,  90 },
+    { 8000,  80 },
+    { 7800,  70 },
+    { 7640,  60 },
+    { 7520,  50 },
+    { 7400,  40 },
+    { 7300,  30 },
+    { 7160,  20 },
+    { 6900,  10 },
+    { 6000,   0 }
 };
 
-// INA226 实时电源监测与库仑计数据契约
-enum BatteryHardwareMode : uint8_t {
-    BATTERY_MODE_NO_BASE_EMPTY = 0, // 阶段一：未检测到底座/电池，屏幕电量显示为空 (🪫 0%)
-    BATTERY_MODE_BASE_ATTACHED = 1  // 阶段二：自动探测到 Base Dual 16340 (🔋 85% 真实电量)
+enum BatteryPowerSource : uint8_t {
+    POWER_SOURCE_BATTERY_NPF550 = 0, // NP-F550 电池供电 (放电状态)
+    POWER_SOURCE_EXTERNAL_USB   = 1, // 车载 USB-C / HVIN 外部供电充电中
+    POWER_SOURCE_EXT_NO_BATTERY = 2  // 外部直供但未装载 NP-F550 电池
 };
 
 struct PowerMonitorData {
-    bool     isAvailable;        // INA226 芯片是否在线正常响应 (0x45 ACK)
-    bool     isCharging;         // 是否处于外部电源充电状态 (Current > +15mA)
-    float    busVoltageV;        // 实时总线电压 (V, 正常范围 3.0 ~ 4.2V)
-    float    shuntVoltageMv;     // 分流电阻电压降 (mV)
-    float    currentMa;          // 实时瞬态电流 (mA，正值充电，负值放电)
-    float    avgCurrentMa;       // 30秒滑动平均电流 (mA，用于平滑预测续航)
-    float    powerMw;            // 即时功耗 (mW)
-    float    remainingMah;       // 库仑计积分维护的当前剩余容量 (mAh, 0~1400)
-    float    batterySocPercent;  // 软件库仑计与 OCV 复合计算的电量百分比 (0~100 %)
-    uint16_t remainingMinutes;   // 结合当前耗电速度预测的剩余可用运行分钟数 (若充电中显示充满倒计时)
+    bool               isAvailable;        // INA226 是否在线 (0x40 ACK)
+    bool               isCharging;         // 是否处于外部电源充电状态 (Current > +15mA)
+    BatteryPowerSource powerSource;        // 供电源类型
+    float              busVoltageV;        // 实时总线电压 (V, 正常范围 6.0 ~ 8.4V)
+    float              shuntVoltageMv;     // 分流电阻压降 (mV)
+    float              currentMa;          // 实时瞬态电流 (mA，正值充电，负值放电)
+    float              avgCurrentMa;       // 30秒滑动平均电流 (mA，用于平滑预测续航)
+    float              powerMw;            // 即时功耗 (mW)
+    float              remainingMah;       // 库仑计积分维护的当前剩余容量 (mAh, 0~2000)
+    float              batterySocPercent;  // 软件库仑计与 OCV 复合计算的电量百分比 (0~100 %)
+    uint16_t           remainingMinutes;   // 结合耗电预测的剩余可用运行分钟数 (充电时为充满倒计时)
 };
-
 
 // 手势识别阈值规范
 namespace GestureConfig {
-    constexpr int16_t SWIPE_HORIZ_THRESHOLD_PX = 50;  // 左右滑动手势最小位移
-    constexpr int16_t SWIPE_UP_THRESHOLD_PX    = -40; // 向上滑动手势最小负向位移
+    constexpr int16_t SWIPE_HORIZ_THRESHOLD_PX = 60;  // 左右滑动手势最小位移
     constexpr float   DIRECTION_RATIO          = 1.5f;// 主向位移/副向位移判定比率
 }
 
 // 车辆运动唤醒与静止休眠参数规范
 namespace MotionPowerConfig {
-    constexpr uint32_t HOURLY_SPLIT_POINTS       = 3600;    // 每小时截断生成新文件 (3600点 / 方案B)
+    constexpr uint32_t HOURLY_SPLIT_POINTS       = 3600;    // 每小时截断生成新文件 (3600点)
     constexpr uint32_t STANDSTILL_STOP_RECORD_MS = 900000;  // 15 分钟静止自动停止轨迹记录并闭合文件 (900s)
     constexpr uint32_t STANDSTILL_TIMEOUT_MS     = 1800000; // 30 分钟无移动自动切入整机休眠 (1800s)
     constexpr uint32_t SILENT_ASSESS_WINDOW_MS   = 3000;    // 3 秒静默评估窗口 (防误开机)
     constexpr float    STATIC_VARIANCE_THRESH    = 0.005f;  // 地库无GPS时IMU静止方差门限 (m/s^2)
     constexpr float    SUSTAINED_ACCEL_THRESH    = 0.12f;   // 真实起步持续推背加速度 (G)
     constexpr uint32_t SUSTAINED_ACCEL_MS        = 1500;    // 持续推背时间门限 (ms)
-    constexpr uint16_t BATTERY_CAPACITY_MAH      = 1400; // Base Dual 16340 并联双电芯标准容量
-    constexpr float    BATTERY_CHARGE_MAX_TEMP_C = 55.0f;   // 高温暴晒停止给电池充电阈值 (°C)
-    constexpr float    BATTERY_CHARGE_RESUME_TEMP= 45.0f;   // 降温恢复正常充电阈值 (°C)
-    constexpr uint32_t STORAGE_WARN_MB           = 200;     // 存储空间安全低水位告警 (MB)
-    constexpr uint32_t STORAGE_RECOVERY_MB       = 500;     // 循环清理后目标安全水位 (MB)
+    constexpr uint16_t BATTERY_CAPACITY_MAH      = 2000;    // NP-F550 标准容量 (mAh)
+    constexpr float    BATTERY_CHARGE_MAX_TEMP_C = 55.0f;   // 高温停止充电保护温度 (°C)
+    constexpr float    BATTERY_CHARGE_RESUME_TEMP= 45.0f;   // 降温恢复充电温度 (°C)
+    constexpr uint32_t STORAGE_WARN_MB           = 500;     // 存储空间安全低水位告警 (MB)
+    constexpr uint32_t STORAGE_RECOVERY_MB       = 1000;    // 循环清理后目标安全水位 (MB)
     constexpr float    KINEMATIC_MAX_SPEED_KMH   = 180.0f;  // 动力学最大合理车速突变门限 (km/h)
     constexpr float    KINEMATIC_MAX_ACCEL_G     = 1.2f;    // 动力学最大合理加速度门限 (G)
 }
@@ -451,12 +320,12 @@ namespace MotionPowerConfig {
 ## 2. u-blox NEO-M9N 通信与 AGPS 协议规范
 
 ### 2.1 串口与协议配置
-- **通信接口**：ESP32 UART2 (Serial2), RX: GPIO13, TX: GPIO14。
+- **通信接口**：ESP32-P4 UART (M5-Bus RX0: GPIO 38, TX0: GPIO 37)。
 - **初始波特率**：38400 bps（上电初始化后通过 UBX-CFG-PRT 提升至 115200 bps 以支撑 5Hz/10Hz 高频推送）。
 - **启用报文**：
   - `UBX-NAV-PVT` (0x01, 0x07)：高频导航位置、速度、时间综合报文（输出频率 5Hz）。
   - `UBX-NAV-SIG` (0x01, 0x43)：多星载噪比与信号质量报文（输出频率 1Hz）。
-  - 关闭繁重的 NMEA 文本输出，仅保留纯二进制 UBX 协议以节省 ESP32 CPU 解析负担。
+  - 关闭繁重的 NMEA 文本输出，仅保留纯二进制 UBX 协议以节省 CPU 解析负担。
 
 ### 2.2 Wi-Fi 触发的 NTP 时间辅助注入 (`UBX-MGA-INI-TIME_UTC`)
 当 Wi-Fi 取得 NTP 授时后，构建该报文下发：
@@ -476,11 +345,11 @@ namespace MotionPowerConfig {
   - `token=<User_Thingstream_Token>`
   - `gnss=gps,bds,glo,gal`
   - `datatype=eph,alm,aux`
-- **处理方式**：ESP32 以 128~512 字节分块流式读取 AssistNow 二进制流，调用官方 API `myGNSS.pushRawData(buffer, bytesRead)` 直接注入 NEO-M9N 串口解算链路。
+- **处理方式**：ESP32-P4 以 128~512 字节分块流式读取 AssistNow 二进制流，调用官方 API `myGNSS.pushRawData(buffer, bytesRead)` 直接注入 NEO-M9N 串口解算链路。
 
 ### 2.4 车载环境专项 UBX 配置规范 (In-Cabin UBX-CFG)
 - **动态平台模型 (`UBX-CFG-NAV5`)**：
-  - `dynModel = 4` (`DYN_MODEL_AUTOMOTIVE`，车载模式)。
+  - `dynModel = 4` (`DYN_MODEL_AUTOMOTIVE`，车载模式，抗 4G 极限加减速)。
   - `fixMode = 3` (Auto 2D/3D)。
 - **静止死区锁定 (`staticHoldThresh`)**：
   - `staticHoldThresh = 50` ($0.5\text{ m/s} \approx 1.8\text{ km/h}$)。
@@ -495,7 +364,7 @@ namespace MotionPowerConfig {
   - `Galileo (E1B/C)`：启用 (min 6, max 12 追踪通道)
 
 ### 2.5 复合模块板载 BMP280 气压/高程融合规范
-- **硬件通信**：ESP32 硬件 I2C，7 位从机地址 `0x76`。
+- **硬件通信**：硬件 I2C，7 位从机地址 `0x76`。
 - **采样参数**：
   - 温度过采样：`osrs_t = ×2`
   - 气压过采样：`osrs_p = ×16` (超高分辨率模式，噪声降低至 $0.16\text{ Pa} \approx 1.3\text{ cm}$)
@@ -527,29 +396,29 @@ namespace MotionPowerConfig {
 ## 3. GPX 1.1 全维度双坐标系轨迹文件格式规范 (Dual Coordinates: WGS-84 & GCJ-02)
 
 保存在 MicroSD 卡 `/tracks/` 目录中，成对并行生成：
-- **WGS-84 原始轨迹**：`W-yyyymmdd-hhmmss.gpx`（如 `W-20261028-090000.gpx`，直出 GPS 真实坐标）
-- **GCJ-02 火星坐标轨迹**：`C-yyyymmdd-hhmmss.gpx`（如 `C-20261028-090000.gpx`，China 国测局加密转换，中国大陆道路无偏移贴合）
+- **WGS-84 原始轨迹**：`W-yyyymmdd-hhmmss.gpx`（直出 GPS 真实坐标）
+- **GCJ-02 火星坐标轨迹**：`C-yyyymmdd-hhmmss.gpx`（China 国测局加密转换，国内地图无偏移）
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="M5Track-M9N" 
+<gpx version="1.1" creator="M5Track-Tab5" 
      xmlns="http://www.topografix.com/GPX/1/1"
      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
      xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1"
      xmlns:m5="http://m5stack.com/xmlschemas/VehicleTrack/v1"
      xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
   <metadata>
-    <name>Track 2026-10-27 15:45:00</name>
-    <desc>M5Track-M9N Vehicle High-Precision Log (1Hz)</desc>
-    <time>2026-10-27T07:45:00.000Z</time>
+    <name>Track 2026-10-30 15:45:00</name>
+    <desc>M5Track-Tab5 Vehicle High-Precision Log (1Hz)</desc>
+    <time>2026-10-30T07:45:00.000Z</time>
   </metadata>
   <trk>
-    <name>M5Core2 Vehicle Drive</name>
+    <name>M5Tab5 Vehicle Drive</name>
     <trkseg>
       <trkpt lat="31.2304168" lon="121.4737012">
         <!-- 1. 空间与大地三维坐标 (Standard GPX) -->
         <ele>128.45</ele>
-        <time>2026-10-27T07:45:00.000Z</time>
+        <time>2026-10-30T07:45:00.000Z</time>
         <course>185.3</course>
         <speed>25.8</speed>
         <fix>3d</fix>
@@ -564,8 +433,8 @@ namespace MotionPowerConfig {
             <gpxtpx:atemp>24.6</gpxtpx:atemp>
           </gpxtpx:TrackPointExtension>
           <m5:pressure_hpa>1012.35</m5:pressure_hpa>
-          <m5:sats_bds>11</m5:sats_bds>
-          <m5:sats_gps>7</m5:sats_gps>
+          <m5:sats_bds>10</m5:sats_bds>
+          <m5:sats_gps>8</m5:sats_gps>
           <m5:sats_glo>4</m5:sats_glo>
           <m5:sats_gal>2</m5:sats_gal>
           <m5:lateral_g>0.18</m5:lateral_g>
@@ -587,7 +456,7 @@ namespace MotionPowerConfig {
 
 ## 4. Web 配网与文件管理 API 规范 (Captive Portal & SoftAP)
 
-系统所有 Web 交互**均以按需启动的独立 SoftAP 热点模式提供**（不开放 STA 局域网端口，保障车载安全与低功耗）：
+系统所有 Web 交互均以按需启动的独立 SoftAP 热点模式提供：
 - **配网模式**：AP SSID `M5Track-Setup`，IP: `192.168.4.1`。
 - **TF 卡文件下载模式**：AP SSID `M5Track-Share`，IP: `192.168.4.1`（仅在触发“通过 Wi-Fi 下载”时开启，退出菜单即关闭）。
 
@@ -598,8 +467,8 @@ namespace MotionPowerConfig {
 | `GET` | `/api/saved` | 获取已保存的 Wi-Fi 清单 | 无 | `{"saved":[{"ssid":"Home"},{"ssid":"Car_Hotspot"}]}` |
 | `POST` | `/api/connect` | 保存并尝试连接指定网络 | `{"ssid":"...","pwd":"..."}` | `{"success":true,"message":"Connecting..."}` |
 | `POST` | `/api/delete` | 删除已保存的指定 Wi-Fi | `{"ssid":"..."}` | `{"success":true}` |
-| `GET` | `/api/tracks` | 查询 TF 卡内所有 GPX 文件及坐标系属性 | 无 | `{"files":[{"name":"W-20261028-090000.gpx","size":654320,"type":"wgs84","badge":"国际/Google Earth版"},{"name":"C-20261028-090000.gpx","size":654320,"type":"gcj02","badge":"国内/高德/两步路版"}]}` |
-| `GET` | `/api/download`| 下载指定轨迹文件 | Query: `?file=W-20261028-090000.gpx` | 二进制流 / `application/gpx+xml` |
+| `GET` | `/api/tracks` | 查询 TF 卡内所有 GPX 文件及坐标系属性 | 无 | `{"files":[{"name":"W-20261030-090000.gpx","size":654320,"type":"wgs84","badge":"国际/Google Earth版"},{"name":"C-20261030-090000.gpx","size":654320,"type":"gcj02","badge":"国内/高德/两步路版"}]}` |
+| `GET` | `/api/download`| 下载指定轨迹文件 | Query: `?file=W-20261030-090000.gpx` | 二进制流 / `application/gpx+xml` |
 | `POST`| `/api/sd/format`| 格式化 TF 卡并重建 tracks 目录 | `{"confirm":true}` | `{"success":true,"message":"SD Formatted"}` |
 | `GET` | `/api/tunnel/info` | 查询片上 Flash 隧道库版本与条目数 | 无 | `{"version":"2026.10","count":82,"source":"LittleFS"}` |
 | `POST`| `/api/tunnel/upload`| 上传更新片上 Flash 隧道数据库 | Multipart / Binary | `{"success":true,"count":85,"message":"Tunnel DB Reloaded to PSRAM"}` |
@@ -607,8 +476,6 @@ namespace MotionPowerConfig {
 ---
 
 ## 5. 片上 Flash 分区表规范 (`partitions.csv` - 16MB NOR Flash)
-
-为保障特长隧道数据库与系统运行互不干扰，在板载 16MB Flash 中划分独立 `LittleFS` 分区：
 
 ```csv
 # Name,   Type, SubType, Offset,  Size, Flags
@@ -618,9 +485,9 @@ app0,     app,  ota_0,   0x10000, 0x640000,
 app1,     app,  ota_1,   0x650000,0x640000,
 littlefs, data, spiffs,  0xc90000,0x300000,
 ```
-- `littlefs` 分区分配 **3MB**，挂载路径 `/littlefs`。
-- 隧道数据库文件：`/littlefs/tunnels.bin`（约 30KB~60KB）。
-- 启动时全量读入 8MB PSRAM 内存缓存，耗时 $<2\text{ms}$，运行时零 Flash/TF I/O 耗时。
+- `littlefs` 分区分配 **3MB**，挂载路径 `/littlefs`；
+- 隧道数据库文件：`/littlefs/tunnels.bin`；
+- 启动时全量读入 32MB PSRAM 内存缓存，运行时零 Flash/TF I/O 耗时。
 
 ---
 
