@@ -173,8 +173,8 @@ enum DockTouchAction : uint8_t {
 // 0x10: BMM150 (Module GNSS 板载 3 轴地磁罗盘 - 因 MagSafe 磁吸环在软件中彻底旁路)
 // 0x32: RX8130CE (Tab5 主板板载硬件实时时钟 RTC，带 70000uF 超级电容)
 // 0x40: INA226 (Tab5 主板板载高精度电流/电压/功率计)
-// 0x68: BMI270 (Tab5 主板板载 6 轴主 IMU 姿态传感器 - 主中断连至 P4 RTC 唤醒)
-// 0x69: BMI270 (Module GNSS 重复 IMU - 硬件拨码设为 0x69/断开，软件中旁路不初始化)
+// 0x68: BMI270 Master (Tab5 主板板载 6 轴主 IMU 姿态传感器 - 直连 P4 RTC 唤醒)
+// 0x69: BMI270 Slave  (Module GNSS 板载副 IMU - SDO 硬件上拉，双冗余融合降噪与容灾)
 // 0x76: BMP280 (Module GNSS 板载高精度气压计传感器)
 // -----------------------------------------------------------------------------
 
