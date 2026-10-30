@@ -10,18 +10,18 @@
 
 | 外部模块 / 内部外设 | 接口协议 | ESP32-P4 引脚映射 | 说明 |
 | :--- | :--- | :--- | :--- |
-| **u-blox NEO-M9N (M135)** | 高速 UART | **GPIO 38 (RX0)** $\leftarrow$ M9N TXD<br>**GPIO 37 (TX0)** $\rightarrow$ M9N RXD | 经由 M5-Bus 高速串口总线互联，波特率 38400 / 115200bps；SMA 标准外置天线接口引向前挡玻璃 |
-| **BMI270 (Tab5 板载主 IMU)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Tab5 主板板载集成，I2C 地址 `0x68`；作为系统 Master IMU，中断直连 P4 RTC 引脚用于熄火微动唤醒，平时与副 IMU 并行采样加权均值融合，并在故障时提供基准源 |
-| **BMI270 (Module GNSS 板载副 IMU)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Module GNSS 板载集成，出厂 PCB 硬件将 SDO 上拉至高电平，默认 I2C 地址为 `0x69`；与主 IMU 组成双冗余互验降噪系统，主片故障时 20ms 内无缝热切换接管 |
-| **BMM150 (3轴地磁罗盘)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Module GNSS 板载集成，I2C 地址 `0x10`；因机身贴附 MagSafe 磁吸环在软件中彻底旁路，航向改由 GPS 航向与双 BMI270 融合陀螺仪解算 |
-| **BMP280 (气压/高程计)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Module GNSS 板载集成，I2C 地址 `0x76`；用于 10Hz 气压定高互补融合与道路坡度计算 |
-| **RX8130CE (硬件 RTC)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Tab5 主板板载集成，I2C 地址 `0x32`；由 $70000\mu\text{F}$ 超级电容维持掉电走时，实现冷启动秒级注入 |
-| **INA226 (高精度库仑计)** | 硬件 I2C | GPIO 7 (SDA), GPIO 8 (SCL) | Tab5 主板板载集成，I2C 地址 `0x40`；经 $20\text{m}\Omega$ 精密分流电阻监测电压、充放电电流与整机功耗 |
-| **IP2326 + MP4560** | 电源与充放电管理 | 内部硬件管理电路 | 管理背部快拆 **NP-F550** (约 2000mAh/7.4V) 锂电池，支持 USB-C (PD/QC) 及 6~24V HVIN 宽压车载供电 |
-| **5.0" IPS 高清屏** | MIPI-DSI (双通道) | ESP32-P4 专用 MIPI-DSI 接口 | 1280×720 分辨率，60Hz 刷新率，支持全贴合大画幅双缓冲渲染 |
-| **电容触控控制器** | 专用触控 I2C / INT | 专用触控总线 | 支持多点触控、大热区点选与全屏滑动手势识别 |
-| **MicroSD (TF 卡槽)** | 专用硬件高速 SPI | 专用 SPI 接口 | 采用 `SdFat` 库，原生支持长文件名 (LFN) 与机内 FAT32 格式化，双流记录 GPX |
-| **触觉马达 / 蜂鸣器** | 专用 PWM / GPIO | 专用控制引脚 | Page 1 里程卡片长按 2 秒归零短震触觉确认，超速/陡坡声音警示 |
+| **u-blox NEO-M9N (M135)** | 高速 UART | **GPIO 38 (RX0)** / **GPIO 6 (PC_TX)** $\leftarrow$ M9N TXD<br>**GPIO 37 (TX0)** / **GPIO 7 (PC_RX)** $\rightarrow$ M9N RXD | 经由 M5-Bus (Pin 13/14 或 Pin 15/16) 串口互联，支持自动轮询探测 38400 / 115200bps；MCX/SMA 标准外置有源天线 |
+| **BMI270 (Tab5 板载主 IMU)** | 硬件 I2C (`M5.In_I2C`) | **GPIO 31 (SDA), GPIO 32 (SCL)** | Tab5 主板板载集成，I2C 地址 `0x68`；作为系统 Master IMU，中断直连 P4 RTC 引脚用于熄火微动唤醒，平时与副 IMU 并行采样加权均值融合，并在故障时提供基准源 |
+| **BMI270 (Module GNSS 板载副 IMU)** | 硬件 I2C (`M5.In_I2C`) | **GPIO 31 (SDA), GPIO 32 (SCL)** | Module GNSS 板载集成（经 M5-Bus Pin 17/18 直连），出厂 PCB 硬件将 SDO 上拉至高电平，默认 I2C 地址为 `0x69`；与主 IMU 组成双冗余互验降噪系统，主片故障时 20ms 内无缝热切换接管 |
+| **BMM150 (3轴地磁罗盘)** | 硬件 I2C (`M5.In_I2C`) | **GPIO 31 (SDA), GPIO 32 (SCL)** | Module GNSS 板载集成（挂载于 BMI270 0x69 的二级 AUX 总线），I2C 地址 `0x10`；因机身贴附 MagSafe 磁吸环在软件中彻底旁路，航向改由 GPS 航向与双 BMI270 融合陀螺仪解算 |
+| **BMP280 (气压/高程计)** | 硬件 I2C (`M5.In_I2C`) | **GPIO 31 (SDA), GPIO 32 (SCL)** | Module GNSS 板载集成，I2C 地址 `0x76`；用于 10Hz 气压定高互补融合与道路坡度计算 |
+| **RX8130CE (硬件 RTC)** | 硬件 I2C (`M5.In_I2C`) | **GPIO 31 (SDA), GPIO 32 (SCL)** | Tab5 主板板载集成，I2C 地址 `0x32`；由 $70000\mu\text{F}$ 超级电容维持掉电走时，实现冷启动秒级注入 |
+| **INA226 (高精度库仑计)** | 硬件 I2C (`M5.In_I2C`) | **GPIO 31 (SDA), GPIO 32 (SCL)** | Tab5 主板板载集成，I2C 地址 `0x40`（兼容 `0x41`）；经 $20\text{m}\Omega$ 精密分流电阻监测电压、充放电电流与整机功耗 |
+| **PI4IOE5V6408 ×2 + IP2326** | 电源与 IO 扩展管理 | **GPIO 31 (SDA), GPIO 32 (SCL)** (`0x43`/`0x44`) | 管理外设供电使能（`EXT5V_EN`）、背部快拆 **NP-F550** (约 2000mAh/7.4V) 锂电池及 USB-C / 6~24V HVIN 宽压车载供电 |
+| **5.0" IPS 高清屏** | MIPI-DSI (双通道) | ESP32-P4 专用 MIPI-DSI 接口 | 1280×720 分辨率 (ILI9881C / ST7123 自动识别)，60Hz 刷新率，支持全贴合大画幅双缓冲渲染 |
+| **电容触控控制器** | 硬件 I2C (`M5.In_I2C`) | **GPIO 31 (SDA), GPIO 32 (SCL)** (`0x5D`/`0x14`) | GT911 / TDDI 多点电容触控，支持大热区点选与全屏滑动手势识别 |
+| **MicroSD (TF 卡槽)** | 专用 SDMMC / 高速 SPI | **GPIO 39 ~ GPIO 44** | 采用 `SdFat` / SDMMC 驱动，原生支持长文件名 (LFN) 与机内 FAT32 格式化，双流记录 GPX |
+| **ESP32-C6-MINI-1U** | 高速 SDIO 总线 | **GPIO 8 ~ GPIO 15** | 无线协处理器，提供 Wi-Fi 6 (802.11ax) 与 BLE 5.0 网络通信 |
 
 > [!TIP]
 > **I2C 物理总线正交架构与双 BMI270 冗余互验规范**：
