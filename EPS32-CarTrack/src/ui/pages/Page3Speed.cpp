@@ -1,4 +1,5 @@
 #include "ui/pages/Page3Speed.h"
+#include "driver/HapticDriver.h"
 #include <math.h>
 
 void Page3Speed::render(M5Canvas& canvas, const SystemContext& ctx) {
@@ -13,6 +14,32 @@ void Page3Speed::render(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.setTextColor(UiColors::COLOR_MUTED);
     canvas.drawString("CURRENT SPEED", 210, 34);
 
+    // Dynamic Interactive Trip View Tabs: [单次 TRIP] [单日 DAY] (and [SUB小记] only when active)
+    auto drawTripTab = [&](int x, int w, const char* label, bool active) {
+        if (active) {
+            canvas.fillRoundRect(x, 28, w, 32, 6, 0x0208);
+            canvas.drawRoundRect(x, 28, w, 32, 6, UiColors::COLOR_PRIMARY);
+            canvas.setTextColor(UiColors::COLOR_PRIMARY);
+        } else {
+            canvas.fillRoundRect(x, 28, w, 32, 6, UiColors::COLOR_CARD_BG);
+            canvas.drawRoundRect(x, 28, w, 32, 6, UiColors::COLOR_BORDER);
+            canvas.setTextColor(UiColors::COLOR_MUTED);
+        }
+        canvas.setTextDatum(middle_center);
+        canvas.setTextSize(2);
+        canvas.drawString(label, x + w / 2, 44);
+    };
+
+    if (!ctx.manualTripActive) {
+        drawTripTab(550, 110, "TRIP单次", ctx.activeTripCategory == TRIP_SINGLE);
+        drawTripTab(675, 110, "DAY单日",  ctx.activeTripCategory == TRIP_DAILY);
+    } else {
+        drawTripTab(520, 100, "TRIP单次", ctx.activeTripCategory == TRIP_SINGLE);
+        drawTripTab(630, 100, "DAY单日",  ctx.activeTripCategory == TRIP_DAILY);
+        drawTripTab(740, 100, "SUB小记",  ctx.activeTripCategory == TRIP_MANUAL);
+    }
+
+    canvas.setTextDatum(top_left);
     canvas.setTextSize(5);
     canvas.setTextColor(UiColors::COLOR_PRIMARY);
     char spdBuf[32];
@@ -87,4 +114,38 @@ void Page3Speed::render(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.drawString(timeStats, 210, 635);
 
     endViewport(canvas);
+}
+
+bool Page3Speed::onTouchTap(int16_t x, int16_t y, SystemContext& ctx) {
+    if (y >= 20 && y <= 68) {
+        if (!ctx.manualTripActive) {
+            if (x >= 545 && x <= 665) {
+                SystemState::instance().switchActiveTripCategory(TRIP_SINGLE);
+                HapticDriver::instance().triggerShortPulse(50);
+                return true;
+            }
+            if (x >= 670 && x <= 790) {
+                SystemState::instance().switchActiveTripCategory(TRIP_DAILY);
+                HapticDriver::instance().triggerShortPulse(50);
+                return true;
+            }
+        } else {
+            if (x >= 515 && x <= 625) {
+                SystemState::instance().switchActiveTripCategory(TRIP_SINGLE);
+                HapticDriver::instance().triggerShortPulse(50);
+                return true;
+            }
+            if (x >= 625 && x <= 735) {
+                SystemState::instance().switchActiveTripCategory(TRIP_DAILY);
+                HapticDriver::instance().triggerShortPulse(50);
+                return true;
+            }
+            if (x >= 735 && x <= 845) {
+                SystemState::instance().switchActiveTripCategory(TRIP_MANUAL);
+                HapticDriver::instance().triggerShortPulse(50);
+                return true;
+            }
+        }
+    }
+    return false;
 }
