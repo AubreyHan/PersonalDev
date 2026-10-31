@@ -97,17 +97,26 @@ void ToolTfManager::render(M5Canvas& canvas, const SystemContext& ctx) {
         canvas.setTextSize(2);
 
         // Button 1: Start Wi-Fi QR Code Export (M5Track-Share)
-        canvas.fillRoundRect(185, 460, 520, 110, 12, 0x0208);
-        canvas.drawRoundRect(185, 460, 520, 110, 12, UiColors::COLOR_PRIMARY);
+        canvas.fillRoundRect(185, 440, 520, 85, 10, 0x0208);
+        canvas.drawRoundRect(185, 440, 520, 85, 10, UiColors::COLOR_PRIMARY);
         canvas.setTextDatum(middle_center);
         canvas.setTextColor(UiColors::COLOR_PRIMARY);
-        canvas.drawString("Wi-Fi QR Code Track Download", 445, 515);
+        canvas.drawString("Wi-Fi QR Code Track Download", 445, 482);
 
         // Button 2: One-Click Format FAT32
-        canvas.fillRoundRect(735, 460, 520, 110, 12, UiColors::COLOR_PANEL_BG);
-        canvas.drawRoundRect(735, 460, 520, 110, 12, UiColors::COLOR_WARN);
+        canvas.fillRoundRect(735, 440, 520, 85, 10, UiColors::COLOR_PANEL_BG);
+        canvas.drawRoundRect(735, 440, 520, 85, 10, UiColors::COLOR_WARN);
         canvas.setTextColor(UiColors::COLOR_WARN);
-        canvas.drawString(_confirmFormatModal ? "TAP AGAIN TO CONFIRM FORMAT!" : "One-Click Format TF (FAT32)", 995, 515);
+        canvas.drawString(_confirmFormatModal ? "TAP AGAIN TO CONFIRM FORMAT!" : "One-Click Format TF (FAT32)", 995, 482);
+
+        // Button 3: OneDrive Cloud Sync Settings & Management
+        canvas.fillRoundRect(185, 545, 1070, 85, 10, UiColors::COLOR_PANEL_BG);
+        canvas.drawRoundRect(185, 545, 1070, 85, 10, ctx.onedrive.isBound ? UiColors::COLOR_PRIMARY : UiColors::COLOR_SECONDARY);
+        canvas.setTextColor(ctx.onedrive.isBound ? UiColors::COLOR_PRIMARY : UiColors::COLOR_SECONDARY);
+        char odBtn[128];
+        snprintf(odBtn, sizeof(odBtn), "☁️ Microsoft OneDrive Cloud Sync: %s",
+                 ctx.onedrive.isBound ? "Bound & Ready (Tap to Manage)" : "Not Bound (Tap to Setup Device Flow)");
+        canvas.drawString(odBtn, 720, 587);
     }
 
     endViewport(canvas);
@@ -137,19 +146,25 @@ bool ToolTfManager::onTouchTap(int16_t x, int16_t y, SystemContext& ctx) {
             return true;
         }
 
-        // Start Wi-Fi QR Code Export button (X: 185..705, Y: 460..570)
-        if (x >= 185 && x <= 705 && y >= 460 && y <= 570) {
+        // Start Wi-Fi QR Code Export button (X: 185..705, Y: 440..525)
+        if (x >= 185 && x <= 705 && y >= 440 && y <= 525) {
             AppNetworkManager::instance().startSharePortal();
             return true;
         }
-        // Format FAT32 button (X: 735..1255, Y: 460..570)
-        if (x >= 735 && x <= 1255 && y >= 460 && y <= 570) {
+        // Format FAT32 button (X: 735..1255, Y: 440..525)
+        if (x >= 735 && x <= 1255 && y >= 440 && y <= 525) {
             if (!_confirmFormatModal) {
                 _confirmFormatModal = true;
             } else {
                 _confirmFormatModal = false;
                 TrackLogger::instance().requestFormat();
             }
+            return true;
+        }
+        // OneDrive Cloud Sync button (X: 185..1255, Y: 545..630)
+        if (x >= 185 && x <= 1255 && y >= 545 && y <= 630) {
+            ctx.currentPage = SUBPAGE_TOOL_ONEDRIVE;
+            HapticDriver::instance().triggerShortPulse(60);
             return true;
         }
     }
