@@ -562,7 +562,12 @@ stateDiagram-v2
 
 ---
 
-### 3.17 TF 卡历史行程流水日志规范 (Historical Trip Journal: `/tracks/trips.csv`)
+### 3.17 TF 卡历史行程流水日志与三目录独立存储规范 (Historical Trip Journal: `/tracks/trips.csv`)
+- **三类行程三目录独立存储规范 (Tri-Folder Segregation)**：
+  - **单次行程目录**：`/tracks/single/`，存放每次通电/启程至下电休眠的单次轨迹（如 `single/W-20261101-080000.gpx`、`single/C-*.gpx`）；
+  - **单日行程目录**：`/tracks/daily/`，存放每日 0 点到 24 点全天累计行驶轨迹（如 `daily/W-Day-20261101.gpx`、`daily/C-Day-*.gpx`）；
+  - **小记行程目录**：`/tracks/sub/`，存放驾驶员手工启停的小记轨迹及 10MB 自动分卷（如 `sub/W-sub001-001.gpx`、`sub/C-sub*-*.gpx`）；
+  - 根目录 `/tracks/`：存放全系统总览文件 `trips.csv`、断电黑匣子日志 `power.log` 及云同步记账本 `.synced_ledger`。
 - **存储路径与格式规范**：
   - 存储路径：MicroSD 卡 `/tracks/trips.csv`；
   - 编码格式：标准 UTF-8 CSV 文本格式，首行含列标头，支持 Excel、Apple Numbers、Google Sheets 直接点选离线分析；
@@ -587,6 +592,33 @@ stateDiagram-v2
     11. `Min Alt(m)`：最低海拔极值（米）
     12. `Max Lat G`：过弯极限横向 G 值
     13. `Max Long G`：急刹/推背极限纵向 G 值
-    14. `GPX File`：本行程对应的轨迹源文件名（如 `W-20261101-073000.gpx`）
+    14. `GPX File`：本行程对应的相对轨迹路径（如 `single/W-20261101-073000.gpx`、`daily/W-Day-20261101.gpx`、`sub/W-sub001-001.gpx`）
 - **免拔卡无线一键导出**：
   - 开启 `M5Track-Share` Wi-Fi 热点后，手机访问 `http://192.168.4.1/tracks`，顶部专属展示 `trips.csv` 卡片，轻触即可一键批量下载到手机本地。
+
+---
+
+### 3.18 Microsoft OneDrive 自动云同步规范 (Cloud Sync & Device Code Flow)
+- **核心诉求与目标**：
+  - 当设备连接可用 Wi-Fi 网络（手机热点、车机 Wi-Fi 或家庭车库 Wi-Fi）时，后台低优先级线程自动将未同步的行程统计报表（`trips.csv`）及已完结的 GPX 轨迹文件静默同步上传至 Microsoft OneDrive，实现车载数据免人工干预的云端灾备与多设备多端共享。
+- **免键盘安全授权 (OAuth 2.0 Device Code Flow)**：
+  - 遵循 RFC 8628 OAuth 2.0 设备授权协议（Microsoft identity platform）；
+  - 设备端通过 `POST https://login.microsoftonline.com/common/oauth2/v2.0/devicecode` 申请 8 位大写验证码（如 `B8K2-9X4M`）；
+  - 屏幕展示直观的 QR 二维码（指向 `https://microsoft.com/devicelogin`）与超大字体验证码；
+  - 用户用手机或电脑扫码登录并授权 `Files.ReadWrite` 权限；
+  - 设备端轮询获取 `access_token` 与长期有效的 `refresh_token` 并持久化存储于 NVS；
+  - 全程无需在车载触屏上输入敏感微软密码，防窃听、极速安全。
+- **云端存储目录拓扑 (Mirroring MicroSD Structure)**：
+  - 云端根路径：`OneDrive:/VehicleTracks/`
+    - `/VehicleTracks/trips.csv`（全量覆盖更新）
+    - `/VehicleTracks/single/W-*.gpx`（单次轨迹分卷）
+    - `/VehicleTracks/daily/W-Day-*.gpx`（单日全天累计）
+    - `/VehicleTracks/sub/W-sub*-*.gpx`（小记分卷）
+- **记账与断点续传机制 (`/tracks/.synced_ledger`)**：
+  - MicroSD 卡根目录维护 `.synced_ledger` 增量流水账本；
+  - 仅同步已完结写入的文件，正在被记录器写入的活跃流（`currentWgsFile` 等）严格禁止上传；
+  - 上传成功后立即在记账本追加相对路径名，即便网络闪断或中途断电，再次连网时绝不重复上传；
+  - 超过 4MB 的大型分卷（如 10MB 小记轨迹）自动采用 `createUploadSession` 分块（320KB）上传。
+- **UI 触控与 Web 局域网控制**：
+  - Page 8 工具箱内专属二级页面 `SUBPAGE_TOOL_ONEDRIVE`：展示当前绑定账号邮箱、云端同步状态、待上传分卷数、即时上传进度条，提供【立即同步】、【自动同步开/关】、【解除绑定】；
+  - Web 局域网管理端（`/api/onedrive/`）提供完整的 RESTful 接口与状态同步。
