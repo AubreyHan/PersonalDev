@@ -83,16 +83,17 @@ void ToolTfManager::render(M5Canvas& canvas, const SystemContext& ctx) {
         canvas.setTextColor(UiColors::COLOR_PRIMARY);
         canvas.drawString(line4, 215, 285);
 
-        const char* modeName = (ctx.recordTripMode == TRIP_DAILY) ? "DAILY TRIP (Per-Day GPX Roll)" :
-                               ((ctx.recordTripMode == TRIP_MANUAL) ? "MANUAL TRIP (User Controlled)" : "SINGLE TRIP (Per-Drive GPX)");
-        char line5[96];
-        snprintf(line5, sizeof(line5), "Record Mode     : [%s] (Tap here to Change)", modeName);
+        char line5[110];
+        snprintf(line5, sizeof(line5), "Parallel Streams: 1. Single (Per Drive) | 2. Daily (Auto Parallel) | 3. Sub (10MB Max)");
         canvas.setTextColor(UiColors::COLOR_SECONDARY);
         canvas.drawString(line5, 215, 345);
 
         canvas.setTextSize(1);
         canvas.setTextColor(UiColors::COLOR_MUTED);
-        canvas.drawString("Options: 1. Single (Per Drive)  |  2. Daily (00:00~24:00)  |  3. Manual (Start/Stop in Cockpit)", 215, 385);
+        char subInfo[110];
+        snprintf(subInfo, sizeof(subInfo), "Sub-Trip Status : #%03u (Split #%03u, 10MB Auto-Roll) | %s",
+                 ctx.subIndex, ctx.subSplitIndex, ctx.manualTripActive ? "ACTIVE RECORDING" : "IDLE");
+        canvas.drawString(subInfo, 215, 385);
         canvas.setTextSize(2);
 
         // Button 1: Start Wi-Fi QR Code Export (M5Track-Share)
