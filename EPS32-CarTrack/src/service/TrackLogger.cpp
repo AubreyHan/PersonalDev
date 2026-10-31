@@ -635,44 +635,78 @@ void TrackLogger::update() {
 size_t TrackLogger::listTrackFiles(TrackFileEntry* outList, size_t maxEntries) {
     if (!_mounted || !outList || maxEntries == 0) return 0;
     lockSd();
-    FsFile dir;
-    if (!dir.open(StorageConfig::TRACKS_DIR)) {
-        unlockSd();
-        return 0;
-    }
-
     size_t count = 0;
-    FsFile entry;
-    while (count < maxEntries && entry.openNext(&dir, O_RDONLY)) {
-        if (!entry.isDir()) {
-            char fname[44] = {0};
-            entry.getName(fname, sizeof(fname));
-            if (strstr(fname, ".gpx")) {
-                strncpy(outList[count].name, fname, sizeof(outList[count].name) - 1);
-                outList[count].sizeBytes = (uint32_t)entry.fileSize();
-                outList[count].isGcj02   = (fname[0] == 'C');
-                count++;
+
+    struct DirScan {
+        const char* dirPath;
+        const char* prefix;
+    };
+    const DirScan scanDirs[] = {
+        { StorageConfig::TRACKS_SINGLE_DIR, "single/" },
+        { StorageConfig::TRACKS_DAILY_DIR,  "daily/"  },
+        { StorageConfig::TRACKS_SUB_DIR,    "sub/"    },
+        { StorageConfig::TRACKS_DIR,        ""        }
+    };
+
+    for (const auto& d : scanDirs) {
+        FsFile dir;
+        if (dir.open(d.dirPath)) {
+            FsFile entry;
+            while (count < maxEntries && entry.openNext(&dir, O_RDONLY)) {
+                if (!entry.isDir()) {
+                    char fname[48] = {0};
+                    entry.getName(fname, sizeof(fname));
+                    if (strstr(fname, ".gpx")) {
+                        snprintf(outList[count].name, sizeof(outList[count].name), "%s%s", d.prefix, fname);
+                        outList[count].sizeBytes = (uint32_t)entry.fileSize();
+                        outList[count].isGcj02   = (fname[0] == 'C');
+                        count++;
+                    }
+                }
+                entry.close();
             }
+            dir.close();
         }
-        entry.close();
     }
-    dir.close();
     unlockSd();
     return count;
 }
 
 bool TrackLogger::openFileForRead(const char* filename, FsFile& outFile) {
-    if (!_mounted || !filename) return false;
+    if (!_mounted || !filename || filename[0] == '\0') return false;
     lockSd();
-    char path[72];
+    char path[96];
+
+    // 1. Direct absolute path starting with '/'
     if (filename[0] == '/') {
         snprintf(path, sizeof(path), "%s", filename);
+        if (outFile.open(path, O_RDONLY)) { unlockSd(); return true; }
     } else {
+        // 2. If caller passed relative path with folder, e.g. "single/W-..."
+        if (strchr(filename, '/')) {
+            snprintf(path, sizeof(path), "%s/%s", StorageConfig::TRACKS_DIR, filename);
+            if (outFile.open(path, O_RDONLY)) { unlockSd(); return true; }
+        }
+
+        // 3. Root tracks directory, e.g. "trips.csv" or "power.log" or legacy GPX
         snprintf(path, sizeof(path), "%s/%s", StorageConfig::TRACKS_DIR, filename);
+        if (outFile.open(path, O_RDONLY)) { unlockSd(); return true; }
+
+        // 4. Try inside single directory
+        snprintf(path, sizeof(path), "%s/%s", StorageConfig::TRACKS_SINGLE_DIR, filename);
+        if (outFile.open(path, O_RDONLY)) { unlockSd(); return true; }
+
+        // 5. Try inside daily directory
+        snprintf(path, sizeof(path), "%s/%s", StorageConfig::TRACKS_DAILY_DIR, filename);
+        if (outFile.open(path, O_RDONLY)) { unlockSd(); return true; }
+
+        // 6. Try inside sub directory
+        snprintf(path, sizeof(path), "%s/%s", StorageConfig::TRACKS_SUB_DIR, filename);
+        if (outFile.open(path, O_RDONLY)) { unlockSd(); return true; }
     }
-    bool ok = outFile.open(path, O_RDONLY);
+
     unlockSd();
-    return ok;
+    return false;
 }
 
 void TrackLogger::getFormattedGpsTimezoneTimestamp(char* outBuf, size_t maxLen) {
