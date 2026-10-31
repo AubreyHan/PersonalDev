@@ -398,7 +398,7 @@ void AppNetworkManager::setupHttpRoutes() {
         uint64_t fSize = f.fileSize();
         _server.sendHeader("Content-Disposition", String("attachment; filename=\"") + fname + "\"");
         _server.setContentLength(fSize);
-        const char* mime = fname.endsWith(".log") ? "text/plain" : "application/gpx+xml";
+        const char* mime = fname.endsWith(".log") ? "text/plain" : (fname.endsWith(".csv") ? "text/csv" : "application/gpx+xml");
         _server.send(200, mime, "");
 
         uint8_t buf[512];
