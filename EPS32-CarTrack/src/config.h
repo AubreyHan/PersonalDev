@@ -185,6 +185,9 @@ namespace DualImuConfig {
 
 namespace StorageConfig {
     constexpr const char* TRACKS_DIR           = "/tracks";
+    constexpr const char* TRACKS_SINGLE_DIR    = "/tracks/single";
+    constexpr const char* TRACKS_DAILY_DIR     = "/tracks/daily";
+    constexpr const char* TRACKS_SUB_DIR       = "/tracks/sub";
     constexpr const char* TUNNEL_LITTLEFS_PATH = "/littlefs/tunnels.bin";
     constexpr uint32_t    SYNC_INTERVAL_POINTS = 10;
     constexpr const char* POWER_LOG_PATH       = "/tracks/power.log";
@@ -192,6 +195,7 @@ namespace StorageConfig {
     constexpr uint32_t    POWER_LOG_MAX_BYTES  = 100 * 1024; // 100 KB hard limit
     constexpr uint32_t    POWER_LOG_TRIM_BYTES = 20 * 1024;  // Prune oldest 20 KB when reaching 100 KB
     constexpr const char* TRIPS_CSV_PATH       = "/tracks/trips.csv";
+    constexpr const char* SYNC_LEDGER_PATH     = "/tracks/.synced_ledger";
 }
 
 namespace UiColors {
