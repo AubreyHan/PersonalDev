@@ -77,11 +77,23 @@ void ToolTfManager::render(M5Canvas& canvas, const SystemContext& ctx) {
         snprintf(line3, sizeof(line3), "Recorded Pairs  : %u Pairs (WGS-84 'W-' + GCJ-02 'C-' GPX)", ctx.storage.trackFilePairsCount);
         snprintf(line4, sizeof(line4), "Active Segment  : %s (%u pts)", ctx.storage.isRecording ? ctx.storage.currentWgsFile : "Idle", ctx.storage.currentSegmentPoints);
 
-        canvas.drawString(line1, 215, 140);
-        canvas.drawString(line2, 215, 195);
-        canvas.drawString(line3, 215, 250);
+        canvas.drawString(line1, 215, 135);
+        canvas.drawString(line2, 215, 185);
+        canvas.drawString(line3, 215, 235);
         canvas.setTextColor(UiColors::COLOR_PRIMARY);
-        canvas.drawString(line4, 215, 305);
+        canvas.drawString(line4, 215, 285);
+
+        const char* modeName = (ctx.recordTripMode == TRIP_DAILY) ? "DAILY TRIP (Per-Day GPX Roll)" :
+                               ((ctx.recordTripMode == TRIP_MANUAL) ? "MANUAL TRIP (User Controlled)" : "SINGLE TRIP (Per-Drive GPX)");
+        char line5[96];
+        snprintf(line5, sizeof(line5), "Record Mode     : [%s] (Tap here to Change)", modeName);
+        canvas.setTextColor(UiColors::COLOR_SECONDARY);
+        canvas.drawString(line5, 215, 345);
+
+        canvas.setTextSize(1);
+        canvas.setTextColor(UiColors::COLOR_MUTED);
+        canvas.drawString("Options: 1. Single (Per Drive)  |  2. Daily (00:00~24:00)  |  3. Manual (Start/Stop in Cockpit)", 215, 385);
+        canvas.setTextSize(2);
 
         // Button 1: Start Wi-Fi QR Code Export (M5Track-Share)
         canvas.fillRoundRect(185, 460, 520, 110, 12, 0x0208);
@@ -116,6 +128,14 @@ bool ToolTfManager::onTouchTap(int16_t x, int16_t y, SystemContext& ctx) {
             return true;
         }
     } else {
+        // Tap Record Mode row (X: 185..1255, Y: 330..420) to cycle trip recording modes
+        if (x >= 185 && x <= 1255 && y >= 330 && y <= 420) {
+            TripCategory nextMode = (TripCategory)((ctx.recordTripMode + 1) % TRIP_CATEGORY_COUNT);
+            SystemState::instance().setRecordTripMode(nextMode);
+            HapticDriver::instance().triggerShortPulse(60);
+            return true;
+        }
+
         // Start Wi-Fi QR Code Export button (X: 185..705, Y: 460..570)
         if (x >= 185 && x <= 705 && y >= 460 && y <= 570) {
             AppNetworkManager::instance().startSharePortal();
