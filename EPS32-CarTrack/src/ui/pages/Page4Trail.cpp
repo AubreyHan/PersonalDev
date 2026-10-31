@@ -1,4 +1,5 @@
 #include "ui/pages/Page4Trail.h"
+#include "driver/HapticDriver.h"
 #include <math.h>
 
 void Page4Trail::render(M5Canvas& canvas, const SystemContext& ctx) {
