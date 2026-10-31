@@ -343,39 +343,50 @@ void TrackLogger::appendTrackPoint(FsFile& file, double lat, double lon, const S
     file.write(pt, strlen(pt));
 }
 
+void TrackLogger::closeSingleStreams() {
+    if (_fileWgsSingle.isOpen()) { _fileWgsSingle.sync(); _fileWgsSingle.close(); }
+    if (_fileGcjSingle.isOpen()) { _fileGcjSingle.sync(); _fileGcjSingle.close(); }
+    _singleRecording = false;
+    _singlePoints = 0;
+}
+
+void TrackLogger::closeDailyStreams() {
+    if (_fileWgsDaily.isOpen()) { _fileWgsDaily.sync(); _fileWgsDaily.close(); }
+    if (_fileGcjDaily.isOpen()) { _fileGcjDaily.sync(); _fileGcjDaily.close(); }
+    _dailyRecording = false;
+}
+
+void TrackLogger::closeSubStreams() {
+    if (_fileWgsSub.isOpen()) { _fileWgsSub.sync(); _fileWgsSub.close(); }
+    if (_fileGcjSub.isOpen()) { _fileGcjSub.sync(); _fileGcjSub.close(); }
+    _subRecording = false;
+}
+
 void TrackLogger::writeNewSegmentTag() {
     lockSd();
-    if (!_recording) {
-        unlockSd();
-        return;
-    }
     const char* footer = "    </trkseg>\n  </trk>\n</gpx>\n";
     const char* segTag = "    </trkseg>\n    <trkseg>\n    </trkseg>\n  </trk>\n</gpx>\n";
 
-    if (_fileWgs.isOpen() && _fileWgs.fileSize() > strlen(footer)) {
-        _fileWgs.seekSet(_fileWgs.fileSize() - strlen(footer));
-        _fileWgs.write(segTag, strlen(segTag));
-        _fileWgs.sync();
+    closeSingleStreams();
+
+    if (_fileWgsDaily.isOpen() && _fileWgsDaily.fileSize() > strlen(footer)) {
+        _fileWgsDaily.seekSet(_fileWgsDaily.fileSize() - strlen(footer));
+        _fileWgsDaily.write(segTag, strlen(segTag));
+        _fileWgsDaily.sync();
     }
-    if (_fileGcj.isOpen() && _fileGcj.fileSize() > strlen(footer)) {
-        _fileGcj.seekSet(_fileGcj.fileSize() - strlen(footer));
-        _fileGcj.write(segTag, strlen(segTag));
-        _fileGcj.sync();
+    if (_fileGcjDaily.isOpen() && _fileGcjDaily.fileSize() > strlen(footer)) {
+        _fileGcjDaily.seekSet(_fileGcjDaily.fileSize() - strlen(footer));
+        _fileGcjDaily.write(segTag, strlen(segTag));
+        _fileGcjDaily.sync();
     }
     unlockSd();
 }
 
 void TrackLogger::closeActiveStreams() {
     lockSd();
-    if (_fileWgs.isOpen()) {
-        _fileWgs.sync();
-        _fileWgs.close();
-    }
-    if (_fileGcj.isOpen()) {
-        _fileGcj.sync();
-        _fileGcj.close();
-    }
-    _recording = false;
+    closeSingleStreams();
+    closeDailyStreams();
+    closeSubStreams();
     unlockSd();
     SystemState& state = SystemState::instance();
     state.lock();
@@ -403,18 +414,13 @@ void TrackLogger::update() {
     state.copySnapshotTo(_snapBuf);
     state.unlock();
 
-    if (reqNewSeg && _recording) {
+    if (reqNewSeg) {
         writeNewSegmentTag();
     }
 
     bool canRecord = (_snapBuf.gnss.isValid || _snapBuf.gnss.isDeadReckoning) &&
                      (_snapBuf.gnss.fixType >= FIX_3D || _snapBuf.gnss.isDeadReckoning) &&
                      (_snapBuf.gnss.speedKmh >= MotionPowerConfig::RECORD_TRIGGER_SPEED_KMH);
-
-    // In Manual Trip recording mode, only record when manual trip is explicitly active
-    if (_snapBuf.recordTripMode == TRIP_MANUAL && !_snapBuf.manualTripActive) {
-        canRecord = false;
-    }
 
     if (!canRecord) {
         return;
@@ -473,29 +479,110 @@ void TrackLogger::update() {
     }
     _lastRecordedEpochSec = pointEpoch;
 
-    lockSd();
-    if (!_recording || _pointsInFile >= MotionPowerConfig::HOURLY_SPLIT_POINTS) {
-        if (!openNewTrackPair(_snapBuf, yr, mo, dy, hh, mm, ss)) {
-            unlockSd();
-            return;
-        }
-    }
-
     double wLat = _snapBuf.gnss.latitude;
     double wLon = _snapBuf.gnss.longitude;
     double cLat = wLat, cLon = wLon;
     wgs84ToGcj02(wLat, wLon, cLat, cLon);
 
-    appendTrackPoint(_fileWgs, wLat, wLon, _snapBuf, yr, mo, dy, hh, mm, ss);
-    appendTrackPoint(_fileGcj, cLat, cLon, _snapBuf, yr, mo, dy, hh, mm, ss);
+    lockSd();
 
-    _pointsInFile++;
+    // 1. Single Trip Stream: W-yyyymmdd-hhmmss.gpx
+    if (!_singleRecording || _singlePoints >= MotionPowerConfig::HOURLY_SPLIT_POINTS) {
+        closeSingleStreams();
+        char wName[48], cName[48];
+        snprintf(wName, sizeof(wName), "W-%04u%02u%02u-%02u%02u%02u.gpx", yr, mo, dy, hh, mm, ss);
+        snprintf(cName, sizeof(cName), "C-%04u%02u%02u-%02u%02u%02u.gpx", yr, mo, dy, hh, mm, ss);
+        if (openOrAppendGpx(_fileWgsSingle, _fileGcjSingle, wName, cName, yr, mo, dy, hh, mm, ss, false)) {
+            _singleRecording = true;
+            _singlePoints = 0;
+            state.lock();
+            strncpy(state.getContextUnsafe().storage.currentWgsFile, wName, sizeof(state.getContextUnsafe().storage.currentWgsFile) - 1);
+            strncpy(state.getContextUnsafe().storage.currentGcjFile, cName, sizeof(state.getContextUnsafe().storage.currentGcjFile) - 1);
+            state.unlock();
+        }
+    }
+    if (_singleRecording) {
+        appendTrackPoint(_fileWgsSingle, wLat, wLon, _snapBuf, yr, mo, dy, hh, mm, ss);
+        appendTrackPoint(_fileGcjSingle, cLat, cLon, _snapBuf, yr, mo, dy, hh, mm, ss);
+        _singlePoints++;
+    }
+
+    // 2. Daily Trip Stream: W-Day-YYYYMMDD.gpx (100% AUTOMATIC parallel)
+    uint16_t lYr; uint8_t lMo, lDy, lH, lM, lS, lWd;
+    g_timeService.getLocalTimeParts(_snapBuf.clocks[0].tzOffsetMinutes, _snapBuf.clocks[0].autoDst,
+                                   lYr, lMo, lDy, lH, lM, lS, lWd);
+    uint32_t localDateInt = (uint32_t)lYr * 10000 + (uint32_t)lMo * 100 + (uint32_t)lDy;
+
+    if (_dailyDateInt != localDateInt && _fileWgsDaily.isOpen()) {
+        closeDailyStreams();
+    }
+    if (!_dailyRecording || !_fileWgsDaily.isOpen()) {
+        _dailyDateInt = localDateInt;
+        char wName[48], cName[48];
+        snprintf(wName, sizeof(wName), "W-Day-%08u.gpx", localDateInt);
+        snprintf(cName, sizeof(cName), "C-Day-%08u.gpx", localDateInt);
+        if (openOrAppendGpx(_fileWgsDaily, _fileGcjDaily, wName, cName, yr, mo, dy, hh, mm, ss, true)) {
+            _dailyRecording = true;
+            state.lock();
+            strncpy(state.getContextUnsafe().storage.currentDailyFile, wName, sizeof(state.getContextUnsafe().storage.currentDailyFile) - 1);
+            state.unlock();
+        }
+    }
+    if (_dailyRecording) {
+        appendTrackPoint(_fileWgsDaily, wLat, wLon, _snapBuf, yr, mo, dy, hh, mm, ss);
+        appendTrackPoint(_fileGcjDaily, cLat, cLon, _snapBuf, yr, mo, dy, hh, mm, ss);
+    }
+
+    // 3. Sub-Trip Stream: W-sub001-001.gpx (Manual Start/Stop, 10MB auto-split)
+    if (_snapBuf.manualTripActive) {
+        if (_subIndex != _snapBuf.subIndex) {
+            closeSubStreams();
+            _subIndex = _snapBuf.subIndex;
+            _subSplitIndex = _snapBuf.subSplitIndex;
+        }
+
+        // Check 10MB auto-split threshold
+        if (_fileWgsSub.isOpen() && _fileWgsSub.fileSize() >= SUB_TRIP_MAX_BYTES) {
+            closeSubStreams();
+            _subSplitIndex++;
+            state.lock();
+            state.getContextUnsafe().subSplitIndex = _subSplitIndex;
+            state.unlock();
+            Preferences prefs;
+            if (prefs.begin("m5track", false)) {
+                prefs.putUShort("sub_s_idx", _subSplitIndex);
+                prefs.end();
+            }
+            Serial.printf("[TRACK] Sub-Trip #%u split reached 10MB. Rolling to Volume #%03u\n", _subIndex, _subSplitIndex);
+        }
+
+        if (!_subRecording || !_fileWgsSub.isOpen()) {
+            char wName[48], cName[48];
+            snprintf(wName, sizeof(wName), "W-sub%03u-%03u.gpx", _subIndex, _subSplitIndex);
+            snprintf(cName, sizeof(cName), "C-sub%03u-%03u.gpx", _subIndex, _subSplitIndex);
+            if (openOrAppendGpx(_fileWgsSub, _fileGcjSub, wName, cName, yr, mo, dy, hh, mm, ss, true)) {
+                _subRecording = true;
+                state.lock();
+                strncpy(state.getContextUnsafe().storage.currentSubFile, wName, sizeof(state.getContextUnsafe().storage.currentSubFile) - 1);
+                state.unlock();
+            }
+        }
+        if (_subRecording) {
+            appendTrackPoint(_fileWgsSub, wLat, wLon, _snapBuf, yr, mo, dy, hh, mm, ss);
+            appendTrackPoint(_fileGcjSub, cLat, cLon, _snapBuf, yr, mo, dy, hh, mm, ss);
+        }
+    } else {
+        if (_fileWgsSub.isOpen()) {
+            closeSubStreams();
+        }
+    }
+
     _pointsSinceSync++;
-
     if (_pointsSinceSync >= StorageConfig::SYNC_INTERVAL_POINTS) {
         _pointsSinceSync = 0;
-        _fileWgs.sync();
-        _fileGcj.sync();
+        if (_fileWgsSingle.isOpen()) { _fileWgsSingle.sync(); _fileGcjSingle.sync(); }
+        if (_fileWgsDaily.isOpen())  { _fileWgsDaily.sync();  _fileGcjDaily.sync();  }
+        if (_fileWgsSub.isOpen())    { _fileWgsSub.sync();    _fileGcjSub.sync();    }
         refreshStorageStats();
     }
     unlockSd();
