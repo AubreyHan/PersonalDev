@@ -230,6 +230,12 @@ void TimeService::update() {
     state.unlock();
     getLocalTimeParts(tzMin, autoDst, lYr, lMo, lDy, lH, lM, lS, lWd);
     uint32_t currentLocalDateInt = (uint32_t)lYr * 10000 + (uint32_t)lMo * 100 + (uint32_t)lDy;
+    state.lock();
+    uint32_t lastDay = state.getContextUnsafe().lastLocalDateInt;
+    state.unlock();
+    if (lastDay > 0 && currentLocalDateInt != lastDay) {
+        TrackLogger::instance().recordTripSummary(TRIP_DAILY);
+    }
     state.checkDailyMidnightRollover(currentLocalDateInt);
 
     // 4. Save persistent Trip Stats (Daily & Manual) every 5 minutes
