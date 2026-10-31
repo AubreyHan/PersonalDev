@@ -168,8 +168,9 @@ void PowerMonitorService::update() {
         }
 
         // Normal running mode: check for standstill sleep condition
-        // If external power is connected (charging in car), never sleep!
-        if (hasExtPwr || sustainedVehicleMotion || instantDisturbance) {
+        // Even in externally powered mode (hasExtPwr), if stationary for 20 continuous minutes,
+        // end trip and enter standby sleep!
+        if (sustainedVehicleMotion || instantDisturbance) {
             _standstillStartMs = now;
         } else if (now - _standstillStartMs >= MotionPowerConfig::STANDSTILL_TIMEOUT_MS) {
             state.unlock();
@@ -180,11 +181,18 @@ void PowerMonitorService::update() {
     state.unlock();
 }
 
+void PowerMonitorService::wakeFromStandby(const char* reason) {
+    if (_isStandbySleep) {
+        exitStandstillStandby(reason ? reason : "Screen touch detected");
+    }
+}
+
 void PowerMonitorService::enterStandstillStandby() {
-    Serial.println("[POWER] Standstill 20 minutes (battery only) reached -> Entering Low-Power Standby...");
+    Serial.println("[POWER] Standstill 20 minutes reached -> Ending trip & entering Standby...");
     _isStandbySleep = true;
     _sustainedMoveStartMs = 0;
 
+    // 1. End active trip recording and close GPX streams
     TrackLogger::instance().closeActiveStreams();
 
     SystemState& state = SystemState::instance();
@@ -196,11 +204,12 @@ void PowerMonitorService::enterStandstillStandby() {
     _savedBrightness  = state.getContextUnsafe().screenBrightness;
     float   vBus      = state.getContextUnsafe().power.busVoltageV;
     float   soc       = state.getContextUnsafe().power.batterySocPercent;
+    bool    hasExt    = state.getContextUnsafe().power.hasExternalPower;
     state.unlock();
 
-    char standbyMsg[96];
-    snprintf(standbyMsg, sizeof(standbyMsg), "Standstill 20min timeout on battery (Batt: %.2fV, %u%%)",
-             vBus, (unsigned)soc);
+    char standbyMsg[112];
+    snprintf(standbyMsg, sizeof(standbyMsg), "Standstill 20min timeout (Pwr: %s, Batt: %.2fV, %u%%)",
+             hasExt ? "ExternalUSB" : "Battery", vBus, (unsigned)soc);
     TrackLogger::instance().logPowerEvent("STANDBY_ENTER", standbyMsg);
 
     if (gnssValid && latE7 != 0) {
@@ -219,7 +228,7 @@ void PowerMonitorService::enterStandstillStandby() {
 
     // Throttle CPU to low frequency for sub-20mA standby while background tasks monitor IMU & Vbus
     setCpuFrequencyMhz(80);
-    Serial.println("[POWER] Display turned off, CPU throttled to 80MHz (Monitoring 6-axis IMU & Charger Wakeup).");
+    Serial.println("[POWER] Display turned off, CPU throttled to 80MHz (Monitoring 6-axis IMU, Touch & Charger Wakeup).");
 }
 
 void PowerMonitorService::exitStandstillStandby(const char* reason) {
@@ -239,6 +248,9 @@ void PowerMonitorService::exitStandstillStandby(const char* reason) {
     snprintf(wakeMsg, sizeof(wakeMsg), "%s (Batt: %.2fV, %u%%)",
              reason ? reason : "Wakeup", vBus, (unsigned)soc);
     TrackLogger::instance().logPowerEvent("STANDBY_WAKEUP", wakeMsg);
+
+    // Reset trip metrics to cleanly start the new trip upon wake
+    SystemState::instance().triggerFullTripReset();
 
     // Restore full 400MHz dual-core performance
     setCpuFrequencyMhz(400);
