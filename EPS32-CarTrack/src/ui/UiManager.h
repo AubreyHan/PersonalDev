@@ -19,6 +19,7 @@
 #include "ui/pages/tools/ToolWifi.h"
 #include "ui/pages/tools/ToolGnss.h"
 #include "ui/pages/tools/ToolSettings.h"
+#include "ui/pages/tools/ToolOneDrive.h"
 
 class UiManager {
 public:
@@ -50,6 +51,7 @@ private:
     ToolWifi         _toolWifi;
     ToolGnss         _toolGnss;
     ToolSettings     _toolSys;
+    ToolOneDrive     _toolOneDrive;
 
     bool     _touchDown     = false;
     int16_t  _touchStartX   = 0;
