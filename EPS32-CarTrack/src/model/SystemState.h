@@ -497,6 +497,7 @@ inline void SystemState::triggerTripReset(TripCategory category) {
     bool hasFix = _ctx.gnss.isValid;
 
     TripStats& t = _ctx.trips[category];
+    t.startTimeUtc = 0;
     t.tripDistanceKm = 0.0;
     t.movingDurationSec = 0;
     t.idleDurationSec = 0;
@@ -682,6 +683,13 @@ inline void SystemState::updateTripsMotion(float spd, uint32_t elapsedSec, doubl
     bool isMoving = (spd > MotionPowerConfig::STANDSTILL_HEADING_LOCK_KMH);
 
     auto updateOneTrip = [&](TripStats& t, bool canRecordDist) {
+        if (t.startTimeUtc == 0) {
+            time_t nowSec = time(nullptr);
+            if (nowSec >= 1704067200) {
+                t.startTimeUtc = (uint32_t)nowSec;
+            }
+        }
+
         if (!t.hasStartAnchor && hasFix && lat != 0.0 && lon != 0.0) {
             t.startLatitude  = lat;
             t.startLongitude = lon;
