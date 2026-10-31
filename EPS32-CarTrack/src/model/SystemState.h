@@ -255,11 +255,26 @@ struct StorageStatus {
     uint64_t tracksDirBytes;
     uint32_t trackFilePairsCount;
     uint32_t currentSegmentPoints;
-    char     currentWgsFile[40];
-    char     currentGcjFile[40];
-    char     currentDailyFile[40];
-    char     currentSubFile[40];
+    char     currentWgsFile[48];
+    char     currentGcjFile[48];
+    char     currentDailyFile[48];
+    char     currentSubFile[48];
     bool     requestNewSegment;
+};
+
+struct OneDriveStatus {
+    bool     isBound;
+    bool     isSyncing;
+    bool     authInProgress;
+    bool     autoSyncEnabled;
+    uint32_t lastSyncEpoch;
+    uint32_t pendingCount;
+    char     userCode[16];
+    char     verifyUrl[64];
+    char     accountEmail[64];
+    char     lastSyncError[64];
+    uint8_t  uploadProgressPercent;
+    char     currentUploadingFile[48];
 };
 
 struct WifiStatus {
@@ -294,7 +309,8 @@ enum AppPageId : uint8_t {
     SUBPAGE_TOOL_TF    = 11,
     SUBPAGE_TOOL_WIFI  = 12,
     SUBPAGE_TOOL_GNSS  = 13,
-    SUBPAGE_TOOL_SYS   = 14
+    SUBPAGE_TOOL_SYS   = 14,
+    SUBPAGE_TOOL_ONEDRIVE = 15
 };
 
 struct SystemContext {
@@ -322,6 +338,7 @@ struct SystemContext {
     WeatherData          weather;
     StorageStatus        storage;
     WifiStatus           wifi;
+    OneDriveStatus       onedrive;
     WorldClockCardConfig clocks[4];
 };
 
