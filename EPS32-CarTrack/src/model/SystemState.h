@@ -793,7 +793,13 @@ inline void SystemState::loadTripStatsFromNvs() {
         _ctx.recordTripMode     = (TripCategory)prefs.getUChar("rec_trip_mode", (uint8_t)TRIP_SINGLE);
         _ctx.activeTripCategory = (TripCategory)prefs.getUChar("act_trip_view", (uint8_t)TRIP_SINGLE);
         _ctx.manualTripActive   = prefs.getBool("man_trip_act", false);
+        _ctx.subIndex           = prefs.getUShort("sub_idx", 0);
+        _ctx.subSplitIndex      = prefs.getUShort("sub_s_idx", 1);
         _ctx.lastLocalDateInt   = prefs.getUInt("last_day_int", 0);
+
+        if (_ctx.activeTripCategory == TRIP_MANUAL && !_ctx.manualTripActive) {
+            _ctx.activeTripCategory = TRIP_SINGLE;
+        }
 
         _ctx.trips[TRIP_DAILY].tripDistanceKm     = prefs.getDouble("day_dist", 0.0);
         _ctx.trips[TRIP_DAILY].movingDurationSec  = prefs.getUInt("day_mov_sec", 0);
@@ -824,6 +830,8 @@ inline void SystemState::saveTripStatsToNvs() {
         prefs.putUChar("rec_trip_mode", (uint8_t)_ctx.recordTripMode);
         prefs.putUChar("act_trip_view", (uint8_t)_ctx.activeTripCategory);
         prefs.putBool("man_trip_act", _ctx.manualTripActive);
+        prefs.putUShort("sub_idx", _ctx.subIndex);
+        prefs.putUShort("sub_s_idx", _ctx.subSplitIndex);
         prefs.putUInt("last_day_int", _ctx.lastLocalDateInt);
 
         prefs.putDouble("day_dist", _ctx.trips[TRIP_DAILY].tripDistanceKm);
