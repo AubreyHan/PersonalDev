@@ -651,7 +651,7 @@ enum TripCategory : uint8_t {
 | 11 | `Min Alt(m)` | `%.1f` | 最低海拔极值（米） |
 | 12 | `Max Lat G` | `%.2f` | 极限横向离心 G 值 |
 | 13 | `Max Long G` | `%.2f` | 极限纵向制动/加速 G 值 |
-| 14 | `GPX File` | 字符串 | 本行程关联的轨迹源文件名称（如 `W-20261101-073000.gpx`） |
+| 14 | `GPX File` | 字符串 | 本行程关联的轨迹相对路径（如 `single/W-20261101-073000.gpx`、`daily/W-Day-20261101.gpx`、`sub/W-sub001-001.gpx`） |
 
 ### 9.3 结算写入触发时机与防抖规则
 1. **触发时机**：
@@ -660,3 +660,43 @@ enum TripCategory : uint8_t {
    - **小记行程**：驾驶员点击【⏹ 小记结束】结算归档瞬间追加写入；
 2. **防抖过滤规则**：
    - 若 `tripDistanceKm < 0.05` 且 `movingDurationSec < 10`（如原地挪车、误触启停），判定为空跑，自动忽略不追加，保持日志整洁有效。
+
+---
+
+## 10. 三目录独立存储与 Microsoft OneDrive 云同步技术规范 (Tri-Folder & OneDrive Sync)
+
+### 10.1 MicroSD 卡三目录拓扑与跨目录维护算法
+三类轨迹分别存入各自独立子文件夹，杜绝海量轨迹混合混乱：
+- **单次目录**：`/tracks/single/`（存放 `W-YYYYMMDD-HHMMSS.gpx` 与 `C-*.gpx`，每小时自动切卷）；
+- **单日目录**：`/tracks/daily/`（存放 `W-Day-YYYYMMDD.gpx` 与 `C-Day-*.gpx`，多段追加合并）；
+- **小记目录**：`/tracks/sub/`（存放 `W-subXXX-YYY.gpx` 与 `C-sub*-*.gpx`，10MB 严格自卷）；
+- **根目录**：`/tracks/`（存放 `trips.csv`、`power.log`、`.synced_ledger`）；
+- **跨目录自动化维护契约**：
+  1. `healUnclosedGpxFiles()`：系统启动与异常掉电恢复时，并发遍历 `single/`、`daily/`、`sub/` 及根目录，自动闭合尾部缺失的 `</trkseg></trk></gpx>`；
+  2. `refreshStorageStats()`：自动汇总全目录已用空间与轨迹总对数，更新系统上下文 `StorageStatus`；
+  3. `enforceStorageQuota50Percent()`：严格将所有轨迹总占用限制在 TF 卡容量的 50% 以内，超标时全局比对找出最旧的 `W/C` 文件对执行成对物理删除，回退至 40% 配额安全线。
+
+### 10.2 Microsoft OAuth 2.0 设备流授权规范 (Device Code Flow, RFC 8628)
+- **协议端点**：
+  - 授权申请：`POST https://login.microsoftonline.com/common/oauth2/v2.0/devicecode`
+    - Body: `client_id={CLIENT_ID}&scope=offline_access Files.ReadWrite User.Read`
+    - 响应提取：`device_code`、`user_code`、`verification_uri`、`interval`、`expires_in`
+  - 轮询获取 Token：`POST https://login.microsoftonline.com/common/oauth2/v2.0/token`
+    - Body: `grant_type=urn:ietf:params:oauth:grant-type:device_code&client_id={CLIENT_ID}&device_code={DEVICE_CODE}`
+    - 响应 400（`authorization_pending`）保持静默轮询；
+    - 响应 200 成功解析 `access_token` 与 `refresh_token` 并存入 NVS 命名空间 `"m5track"`。
+- **令牌自动无感刷新机制**：
+  - Body: `grant_type=refresh_token&client_id={CLIENT_ID}&refresh_token={SAVED_REFRESH_TOKEN}&scope=offline_access Files.ReadWrite`
+  - 维持长时间断电或跨月离线后的自动重新连接。
+
+### 10.3 Microsoft Graph API 同步与增量记账规范
+- **云端存储目录映射**：
+  - 云端根路径：`OneDrive:/VehicleTracks/`
+  - 相对路径同构映射：`single/`、`daily/`、`sub/` 与 `trips.csv`；
+- **增量防重记账机制 (`/tracks/.synced_ledger`)**：
+  - 只有已完整闭合的文件才允许同步；严格拦截并跳过记录器正在写入的文件（`currentWgsFile` 等）；
+  - 每次上传成功后，将相对路径（如 `single/W-20261101-080000.gpx`）追加到 `.synced_ledger`；
+  - 设备连网重试时比对记账本，已上传分卷永久跳过，彻底免疫重复上传；
+- **分卷上传策略**：
+  - 小型文件（`< 4MB`，如 `trips.csv`、常规单次轨迹）：直接通过 `PUT https://graph.microsoft.com/v1.0/me/drive/root:/VehicleTracks/{path}:/content` 直传；
+  - 大型分卷（`>= 4MB`，如 10MB 小记轨迹）：调用 `POST .../createUploadSession` 创建会话，按微软官方规范以 320KB 整数倍分块（`Content-Range`）断点续传。
