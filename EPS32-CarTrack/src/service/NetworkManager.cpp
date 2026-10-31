@@ -372,8 +372,11 @@ void AppNetworkManager::setupHttpRoutes() {
             o["type"]  = entries[i].isGcj02 ? "gcj02" : "wgs84";
 
             const char* tripDesc = "Single";
-            if (strstr(entries[i].name, "-Day-"))       tripDesc = "Daily";
-            else if (strstr(entries[i].name, "-Manual-")) tripDesc = "Manual";
+            if (strstr(entries[i].name, "-Day-") || strstr(entries[i].name, "daily/")) {
+                tripDesc = "Daily";
+            } else if (strstr(entries[i].name, "-sub") || strstr(entries[i].name, "sub/") || strstr(entries[i].name, "-Manual-")) {
+                tripDesc = "Sub-Trip";
+            }
 
             char badgeStr[64];
             snprintf(badgeStr, sizeof(badgeStr), "%s [%s]",
