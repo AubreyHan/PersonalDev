@@ -284,6 +284,11 @@ a.btn{display:inline-block;padding:10px 16px;background:#00FFAA;color:#000;font-
   <div style='color:#aaa;margin-top:4px;'>Accurate Boot, Shutdown & Standby Event FIFO Log (&le; 100 KB)</div>
   <a class='btn' style='background:#38AEFF;' href='/api/download?file=power.log' download='power.log'>Download System Log</a>
 </div>
+<div class='card' style='border-color:#FFD700;'>
+  <div><b>trips.csv</b> <span class='badge' style='background:#FFD700;color:#000'>Trip Journal CSV</span></div>
+  <div style='color:#aaa;margin-top:4px;'>Historical Trip Summaries (Single, Daily, Sub-Trip Stats)</div>
+  <a class='btn' style='background:#FFD700;' href='/api/download?file=trips.csv' download='trips.csv'>Download Trips Journal (CSV)</a>
+</div>
 <div id="list">Loading GPX tracks...</div>
 <script>
 fetch('/api/tracks').then(r=>r.json()).then(d=>{
