@@ -559,3 +559,34 @@ stateDiagram-v2
     - 结束小记联动：点击 `[⏹ 小记结束]` 后，小记流安全封口存盘，全系统视图自动安全回退至 `TRIP_SINGLE`，`[SUB小记]` 按钮再次动态隐藏。
   - **各页面跨视图同构联动**：
     - 在 Page 1（仪表盘）、Page 2（海拔高程）、Page 3（车速折线）、Page 4（全画幅轨迹）上点击对应视图按钮，可瞬间无缝切换查看当前所选类别的里程、均速、累计爬升、极值分布与航迹数据，三种统计互不干扰、独立精准。
+
+---
+
+### 3.17 TF 卡历史行程流水日志规范 (Historical Trip Journal: `/tracks/trips.csv`)
+- **存储路径与格式规范**：
+  - 存储路径：MicroSD 卡 `/tracks/trips.csv`；
+  - 编码格式：标准 UTF-8 CSV 文本格式，首行含列标头，支持 Excel、Apple Numbers、Google Sheets 直接点选离线分析；
+- **记录触发时机（每次行程结算时自动追加）**：
+  1. **单次行程结束**：车辆连续停止移动满 20 分钟休眠归档时，或驾驶员在仪表盘长按 2 秒全系统归零时；
+  2. **单日行程结束**：按当地 GPS 定位时区，每天午夜 00:00:00 跨天清零归档时；
+  3. **小记行程结束**：驾驶员在屏幕上主动点击【⏹ 小记结束】时；
+  - *空跑防扰过滤*：行驶里程 $< 0.05\text{km}$ 且车动时长 $< 10\text{s}$ 的误触或地库挪车零碎记录自动忽略，不写入流水账本；
+- **记录字段标准 (14 列完整自驾指标汇总报表)**：
+  - 表头：`Start Time,End Time,Category,Distance(km),Drive Time,Idle Time,Avg Speed(km/h),Max Speed(km/h),Climb(m),Max Alt(m),Min Alt(m),Max Lat G,Max Long G,GPX File`
+  - 每一行准确记录：
+    1. `Start Time`：行程开始时间（GPS 定位当地时区，`YYYY-MM-DD HH:MM:SS`）
+    2. `End Time`：行程结束时间（`YYYY-MM-DD HH:MM:SS`）
+    3. `Category`：行程分类标识（`SINGLE` / `DAILY` / `SUB-001` 等）
+    4. `Distance(km)`：本次行驶总里程（保留两位小数）
+    5. `Drive Time`：纯车动驾驶总用时（`HH:MM:SS`）
+    6. `Idle Time`：等红灯与怠速停驶总用时（`HH:MM:SS`）
+    7. `Avg Speed(km/h)`：行驶平均车速（km/h）
+    8. `Max Speed(km/h)`：录得最高时速极值（km/h）
+    9. `Climb(m)`：累计爬升高度（米）
+    10. `Max Alt(m)`：最高海拔极值（米）
+    11. `Min Alt(m)`：最低海拔极值（米）
+    12. `Max Lat G`：过弯极限横向 G 值
+    13. `Max Long G`：急刹/推背极限纵向 G 值
+    14. `GPX File`：本行程对应的轨迹源文件名（如 `W-20261101-073000.gpx`）
+- **免拔卡无线一键导出**：
+  - 开启 `M5Track-Share` Wi-Fi 热点后，手机访问 `http://192.168.4.1/tracks`，顶部专属展示 `trips.csv` 卡片，轻触即可一键批量下载到手机本地。
