@@ -442,6 +442,11 @@ void TrackLogger::update() {
                      (_snapBuf.gnss.fixType >= FIX_3D || _snapBuf.gnss.isDeadReckoning) &&
                      (_snapBuf.gnss.speedKmh >= MotionPowerConfig::RECORD_TRIGGER_SPEED_KMH);
 
+    // In Manual Trip recording mode, only record when manual trip is explicitly active
+    if (_snapBuf.recordTripMode == TRIP_MANUAL && !_snapBuf.manualTripActive) {
+        canRecord = false;
+    }
+
     if (!canRecord) {
         return;
     }

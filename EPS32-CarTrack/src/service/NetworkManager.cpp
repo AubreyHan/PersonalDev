@@ -365,7 +365,16 @@ void AppNetworkManager::setupHttpRoutes() {
             o["name"]  = entries[i].name;
             o["size"]  = entries[i].sizeBytes;
             o["type"]  = entries[i].isGcj02 ? "gcj02" : "wgs84";
-            o["badge"] = entries[i].isGcj02 ? "GCJ-02 (Amap/Domestic)" : "WGS-84 (Global/Google Earth)";
+
+            const char* tripDesc = "Single";
+            if (strstr(entries[i].name, "-Day-"))       tripDesc = "Daily";
+            else if (strstr(entries[i].name, "-Manual-")) tripDesc = "Manual";
+
+            char badgeStr[64];
+            snprintf(badgeStr, sizeof(badgeStr), "%s [%s]",
+                     entries[i].isGcj02 ? "GCJ-02" : "WGS-84", tripDesc);
+            o["badge"]    = badgeStr;
+            o["tripMode"] = tripDesc;
         }
         String out;
         serializeJson(doc, out);
