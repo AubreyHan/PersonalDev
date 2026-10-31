@@ -573,8 +573,8 @@ littlefs, data, spiffs,  0xc90000,0x300000,
 ```text
 [2026-10-30 22:15:20 +08:00] BOOT: System startup (Reset: 1, Batt: 8.15V, 95%, Pwr: ExtUSB, TF: Mounted)
 [2026-10-30 22:15:25 +08:00] TIME_SYNC_GNSS: GNSS 3D Fix calibrated -> 2026-10-30 14:15:25 UTC
-[2026-10-30 22:35:25 +08:00] STANDBY_ENTER: Standstill 20min timeout on battery (Batt: 7.82V, 76%)
-[2026-10-30 23:02:10 +08:00] STANDBY_WAKEUP: Car charger power restored (Batt: 7.95V, 78%)
+[2026-10-30 22:35:25 +08:00] STANDBY_ENTER: Standstill 20min timeout (Pwr: ExternalUSB, Batt: 8.20V, 98%)
+[2026-10-30 23:02:10 +08:00] STANDBY_WAKEUP: Sustained vehicle motion detected (Batt: 8.20V, 98%)
 [2026-10-30 23:40:00 +08:00] SHUTDOWN_LOW_BATT: Critical low battery (5.95V < 6.00V), auto shutdown
 ```
 
