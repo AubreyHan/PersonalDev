@@ -168,13 +168,8 @@ void ImuDriver::update() {
         }
     }
 
-    // Track peak G-Force in TripStats
-    if (fabsf(_status.lateralG) > ctx.trip.maxLateralG) {
-        ctx.trip.maxLateralG = fabsf(_status.lateralG);
-    }
-    if (fabsf(_status.longitudinalG) > ctx.trip.maxLongitudinalG) {
-        ctx.trip.maxLongitudinalG = fabsf(_status.longitudinalG);
-    }
+    // Track peak G-Force in TripStats across all 3 trip tiers
+    state.updateTripsDynamics(fabsf(_status.lateralG), fabsf(_status.longitudinalG));
     ctx.imu = _status;
     state.unlock();
 }
