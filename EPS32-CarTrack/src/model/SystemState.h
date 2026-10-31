@@ -256,6 +256,8 @@ struct StorageStatus {
     uint32_t currentSegmentPoints;
     char     currentWgsFile[40];
     char     currentGcjFile[40];
+    char     currentDailyFile[40];
+    char     currentSubFile[40];
     bool     requestNewSegment;
 };
 
@@ -311,8 +313,10 @@ struct SystemContext {
     TripStats            trip;              // Active trip displayed on Dashboard/HUD
     TripStats            trips[TRIP_CATEGORY_COUNT]; // Independent stats for [0]: Single, [1]: Daily, [2]: Manual
     TripCategory         activeTripCategory;// Which trip category is currently displayed
-    TripCategory         recordTripMode;    // Which trip mode governs GPX track file grouping
-    bool                 manualTripActive;  // Whether manual trip is actively recording
+    TripCategory         recordTripMode;    // Deprecated legacy mode (all 3 streams record automatically/independently)
+    bool                 manualTripActive;  // Whether manual sub-trip is actively recording
+    uint16_t             subIndex;          // Manual sub-trip index (1, 2, 3...) -> W-sub001-001.gpx
+    uint16_t             subSplitIndex;     // Manual sub-trip 10MB auto-split index (1, 2, 3...)
     uint32_t             lastLocalDateInt;  // YYYYMMDD in local GPS timezone for daily rollover
     WeatherData          weather;
     StorageStatus        storage;
@@ -417,6 +421,8 @@ public:
     void triggerFullTripReset();
     void switchActiveTripCategory(TripCategory category);
     void cycleActiveTripCategory();
+    void startManualTrip();
+    void stopManualTrip();
     void toggleManualTrip();
     void setRecordTripMode(TripCategory mode);
     void syncActiveTripDisplay();
