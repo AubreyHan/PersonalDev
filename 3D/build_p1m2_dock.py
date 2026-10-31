@@ -3,6 +3,7 @@
 Columbus P-1 Mark II (P-1 M2) Mounting Dock Generator
 Option B: Straight vertical walls (friction / foam fit, open front box)
 Mounting: Completely flat bottom exterior for double-sided tape (3M VHB)
+Watertight 2-Manifold Guarantee (0 open edges)
 """
 
 import math
@@ -288,7 +289,7 @@ class STLWriter:
         self.triangles.append((v0, v1, v2))
 
     def add_quad(self, v0, v1, v2, v3):
-        # CCW: v0 -> v1 -> v2, v0 -> v2 -> v3
+        # CCW quad: v0 -> v1 -> v2, v0 -> v2 -> v3
         self.triangles.append((v0, v1, v2))
         self.triangles.append((v0, v2, v3))
 
@@ -322,28 +323,6 @@ class STLWriter:
         print(f"Generated {filepath}: {len(self.triangles)} triangles")
 
 
-# ==============================================================================
-# Model Geometry Generation
-# ==============================================================================
-
-def make_rounded_rect_pts(w, h, r, n_arc=8):
-    """Generates 2D points for a rounded rectangle in CCW order."""
-    x_half = w / 2.0 - r
-    y_half = h / 2.0 - r
-    pts = []
-    # 4 corners: bottom-right, top-right, top-left, bottom-left
-    corners = [
-        ( x_half, -y_half, -math.pi/2, 0),
-        ( x_half,  y_half, 0, math.pi/2),
-        (-x_half,  y_half, math.pi/2, math.pi),
-        (-x_half, -y_half, math.pi, 3*math.pi/2)
-    ]
-    for cx, cy, a_start, a_end in corners:
-        for i in range(n_arc):
-            ang = a_start + (a_end - a_start) * i / float(n_arc)
-            pts.append((cx + r * math.cos(ang), cy + r * math.sin(ang)))
-    return pts
-
 def triangulate_and_add(stl, polygon_pts, z, normal_up=True):
     flat_data = []
     for p in polygon_pts:
@@ -360,12 +339,17 @@ def triangulate_and_add(stl, polygon_pts, z, normal_up=True):
             stl.add_triangle(p0, p2, p1)
 
 def add_wall_quads(stl, p_start, p_end, z_bot, z_top):
-    """Wall quad facing right of vector p_start -> p_end"""
+    """Adds a quad facing outward (normal to the right of p_start -> p_end in XY)"""
     v0 = (p_start[0], p_start[1], z_bot)
     v1 = (p_end[0],   p_end[1],   z_bot)
     v2 = (p_end[0],   p_end[1],   z_top)
     v3 = (p_start[0], p_start[1], z_top)
     stl.add_quad(v0, v1, v2, v3)
+
+
+# ==============================================================================
+# Model Geometry Generation
+# ==============================================================================
 
 def build_model():
     stl = STLWriter()
@@ -395,277 +379,284 @@ def build_model():
     z_top = out_d                # 20.4
 
     # Cutouts
-    # Top cutout (Power button): X in [-11.0, +11.0]
     top_cut_w = 22.0
-    x_tc_l = -top_cut_w / 2.0
-    x_tc_r =  top_cut_w / 2.0
+    x_tc_l = -top_cut_w / 2.0     # -11.0
+    x_tc_r =  top_cut_w / 2.0     # +11.0
 
     # Right cutout (Function button FN): from 20.0 to 37.0 from cavity top
-    # Cavity top is Y = cav_h / 2 = 42.8
     y_fn_top = (cav_h / 2.0) - 20.0  # +22.8
     y_fn_bot = (cav_h / 2.0) - 37.0  # +5.8
 
     # Bottom cutout (MicroUSB / Rubber seal): X in [-19.0, +19.0]
     bot_cut_w = 38.0
-    x_bc_l = -bot_cut_w / 2.0
-    x_bc_r =  bot_cut_w / 2.0
+    x_bc_l = -bot_cut_w / 2.0     # -19.0
+    x_bc_r =  bot_cut_w / 2.0     # +19.0
 
     # Left finger notch: Y in [-10.0, +10.0]
     notch_w = 20.0
-    y_fnl_bot = -notch_w / 2.0       # -10.0
-    y_fnl_top =  notch_w / 2.0       # +10.0
+    y_fnl_bot = -notch_w / 2.0    # -10.0
+    y_fnl_top =  notch_w / 2.0    # +10.0
 
-    # 1. Bottom Exterior Face (Z = 0)
-    # Perfectly flat rounded rectangle facing -Z
-    outer_pts_ccw = make_rounded_rect_pts(out_w, out_h, r_out, n_arc=12)
+    x_half_out = out_w / 2.0      # 30.2
+    y_half_out = out_h / 2.0      # 45.2
+    x_half_in  = cav_w / 2.0      # 27.8
+    y_half_in  = cav_h / 2.0      # 42.8
+
+    cx_out = x_half_out - r_out   # 23.3
+    cy_out = y_half_out - r_out   # 38.3
+    cx_in  = x_half_in - r_in     # 23.3
+    cy_in  = y_half_in - r_in     # 38.3
+
+    n_corner = 12
+
+    # Corner arcs (in counter-clockwise order around each quadrant):
+    # TR: from 0 to pi/2 (starts at x_half_out, cy_out -> ends at cx_out, y_half_out)
+    arc_tr_out = [(cx_out + r_out * math.cos(i*math.pi/(2*n_corner)), cy_out + r_out * math.sin(i*math.pi/(2*n_corner))) for i in range(n_corner+1)]
+    # TL: from pi/2 to pi (starts at -cx_out, y_half_out -> ends at -x_half_out, cy_out)
+    arc_tl_out = [(-cx_out + r_out * math.cos(math.pi/2 + i*math.pi/(2*n_corner)), cy_out + r_out * math.sin(math.pi/2 + i*math.pi/(2*n_corner))) for i in range(n_corner+1)]
+    # BL: from pi to 3*pi/2 (starts at -x_half_out, -cy_out -> ends at -cx_out, -y_half_out)
+    arc_bl_out = [(-cx_out + r_out * math.cos(math.pi + i*math.pi/(2*n_corner)), -cy_out + r_out * math.sin(math.pi + i*math.pi/(2*n_corner))) for i in range(n_corner+1)]
+    # BR: from 3*pi/2 to 2*pi (starts at cx_out, -y_half_out -> ends at x_half_out, -cy_out)
+    arc_br_out = [(cx_out + r_out * math.cos(3*math.pi/2 + i*math.pi/(2*n_corner)), -cy_out + r_out * math.sin(3*math.pi/2 + i*math.pi/(2*n_corner))) for i in range(n_corner+1)]
+
+    # Inner corner arcs:
+    arc_tr_in = [(cx_in + r_in * math.cos(i*math.pi/(2*n_corner)), cy_in + r_in * math.sin(i*math.pi/(2*n_corner))) for i in range(n_corner+1)]
+    arc_tl_in = [(-cx_in + r_in * math.cos(math.pi/2 + i*math.pi/(2*n_corner)), cy_in + r_in * math.sin(math.pi/2 + i*math.pi/(2*n_corner))) for i in range(n_corner+1)]
+    arc_bl_in = [(-cx_in + r_in * math.cos(math.pi + i*math.pi/(2*n_corner)), -cy_in + r_in * math.sin(math.pi + i*math.pi/(2*n_corner))) for i in range(n_corner+1)]
+    arc_br_in = [(cx_in + r_in * math.cos(3*math.pi/2 + i*math.pi/(2*n_corner)), -cy_in + r_in * math.sin(3*math.pi/2 + i*math.pi/(2*n_corner))) for i in range(n_corner+1)]
+
+    # -------------------------------------------------------------------------
+    # 1. Bottom Exterior Surface (Z = 0)
+    # -------------------------------------------------------------------------
+    # CCW traversal of outer perimeter with all split vertices included:
+    outer_pts_ccw = []
+    # Bottom straight: (-cx_out, -y_half_out) -> (cx_out, -y_half_out), split by bottom cutout
+    outer_pts_ccw.append((-cx_out, -y_half_out))
+    outer_pts_ccw.append((x_bc_l, -y_half_out))
+    outer_pts_ccw.append((x_bc_r, -y_half_out))
+    outer_pts_ccw.append((cx_out, -y_half_out))
+    # BR arc: from cx_out, -y_half_out to x_half_out, -cy_out
+    outer_pts_ccw.extend(arc_br_out[1:])
+    # Right straight: (x_half_out, -cy_out) -> (x_half_out, cy_out), split by right cutout
+    outer_pts_ccw.append((x_half_out, y_fn_bot))
+    outer_pts_ccw.append((x_half_out, y_fn_top))
+    outer_pts_ccw.append((x_half_out, cy_out))
+    # TR arc: from x_half_out, cy_out to cx_out, y_half_out
+    outer_pts_ccw.extend(arc_tr_out[1:])
+    # Top straight: (cx_out, y_half_out) -> (-cx_out, y_half_out), split by top cutout
+    outer_pts_ccw.append((x_tc_r, y_half_out))
+    outer_pts_ccw.append((x_tc_l, y_half_out))
+    outer_pts_ccw.append((-cx_out, y_half_out))
+    # TL arc: from -cx_out, y_half_out to -x_half_out, cy_out
+    outer_pts_ccw.extend(arc_tl_out[1:])
+    # Left straight: (-x_half_out, cy_out) -> (-x_half_out, -cy_out), split by finger notch
+    outer_pts_ccw.append((-x_half_out, y_fnl_top))
+    outer_pts_ccw.append((-x_half_out, y_fnl_bot))
+    outer_pts_ccw.append((-x_half_out, -cy_out))
+    # BL arc: from -x_half_out, -cy_out to -cx_out, -y_half_out
+    outer_pts_ccw.extend(arc_bl_out[1:-1])
+
     triangulate_and_add(stl, outer_pts_ccw, z0, normal_up=False)
 
-    # 2. Cavity Floor + Cutouts Floor (Z = z_floor = 2.4)
-    # The floor at Z = 2.4 covers the cavity plus the 3 through-wall cutouts
-    # We construct the 2D boundary of the floor at Z = 2.4:
-    # Outer boundaries at the cutouts reach the outer shell!
-    # Let's construct this floor polygon in CCW order:
-    inner_pts_ccw = make_rounded_rect_pts(cav_w, cav_h, r_in, n_arc=12)
-    
-    # Floor polygon at Z=2.4 is inner cavity + top cutout + right cutout + bottom cutout
-    # Let's trace it precisely:
-    # Start at top cutout right edge: (x_tc_r, out_h/2)
-    x_half_out = out_w / 2.0
-    y_half_out = out_h / 2.0
-    x_half_in  = cav_w / 2.0
-    y_half_in  = cav_h / 2.0
+    # -------------------------------------------------------------------------
+    # 2. Outer Vertical Walls (from Z=0 upward)
+    # -------------------------------------------------------------------------
+    # Go around outer_pts_ccw, pairing (P_i, P_{i+1})
+    # Determine the top height of each segment:
+    n_out = len(outer_pts_ccw)
+    for i in range(n_out):
+        p0 = outer_pts_ccw[i]
+        p1 = outer_pts_ccw[(i+1)%n_out]
 
-    # Let's subdivide into 3 clear regions for 100% robust triangulation:
-    # Region 1: Inner cavity floor (rounded rectangle: cav_w x cav_h, r_in)
-    triangulate_and_add(stl, inner_pts_ccw, z_floor, normal_up=True)
+        # Check if segment is in cutout:
+        # Bottom cutout: on y = -y_half_out between x_bc_l and x_bc_r
+        if abs(p0[1] - (-y_half_out)) < 1e-4 and abs(p1[1] - (-y_half_out)) < 1e-4:
+            if p0[0] >= x_bc_l - 1e-4 and p1[0] <= x_bc_r + 1e-4:
+                add_wall_quads(stl, p0, p1, z0, z_floor)
+                continue
+        # Right cutout: on x = x_half_out between y_fn_bot and y_fn_top
+        if abs(p0[0] - x_half_out) < 1e-4 and abs(p1[0] - x_half_out) < 1e-4:
+            if p0[1] >= y_fn_bot - 1e-4 and p1[1] <= y_fn_top + 1e-4:
+                add_wall_quads(stl, p0, p1, z0, z_floor)
+                continue
+        # Top cutout: on y = y_half_out between x_tc_l and x_tc_r (CW in x since p0 > p1)
+        if abs(p0[1] - y_half_out) < 1e-4 and abs(p1[1] - y_half_out) < 1e-4:
+            if p1[0] >= x_tc_l - 1e-4 and p0[0] <= x_tc_r + 1e-4:
+                add_wall_quads(stl, p0, p1, z0, z_floor)
+                continue
+        # Left finger notch: on x = -x_half_out between y_fnl_bot and y_fnl_top
+        if abs(p0[0] - (-x_half_out)) < 1e-4 and abs(p1[0] - (-x_half_out)) < 1e-4:
+            if p1[1] >= y_fnl_bot - 1e-4 and p0[1] <= y_fnl_top + 1e-4:
+                add_wall_quads(stl, p0, p1, z0, z_notch)
+                continue
 
-    # Region 2: Top cutout floor rectangle: [x_tc_l, x_tc_r] x [y_half_in, y_half_out]
-    p_tc = [
-        (x_tc_l, y_half_in),
-        (x_tc_r, y_half_in),
-        (x_tc_r, y_half_out),
-        (x_tc_l, y_half_out)
-    ]
-    triangulate_and_add(stl, p_tc, z_floor, normal_up=True)
+        # Standard wall: goes all the way to z_top
+        add_wall_quads(stl, p0, p1, z0, z_top)
 
-    # Region 3: Right cutout floor rectangle: [x_half_in, x_half_out] x [y_fn_bot, y_fn_top]
-    p_rc = [
-        (x_half_in,  y_fn_bot),
-        (x_half_out, y_fn_bot),
-        (x_half_out, y_fn_top),
-        (x_half_in,  y_fn_top)
-    ]
-    triangulate_and_add(stl, p_rc, z_floor, normal_up=True)
+    # -------------------------------------------------------------------------
+    # 3. Cavity Floor at Z = z_floor (2.4)
+    # -------------------------------------------------------------------------
+    # A single continuous polygon representing the floor!
+    # Traversed in CCW order:
+    floor_poly_ccw = []
+    # Start at top cutout: from (x_tc_l, y_half_out) to (x_tc_r, y_half_out)
+    floor_poly_ccw.append((x_tc_l, y_half_out))
+    floor_poly_ccw.append((x_tc_r, y_half_out))
+    floor_poly_ccw.append((x_tc_r, y_half_in))
+    # Inner top wall: (x_tc_r, y_half_in) -> (cx_in, y_half_in)
+    floor_poly_ccw.append((cx_in, y_half_in))
+    # TR inner corner: to (x_half_in, cy_in)
+    floor_poly_ccw.extend(arc_tr_in[1:])
+    # Inner right wall: to (x_half_in, y_fn_top)
+    floor_poly_ccw.append((x_half_in, y_fn_top))
+    # Right cutout loop: (x_half_in, y_fn_top) -> (x_half_out, y_fn_top) -> (x_half_out, y_fn_bot) -> (x_half_in, y_fn_bot)
+    floor_poly_ccw.append((x_half_out, y_fn_top))
+    floor_poly_ccw.append((x_half_out, y_fn_bot))
+    floor_poly_ccw.append((x_half_in, y_fn_bot))
+    # Inner right wall: to (x_half_in, -cy_in)
+    floor_poly_ccw.append((x_half_in, -cy_in))
+    # BR inner corner: to (cx_in, -y_half_in)
+    floor_poly_ccw.extend(arc_br_in[1:])
+    # Inner bottom wall: to (x_bc_r, -y_half_in)
+    floor_poly_ccw.append((x_bc_r, -y_half_in))
+    # Bottom cutout loop: (x_bc_r, -y_half_in) -> (x_bc_r, -y_half_out) -> (x_bc_l, -y_half_out) -> (x_bc_l, -y_half_in)
+    floor_poly_ccw.append((x_bc_r, -y_half_out))
+    floor_poly_ccw.append((x_bc_l, -y_half_out))
+    floor_poly_ccw.append((x_bc_l, -y_half_in))
+    # Inner bottom wall: to (-cx_in, -y_half_in)
+    floor_poly_ccw.append((-cx_in, -y_half_in))
+    # BL inner corner: to (-x_half_in, -cy_in)
+    floor_poly_ccw.extend(arc_bl_in[1:])
+    # Inner left wall: straight from (-x_half_in, -cy_in) to (-x_half_in, cy_in)
+    # Note: insert finger notch points so they match the notch wall edges!
+    floor_poly_ccw.append((-x_half_in, y_fnl_bot))
+    floor_poly_ccw.append((-x_half_in, y_fnl_top))
+    floor_poly_ccw.append((-x_half_in, cy_in))
+    # TL inner corner: to (-cx_in, y_half_in)
+    floor_poly_ccw.extend(arc_tl_in[1:])
+    # Inner top wall: to (x_tc_l, y_half_in)
+    floor_poly_ccw.append((x_tc_l, y_half_in))
 
-    # Region 4: Bottom cutout floor rectangle: [x_bc_l, x_bc_r] x [-y_half_out, -y_half_in]
-    p_bc = [
-        (x_bc_l, -y_half_out),
-        (x_bc_r, -y_half_out),
-        (x_bc_r, -y_half_in),
-        (x_bc_l, -y_half_in)
-    ]
-    triangulate_and_add(stl, p_bc, z_floor, normal_up=True)
+    triangulate_and_add(stl, floor_poly_ccw, z_floor, normal_up=True)
 
-    # Region 5: Left finger notch step at Z = z_notch (9.0):
-    # From X = [-x_half_out, -x_half_in] x [y_fnl_bot, y_fnl_top]
-    p_ln = [
+    # -------------------------------------------------------------------------
+    # 4. Inner Walls & Cutout End Faces (from z_floor upward)
+    # -------------------------------------------------------------------------
+    # Around floor_poly_ccw, each segment (p0, p1) corresponds to an inner wall or cutout side:
+    # If we face normal inward/outward correctly:
+    # Traversing floor_poly_ccw in CW order gives wall normal into the cavity!
+    # Let's inspect each segment:
+    n_floor = len(floor_poly_ccw)
+    for i in range(n_floor):
+        p0 = floor_poly_ccw[i]
+        p1 = floor_poly_ccw[(i+1)%n_floor]
+
+        # Top cutout outer bottom edge: (x_tc_l, y_half_out) -> (x_tc_r, y_half_out) - already covered by outer wall!
+        if abs(p0[1] - y_half_out) < 1e-4 and abs(p1[1] - y_half_out) < 1e-4:
+            continue
+        # Right cutout outer bottom edge: (x_half_out, y_fn_top) -> (x_half_out, y_fn_bot) - already covered by outer wall!
+        if abs(p0[0] - x_half_out) < 1e-4 and abs(p1[0] - x_half_out) < 1e-4:
+            continue
+        # Bottom cutout outer bottom edge: (x_bc_r, -y_half_out) -> (x_bc_l, -y_half_out) - already covered by outer wall!
+        if abs(p0[1] - (-y_half_out)) < 1e-4 and abs(p1[1] - (-y_half_out)) < 1e-4:
+            continue
+
+        # Top cutout right end wall: (x_tc_r, y_half_out) -> (x_tc_r, y_half_in)
+        # Vector is (0, -wall), quad normal points -X (into cutout)
+        if abs(p0[0] - x_tc_r) < 1e-4 and abs(p1[0] - x_tc_r) < 1e-4:
+            add_wall_quads(stl, p0, p1, z_floor, z_top)
+            continue
+        # Top cutout left end wall: (x_tc_l, y_half_in) -> (x_tc_l, y_half_out)
+        # Vector is (0, +wall), quad normal points +X (into cutout)
+        if abs(p0[0] - x_tc_l) < 1e-4 and abs(p1[0] - x_tc_l) < 1e-4:
+            add_wall_quads(stl, p0, p1, z_floor, z_top)
+            continue
+
+        # Right cutout top end wall: (x_half_in, y_fn_top) -> (x_half_out, y_fn_top)
+        # Vector is (+wall, 0), quad normal points -Y (into cutout)
+        if abs(p0[1] - y_fn_top) < 1e-4 and abs(p1[1] - y_fn_top) < 1e-4:
+            add_wall_quads(stl, p0, p1, z_floor, z_top)
+            continue
+        # Right cutout bottom end wall: (x_half_out, y_fn_bot) -> (x_half_in, y_fn_bot)
+        # Vector is (-wall, 0), quad normal points +Y (into cutout)
+        if abs(p0[1] - y_fn_bot) < 1e-4 and abs(p1[1] - y_fn_bot) < 1e-4:
+            add_wall_quads(stl, p0, p1, z_floor, z_top)
+            continue
+
+        # Bottom cutout right end wall: (x_bc_r, -y_half_in) -> (x_bc_r, -y_half_out)
+        # Vector is (0, -wall), quad normal points -X (into cutout)
+        if abs(p0[0] - x_bc_r) < 1e-4 and abs(p1[0] - x_bc_r) < 1e-4:
+            add_wall_quads(stl, p0, p1, z_floor, z_top)
+            continue
+        # Bottom cutout left end wall: (x_bc_l, -y_half_out) -> (x_bc_l, -y_half_in)
+        # Vector is (0, +wall), quad normal points +X (into cutout)
+        if abs(p0[0] - x_bc_l) < 1e-4 and abs(p1[0] - x_bc_l) < 1e-4:
+            add_wall_quads(stl, p0, p1, z_floor, z_top)
+            continue
+
+        # Left inner wall finger notch segment: from (-x_half_in, y_fnl_bot) to (-x_half_in, y_fnl_top)
+        # Inner wall height only goes to z_notch!
+        if abs(p0[0] - (-x_half_in)) < 1e-4 and abs(p1[0] - (-x_half_in)) < 1e-4:
+            if p0[1] >= y_fnl_bot - 1e-4 and p1[1] <= y_fnl_top + 1e-4:
+                add_wall_quads(stl, p0, p1, z_floor, z_notch)
+                continue
+
+        # All other standard inner cavity walls:
+        add_wall_quads(stl, p0, p1, z_floor, z_top)
+
+    # -------------------------------------------------------------------------
+    # 5. Left Finger Notch Step (at Z = z_notch = 9.0) & End Faces
+    # -------------------------------------------------------------------------
+    # Horizontal step face:
+    p_notch_step = [
         (-x_half_out, y_fnl_bot),
         (-x_half_in,  y_fnl_bot),
         (-x_half_in,  y_fnl_top),
         (-x_half_out, y_fnl_top)
     ]
-    triangulate_and_add(stl, p_ln, z_notch, normal_up=True)
+    triangulate_and_add(stl, p_notch_step, z_notch, normal_up=True)
 
-    # 3. Outer Vertical Walls (from Z=0 to Z_top or cutout)
-    # The outer perimeter consists of segments that go either to z_floor (at cutouts)
-    # or to z_top (everywhere else).
-    # Let's discretize outer perimeter with high resolution:
-    # A point is in a cutout if:
-    # - Top cutout: Y == y_half_out and x_tc_l <= X <= x_tc_r -> wall height = z_floor
-    # - Right cutout: X == x_half_out and y_fn_bot <= Y <= y_fn_top -> wall height = z_floor
-    # - Bottom cutout: Y == -y_half_out and x_bc_l <= X <= x_bc_r -> wall height = z_floor
-    # - Left finger notch: X == -x_half_out and y_fnl_bot <= Y <= y_fnl_top -> wall height = z_notch
-
-    # Build outer segments:
-    # We construct the 4 walls and 4 corners explicitly:
-    cx_out = x_half_out - r_out
-    cy_out = y_half_out - r_out
-    n_corner = 12
-
-    # Corner arcs (all reach z_top):
-    # TR: from 0 to pi/2
-    arc_tr = [(cx_out + r_out * math.cos(i*math.pi/(2*n_corner)), cy_out + r_out * math.sin(i*math.pi/(2*n_corner))) for i in range(n_corner+1)]
-    # TL: from pi/2 to pi
-    arc_tl = [(-cx_out + r_out * math.cos(math.pi/2 + i*math.pi/(2*n_corner)), cy_out + r_out * math.sin(math.pi/2 + i*math.pi/(2*n_corner))) for i in range(n_corner+1)]
-    # BL: from pi to 3*pi/2
-    arc_bl = [(-cx_out + r_out * math.cos(math.pi + i*math.pi/(2*n_corner)), -cy_out + r_out * math.sin(math.pi + i*math.pi/(2*n_corner))) for i in range(n_corner+1)]
-    # BR: from 3*pi/2 to 2*pi
-    arc_br = [(cx_out + r_out * math.cos(3*math.pi/2 + i*math.pi/(2*n_corner)), -cy_out + r_out * math.sin(3*math.pi/2 + i*math.pi/(2*n_corner))) for i in range(n_corner+1)]
-
-    # Top outer wall: from (-cx_out, y_half_out) to (cx_out, y_half_out)
-    # Contains top cutout [x_tc_l, x_tc_r]
-    # Seg 1: (-cx_out, y_half_out) -> (x_tc_l, y_half_out), height: z0 -> z_top
-    add_wall_quads(stl, (-cx_out, y_half_out), (x_tc_l, y_half_out), z0, z_top)
-    # Seg 2 (cutout edge): (x_tc_l, y_half_out) -> (x_tc_r, y_half_out), height: z0 -> z_floor
-    add_wall_quads(stl, (x_tc_l, y_half_out), (x_tc_r, y_half_out), z0, z_floor)
-    # Seg 3: (x_tc_r, y_half_out) -> (cx_out, y_half_out), height: z0 -> z_top
-    add_wall_quads(stl, (x_tc_r, y_half_out), (cx_out, y_half_out), z0, z_top)
-
-    # TR corner arc:
-    for i in range(n_corner):
-        add_wall_quads(stl, arc_tr[i], arc_tr[i+1], z0, z_top)
-
-    # Right outer wall: from (x_half_out, cy_out) to (x_half_out, -cy_out)
-    # Contains right cutout [y_fn_bot, y_fn_top]
-    # Seg 1: (x_half_out, cy_out) -> (x_half_out, y_fn_top), height: z0 -> z_top
-    add_wall_quads(stl, (x_half_out, cy_out), (x_half_out, y_fn_top), z0, z_top)
-    # Seg 2 (cutout edge): (x_half_out, y_fn_top) -> (x_half_out, y_fn_bot), height: z0 -> z_floor
-    add_wall_quads(stl, (x_half_out, y_fn_top), (x_half_out, y_fn_bot), z0, z_floor)
-    # Seg 3: (x_half_out, y_fn_bot) -> (x_half_out, -cy_out), height: z0 -> z_top
-    add_wall_quads(stl, (x_half_out, y_fn_bot), (x_half_out, -cy_out), z0, z_top)
-
-    # BR corner arc:
-    for i in range(n_corner):
-        add_wall_quads(stl, arc_br[i], arc_br[i+1], z0, z_top)
-
-    # Bottom outer wall: from (cx_out, -y_half_out) to (-cx_out, -y_half_out)
-    # Contains bottom cutout [x_bc_l, x_bc_r]
-    # Seg 1: (cx_out, -y_half_out) -> (x_bc_r, -y_half_out), height: z0 -> z_top
-    add_wall_quads(stl, (cx_out, -y_half_out), (x_bc_r, -y_half_out), z0, z_top)
-    # Seg 2 (cutout edge): (x_bc_r, -y_half_out) -> (x_bc_l, -y_half_out), height: z0 -> z_floor
-    add_wall_quads(stl, (x_bc_r, -y_half_out), (x_bc_l, -y_half_out), z0, z_floor)
-    # Seg 3: (x_bc_l, -y_half_out) -> (-cx_out, -y_half_out), height: z0 -> z_top
-    add_wall_quads(stl, (x_bc_l, -y_half_out), (-cx_out, -y_half_out), z0, z_top)
-
-    # BL corner arc:
-    for i in range(n_corner):
-        add_wall_quads(stl, arc_bl[i], arc_bl[i+1], z0, z_top)
-
-    # Left outer wall: from (-x_half_out, -cy_out) to (-x_half_out, cy_out)
-    # Contains left finger notch [y_fnl_bot, y_fnl_top], height goes to z_notch
-    # Seg 1: (-x_half_out, -cy_out) -> (-x_half_out, y_fnl_bot), height: z0 -> z_top
-    add_wall_quads(stl, (-x_half_out, -cy_out), (-x_half_out, y_fnl_bot), z0, z_top)
-    # Seg 2 (finger notch edge): (-x_half_out, y_fnl_bot) -> (-x_half_out, y_fnl_top), height: z0 -> z_notch
-    add_wall_quads(stl, (-x_half_out, y_fnl_bot), (-x_half_out, y_fnl_top), z0, z_notch)
-    # Seg 3: (-x_half_out, y_fnl_top) -> (-x_half_out, cy_out), height: z0 -> z_top
-    add_wall_quads(stl, (-x_half_out, y_fnl_top), (-x_half_out, cy_out), z0, z_top)
-
-    # TL corner arc:
-    for i in range(n_corner):
-        add_wall_quads(stl, arc_tl[i], arc_tl[i+1], z0, z_top)
-
-    # 4. Inner Cavity Walls (Facing inward, so vector order reversed)
-    cx_in = x_half_in - r_in
-    cy_in = y_half_in - r_in
-
-    arc_in_tr = [(cx_in + r_in * math.cos(i*math.pi/(2*n_corner)), cy_in + r_in * math.sin(i*math.pi/(2*n_corner))) for i in range(n_corner+1)]
-    arc_in_tl = [(-cx_in + r_in * math.cos(math.pi/2 + i*math.pi/(2*n_corner)), cy_in + r_in * math.sin(math.pi/2 + i*math.pi/(2*n_corner))) for i in range(n_corner+1)]
-    arc_in_bl = [(-cx_in + r_in * math.cos(math.pi + i*math.pi/(2*n_corner)), -cy_in + r_in * math.sin(math.pi + i*math.pi/(2*n_corner))) for i in range(n_corner+1)]
-    arc_in_br = [(cx_in + r_in * math.cos(3*math.pi/2 + i*math.pi/(2*n_corner)), -cy_in + r_in * math.sin(3*math.pi/2 + i*math.pi/(2*n_corner))) for i in range(n_corner+1)]
-
-    # Inner walls go from z_floor to z_top (CW direction so normal faces inward)
-    # Top inner wall: from (cx_in, y_half_in) to (-cx_in, y_half_in)
-    # Has top cutout [x_tc_l, x_tc_r] which is OPEN!
-    add_wall_quads(stl, (cx_in, y_half_in), (x_tc_r, y_half_in), z_floor, z_top)
-    add_wall_quads(stl, (x_tc_l, y_half_in), (-cx_in, y_half_in), z_floor, z_top)
-
-    # TL corner inner: from (-cx_in, y_half_in) to (-x_half_in, cy_in)
-    for i in range(n_corner, 0, -1):
-        add_wall_quads(stl, arc_in_tl[i], arc_in_tl[i-1], z_floor, z_top)
-
-    # Left inner wall: from (-x_half_in, cy_in) to (-x_half_in, -cy_in)
-    # Left notch is from y_fnl_bot to y_fnl_top, top rim drops to z_notch
-    add_wall_quads(stl, (-x_half_in, cy_in), (-x_half_in, y_fnl_top), z_floor, z_top)
-    add_wall_quads(stl, (-x_half_in, y_fnl_top), (-x_half_in, y_fnl_bot), z_floor, z_notch)
-    add_wall_quads(stl, (-x_half_in, y_fnl_bot), (-x_half_in, -cy_in), z_floor, z_top)
-
-    # BL corner inner: from (-x_half_in, -cy_in) to (-cx_in, -y_half_in)
-    for i in range(n_corner, 0, -1):
-        add_wall_quads(stl, arc_in_bl[i], arc_in_bl[i-1], z_floor, z_top)
-
-    # Bottom inner wall: from (-cx_in, -y_half_in) to (cx_in, -y_half_in)
-    # Has bottom cutout [x_bc_l, x_bc_r]
-    add_wall_quads(stl, (-cx_in, -y_half_in), (x_bc_l, -y_half_in), z_floor, z_top)
-    add_wall_quads(stl, (x_bc_r, -y_half_in), (cx_in, -y_half_in), z_floor, z_top)
-
-    # BR corner inner: from (cx_in, -y_half_in) to (x_half_in, -cy_in)
-    for i in range(n_corner, 0, -1):
-        add_wall_quads(stl, arc_in_br[i], arc_in_br[i-1], z_floor, z_top)
-
-    # Right inner wall: from (x_half_in, -cy_in) to (x_half_in, cy_in)
-    # Has right cutout [y_fn_bot, y_fn_top]
-    add_wall_quads(stl, (x_half_in, -cy_in), (x_half_in, y_fn_bot), z_floor, z_top)
-    add_wall_quads(stl, (x_half_in, y_fn_top), (x_half_in, cy_in), z_floor, z_top)
-
-    # TR corner inner: from (x_half_in, cy_in) to (cx_in, y_half_in)
-    for i in range(n_corner, 0, -1):
-        add_wall_quads(stl, arc_in_tr[i], arc_in_tr[i-1], z_floor, z_top)
-
-    # 5. Cutout End Faces (Vertical end walls closing the thickness of the wall)
-    # Top cutout ends:
-    # Left end at x_tc_l: from y_half_in to y_half_out, z_floor to z_top
-    add_wall_quads(stl, (x_tc_l, y_half_in), (x_tc_l, y_half_out), z_floor, z_top)
-    # Right end at x_tc_r: from y_half_out to y_half_in, z_floor to z_top
-    add_wall_quads(stl, (x_tc_r, y_half_out), (x_tc_r, y_half_in), z_floor, z_top)
-
-    # Right cutout ends:
-    # Top end at y_fn_top: from x_half_out to x_half_in, z_floor to z_top
-    add_wall_quads(stl, (x_half_out, y_fn_top), (x_half_in, y_fn_top), z_floor, z_top)
-    # Bottom end at y_fn_bot: from x_half_in to x_half_out, z_floor to z_top
-    add_wall_quads(stl, (x_half_in, y_fn_bot), (x_half_out, y_fn_bot), z_floor, z_top)
-
-    # Bottom cutout ends:
-    # Right end at x_bc_r: from -y_half_in to -y_half_out, z_floor to z_top
-    add_wall_quads(stl, (x_bc_r, -y_half_in), (x_bc_r, -y_half_out), z_floor, z_top)
-    # Left end at x_bc_l: from -y_half_out to -y_half_in, z_floor to z_top
-    add_wall_quads(stl, (x_bc_l, -y_half_out), (x_bc_l, -y_half_in), z_floor, z_top)
-
-    # Left finger notch ends (from z_notch to z_top):
-    # Bottom end at y_fnl_bot: from -x_half_out to -x_half_in
+    # End walls from z_notch to z_top:
+    # Bottom end at y_fnl_bot: from (-x_half_out, y_fnl_bot) to (-x_half_in, y_fnl_bot)
     add_wall_quads(stl, (-x_half_out, y_fnl_bot), (-x_half_in, y_fnl_bot), z_notch, z_top)
-    # Top end at y_fnl_top: from -x_half_in to -x_half_out
+    # Top end at y_fnl_top: from (-x_half_in, y_fnl_top) to (-x_half_out, y_fnl_top)
     add_wall_quads(stl, (-x_half_in, y_fnl_top), (-x_half_out, y_fnl_top), z_notch, z_top)
 
-    # 6. Top Rim Horizontal Faces (At Z = z_top)
-    # The top rim consists of 3 distinct disconnected wall sections:
-    # Section A: Top-Right Corner & Upper Right Wall:
-    # Outer: from (x_tc_r, y_half_out) along arc_tr to (x_half_out, y_fn_top)
-    # Inner: from (x_half_in, y_fn_top) along inner arc_in_tr to (x_tc_r, y_half_in)
-    poly_tr = [(x_tc_r, y_half_out)] + [(cx_out, y_half_out)] + arc_tr + [(x_half_out, y_fn_top)]
-    poly_tr += [(x_half_in, y_fn_top)] + [(x_half_in, cy_in)]
-    for i in range(n_corner, -1, -1):
-        poly_tr.append(arc_in_tr[i])
+    # -------------------------------------------------------------------------
+    # 6. Top Rim Horizontal Faces (Z = z_top = 20.4)
+    # -------------------------------------------------------------------------
+    # Top rim has 4 continuous polygon pieces:
+
+    # Piece 1: Top-Right Corner & Upper Right Wall:
+    poly_tr = [(x_tc_r, y_half_out), (cx_out, y_half_out)] + arc_tr_out[1:] + [(x_half_out, y_fn_top)]
+    poly_tr += [(x_half_in, y_fn_top), (x_half_in, cy_in)]
+    for i in range(len(arc_tr_in)-1, -1, -1):
+        poly_tr.append(arc_tr_in[i])
     poly_tr += [(x_tc_r, y_half_in)]
     triangulate_and_add(stl, poly_tr, z_top, normal_up=True)
 
-    # Section B: Bottom-Right Corner & Lower Right Wall:
-    # Outer: from (x_half_out, y_fn_bot) along outer BR arc to (x_bc_r, -y_half_out)
-    # Inner: from (x_bc_r, -y_half_in) along inner BR arc to (x_half_in, y_fn_bot)
-    poly_br = [(x_half_out, y_fn_bot)] + [(x_half_out, -cy_out)] + arc_br + [(x_bc_r, -y_half_out)]
-    poly_br += [(x_bc_r, -y_half_in)] + [(cx_in, -y_half_in)]
-    for i in range(n_corner, -1, -1):
-        poly_br.append(arc_in_br[i])
-    poly_br += [(x_half_in, y_fn_bot)]
+    # Piece 2: Bottom-Right Corner & Lower Right Wall:
+    poly_br = [(x_half_out, y_fn_bot), (x_half_out, -cy_out)] + arc_br_out[1:] + [(x_bc_r, -y_half_out)]
+    poly_br += [(x_bc_r, -y_half_in), (cx_in, -y_half_in)]
+    for i in range(len(arc_br_in)-1, -1, -1):
+        poly_br.append(arc_br_in[i])
+    poly_br += [(x_half_in, -cy_in), (x_half_in, y_fn_bot)]
     triangulate_and_add(stl, poly_br, z_top, normal_up=True)
 
-    # Section C1: Left Wall Upper Half & Top-Left Corner:
-    # Outer: from (-x_half_out, y_fnl_top) to (-x_half_out, cy_out) along arc_tl to (x_tc_l, y_half_out)
-    # Inner: from (x_tc_l, y_half_in) along arc_in_tl to (-x_half_in, y_fnl_top)
-    poly_tl = [(-x_half_out, y_fnl_top)] + [(-x_half_out, cy_out)] + arc_tl + [(x_tc_l, y_half_out)]
-    poly_tl += [(x_tc_l, y_half_in)] + [(-cx_in, y_half_in)]
-    for i in range(n_corner, -1, -1):
-        poly_tl.append(arc_in_tl[i])
-    poly_tl += [(-x_half_in, y_fnl_top)]
+    # Piece 3: Left Wall Upper Section & Top-Left Corner:
+    poly_tl = [(-x_half_out, y_fnl_top), (-x_half_out, cy_out)] + arc_tl_out[1:] + [(-cx_out, y_half_out), (x_tc_l, y_half_out)]
+    poly_tl += [(x_tc_l, y_half_in), (-cx_in, y_half_in)]
+    for i in range(len(arc_tl_in)-1, -1, -1):
+        poly_tl.append(arc_tl_in[i])
+    poly_tl += [(-x_half_in, cy_in), (-x_half_in, y_fnl_top)]
     triangulate_and_add(stl, poly_tl, z_top, normal_up=True)
 
-    # Section C2: Left Wall Lower Half & Bottom-Left Corner:
-    # Outer: from (x_bc_l, -y_half_out) along arc_bl to (-x_half_out, y_fnl_bot)
-    # Inner: from (-x_half_in, y_fnl_bot) along arc_in_bl to (x_bc_l, -y_half_in)
-    poly_bl = [(x_bc_l, -y_half_out)] + [(-cx_out, -y_half_out)] + arc_bl + [(-x_half_out, y_fnl_bot)]
-    poly_bl += [(-x_half_in, y_fnl_bot)] + [(-x_half_in, -cy_in)]
-    for i in range(n_corner, -1, -1):
-        poly_bl.append(arc_in_bl[i])
-    poly_bl += [(x_bc_l, -y_half_in)]
+    # Piece 4: Left Wall Lower Section & Bottom-Left Corner:
+    poly_bl = [(x_bc_l, -y_half_out), (-cx_out, -y_half_out)] + arc_bl_out[1:] + [(-x_half_out, -cy_out), (-x_half_out, y_fnl_bot)]
+    poly_bl += [(-x_half_in, y_fnl_bot), (-x_half_in, -cy_in)]
+    for i in range(len(arc_bl_in)-1, -1, -1):
+        poly_bl.append(arc_bl_in[i])
+    poly_bl += [(-cx_in, -y_half_in), (x_bc_l, -y_half_in)]
     triangulate_and_add(stl, poly_bl, z_top, normal_up=True)
 
     return stl

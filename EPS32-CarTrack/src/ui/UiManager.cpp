@@ -143,8 +143,12 @@ void UiManager::handleTouchAndGestures() {
 extern PowerMonitorService g_powerService;
 
 void UiManager::update() {
-    // If system is in low-power standby with display sleeping, skip rendering to save CPU/power
+    // If system is in low-power standby with display sleeping, check for screen touch to wake
     if (g_powerService.isSleeping()) {
+        M5.update();
+        if (M5.Touch.getCount() > 0) {
+            g_powerService.wakeFromStandby("Screen touch detected");
+        }
         vTaskDelay(pdMS_TO_TICKS(100));
         return;
     }
