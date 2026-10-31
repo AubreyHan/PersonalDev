@@ -211,69 +211,50 @@ void TrackLogger::refreshStorageStats() {
     state.lock();
     auto& st = state.getContextUnsafe().storage;
     st.isMounted           = _mounted;
-    st.isRecording         = _recording;
+    st.isRecording         = (_singleRecording || _dailyRecording || _subRecording);
     st.totalBytes          = totalBytes;
     st.usedBytes           = usedBytes;
     st.tracksDirBytes      = tracksBytes;
     st.trackFilePairsCount = wgsCount;
-    st.currentSegmentPoints= _pointsInFile;
+    st.currentSegmentPoints= _singlePoints;
     state.unlock();
 }
 
-bool TrackLogger::openNewTrackPair(const SystemContext& snap, uint16_t y, uint8_t m, uint8_t d, uint8_t hh, uint8_t mm, uint8_t ss) {
+bool TrackLogger::openOrAppendGpx(FsFile& wgsFile, FsFile& gcjFile, const char* wName, const char* cName,
+                                  uint16_t y, uint8_t m, uint8_t d, uint8_t hh, uint8_t mm, uint8_t ss,
+                                  bool isContinuation) {
     if (!_mounted) return false;
-    closeActiveStreams();
     enforceStorageQuota50Percent();
-
-    char wName[48], cName[48];
-    if (snap.recordTripMode == TRIP_DAILY) {
-        snprintf(wName, sizeof(wName), "W-Day-%04u%02u%02u.gpx", y, m, d);
-        snprintf(cName, sizeof(cName), "C-Day-%04u%02u%02u.gpx", y, m, d);
-    } else if (snap.recordTripMode == TRIP_MANUAL) {
-        snprintf(wName, sizeof(wName), "W-Manual-%04u%02u%02u-%02u%02u%02u.gpx", y, m, d, hh, mm, ss);
-        snprintf(cName, sizeof(cName), "C-Manual-%04u%02u%02u-%02u%02u%02u.gpx", y, m, d, hh, mm, ss);
-    } else {
-        snprintf(wName, sizeof(wName), "W-Single-%04u%02u%02u-%02u%02u%02u.gpx", y, m, d, hh, mm, ss);
-        snprintf(cName, sizeof(cName), "C-Single-%04u%02u%02u-%02u%02u%02u.gpx", y, m, d, hh, mm, ss);
-    }
 
     char wPath[72], cPath[72];
     snprintf(wPath, sizeof(wPath), "%s/%s", StorageConfig::TRACKS_DIR, wName);
     snprintf(cPath, sizeof(cPath), "%s/%s", StorageConfig::TRACKS_DIR, cName);
 
-    // If in Daily mode and file already exists for today, append new track segment
-    if (snap.recordTripMode == TRIP_DAILY && _sd.exists(wPath) && _sd.exists(cPath)) {
-        if (_fileWgs.open(wPath, O_RDWR) && _fileGcj.open(cPath, O_RDWR)) {
-            const char* footer = "    </trkseg>\n  </trk>\n</gpx>\n";
-            const char* segTag = "    </trkseg>\n    <trkseg>\n    </trkseg>\n  </trk>\n</gpx>\n";
-            if (_fileWgs.fileSize() > strlen(footer)) {
-                _fileWgs.seekSet(_fileWgs.fileSize() - strlen(footer));
-                _fileWgs.write(segTag, strlen(segTag));
-                _fileWgs.sync();
+    const char* footer = "    </trkseg>\n  </trk>\n</gpx>\n";
+    const char* segTag = "    </trkseg>\n    <trkseg>\n    </trkseg>\n  </trk>\n</gpx>\n";
+
+    if (isContinuation && _sd.exists(wPath) && _sd.exists(cPath)) {
+        if (wgsFile.open(wPath, O_RDWR) && gcjFile.open(cPath, O_RDWR)) {
+            if (wgsFile.fileSize() > strlen(footer)) {
+                wgsFile.seekSet(wgsFile.fileSize() - strlen(footer));
+                wgsFile.write(segTag, strlen(segTag));
+                wgsFile.sync();
             }
-            if (_fileGcj.fileSize() > strlen(footer)) {
-                _fileGcj.seekSet(_fileGcj.fileSize() - strlen(footer));
-                _fileGcj.write(segTag, strlen(segTag));
-                _fileGcj.sync();
+            if (gcjFile.fileSize() > strlen(footer)) {
+                gcjFile.seekSet(gcjFile.fileSize() - strlen(footer));
+                gcjFile.write(segTag, strlen(segTag));
+                gcjFile.sync();
             }
-            _recording       = true;
-            _pointsInFile    = 0;
-            _pointsSinceSync = 0;
-            SystemState& state = SystemState::instance();
-            state.lock();
-            auto& st = state.getContextUnsafe().storage;
-            st.isRecording = true;
-            strncpy(st.currentWgsFile, wName, sizeof(st.currentWgsFile) - 1);
-            strncpy(st.currentGcjFile, cName, sizeof(st.currentGcjFile) - 1);
-            state.unlock();
             return true;
         }
+        wgsFile.close();
+        gcjFile.close();
     }
 
-    if (!_fileWgs.open(wPath, O_RDWR | O_CREAT | O_TRUNC) ||
-        !_fileGcj.open(cPath, O_RDWR | O_CREAT | O_TRUNC)) {
-        _fileWgs.close();
-        _fileGcj.close();
+    if (!wgsFile.open(wPath, O_RDWR | O_CREAT | O_TRUNC) ||
+        !gcjFile.open(cPath, O_RDWR | O_CREAT | O_TRUNC)) {
+        wgsFile.close();
+        gcjFile.close();
         return false;
     }
 
@@ -286,33 +267,21 @@ bool TrackLogger::openNewTrackPair(const SystemContext& snap, uint16_t y, uint8_
         "     xmlns:gpxtpx=\"http://www.garmin.com/xmlschemas/TrackPointExtension/v1\"\n"
         "     xmlns:m5=\"http://m5stack.com/xmlschemas/VehicleTrack/v1\">\n"
         "  <metadata>\n"
-        "    <name>Track %04u-%02u-%02u %02u:%02u:%02u</name>\n"
+        "    <name>%s</name>\n"
         "    <time>%04u-%02u-%02uT%02u:%02u:%02u.000Z</time>\n"
         "  </metadata>\n"
         "  <trk>\n"
-        "    <name>M5Tab5 Vehicle Drive</name>\n"
+        "    <name>%s</name>\n"
         "    <trkseg>\n"
         "    </trkseg>\n"
         "  </trk>\n"
         "</gpx>\n",
-        y, m, d, hh, mm, ss, y, m, d, hh, mm, ss);
+        wName, y, m, d, hh, mm, ss, wName);
 
-    _fileWgs.write(header, strlen(header));
-    _fileGcj.write(header, strlen(header));
-    _fileWgs.sync();
-    _fileGcj.sync();
-
-    _recording       = true;
-    _pointsInFile    = 0;
-    _pointsSinceSync = 0;
-
-    SystemState& state = SystemState::instance();
-    state.lock();
-    auto& st = state.getContextUnsafe().storage;
-    st.isRecording = true;
-    strncpy(st.currentWgsFile, wName, sizeof(st.currentWgsFile) - 1);
-    strncpy(st.currentGcjFile, cName, sizeof(st.currentGcjFile) - 1);
-    state.unlock();
+    wgsFile.write(header, strlen(header));
+    gcjFile.write(header, strlen(header));
+    wgsFile.sync();
+    gcjFile.sync();
     return true;
 }
 
