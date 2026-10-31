@@ -477,58 +477,293 @@ private:
     size_t            _trailCount;
 };
 
-inline void SystemState::triggerFullTripReset() {
+inline void SystemState::triggerTripReset(TripCategory category) {
     lock();
+    if (category >= TRIP_CATEGORY_COUNT) {
+        unlock();
+        return;
+    }
     float curAlt = _ctx.trip.currentAltitudeM;
     float curSpd = _ctx.gnss.speedKmh;
     double curLat = _ctx.gnss.latitude;
     double curLon = _ctx.gnss.longitude;
     bool hasFix = _ctx.gnss.isValid;
 
-    // 1. Page 1 Dashboard TRIP reset
-    _ctx.trip.tripDistanceKm = 0.0f;
-    _ctx.trip.movingDurationSec = 0;
-    _ctx.trip.idleDurationSec = 0;
-    _ctx.trip.highwaySec = 0;
-    _ctx.trip.urbanSec = 0;
-    _ctx.trip.slowSec = 0;
+    TripStats& t = _ctx.trips[category];
+    t.tripDistanceKm = 0.0;
+    t.movingDurationSec = 0;
+    t.idleDurationSec = 0;
+    t.highwaySec = 0;
+    t.urbanSec = 0;
+    t.slowSec = 0;
+    t.maxAltitudeM = curAlt;
+    t.minAltitudeM = curAlt;
+    t.cumulativeClimbM = 0.0;
+    t.verticalSpeedMps = 0.0f;
+    t.altitudeHistory.reset();
+    t.altitudeHistory.push(curAlt);
+    t.maxSpeedKmh = curSpd;
+    t.avgSpeedKmh = curSpd;
+    t.speedHistory.reset();
+    t.speedHistory.push(curSpd);
+    t.maxLateralG = 0.0f;
+    t.maxLongitudinalG = 0.0f;
 
-    // 2. Page 2 Altitude extremes & history reset
-    _ctx.trip.maxAltitudeM = curAlt;
-    _ctx.trip.minAltitudeM = curAlt;
-    _ctx.trip.cumulativeClimbM = 0.0f;
-    _ctx.trip.verticalSpeedMps = 0.0f;
-    _ctx.trip.altitudeHistory.reset();
-    _ctx.trip.altitudeHistory.push(curAlt);
-
-    // 3. Page 3 Speed extremes & history reset
-    _ctx.trip.maxSpeedKmh = curSpd;
-    _ctx.trip.avgSpeedKmh = curSpd;
-    _ctx.trip.speedHistory.reset();
-    _ctx.trip.speedHistory.push(curSpd);
-
-    // 4. Page 4 Trail clear & re-anchor start point
-    _trailCount = 0;
-    if (hasFix) {
-        _ctx.trip.startLatitude = curLat;
-        _ctx.trip.startLongitude = curLon;
-        _ctx.trip.hasStartAnchor = true;
-        if (_trailPoints) {
-            _trailPoints[_trailCount++] = {curLat, curLon, curSpd};
-        }
+    if (hasFix && curLat != 0.0 && curLon != 0.0) {
+        t.startLatitude = curLat;
+        t.startLongitude = curLon;
+        t.hasStartAnchor = true;
     } else {
-        _ctx.trip.hasStartAnchor = false;
+        t.hasStartAnchor = false;
     }
 
-    // 5. Page 5 Dynamics peak G reset
-    _ctx.trip.maxLateralG = 0.0f;
-    _ctx.trip.maxLongitudinalG = 0.0f;
+    if (_ctx.activeTripCategory == category) {
+        _ctx.trip = t;
+        _ctx.tripResetBannerActive = true;
+        _ctx.tripResetBannerExpireMs = millis() + 2500;
+    }
 
-    // 6. TF Card GPX stream new segment request
-    _ctx.storage.requestNewSegment = true;
+    if (category == TRIP_SINGLE) {
+        _trailCount = 0;
+        if (hasFix && _trailPoints) {
+            _trailPoints[_trailCount++] = {curLat, curLon, curSpd};
+        }
+        _ctx.storage.requestNewSegment = true;
+    }
+    unlock();
+    saveTripStatsToNvs();
+}
 
-    // Banner notification
-    _ctx.tripResetBannerActive = true;
-    _ctx.tripResetBannerExpireMs = millis() + 2500;
+inline void SystemState::triggerFullTripReset() {
+    triggerTripReset(TRIP_SINGLE);
+}
+
+inline void SystemState::switchActiveTripCategory(TripCategory category) {
+    lock();
+    if (category < TRIP_CATEGORY_COUNT) {
+        _ctx.activeTripCategory = category;
+        _ctx.trip = _ctx.trips[category];
+        Preferences prefs;
+        if (prefs.begin("m5track", false)) {
+            prefs.putUChar("act_trip_view", (uint8_t)category);
+            prefs.end();
+        }
+    }
+    unlock();
+}
+
+inline void SystemState::cycleActiveTripCategory() {
+    lock();
+    TripCategory nextCat = (TripCategory)((_ctx.activeTripCategory + 1) % TRIP_CATEGORY_COUNT);
+    switchActiveTripCategory(nextCat);
+    unlock();
+}
+
+inline void SystemState::toggleManualTrip() {
+    lock();
+    _ctx.manualTripActive = !_ctx.manualTripActive;
+    if (_ctx.manualTripActive) {
+        if (!_ctx.trips[TRIP_MANUAL].hasStartAnchor && _ctx.gnss.isValid) {
+            _ctx.trips[TRIP_MANUAL].startLatitude = _ctx.gnss.latitude;
+            _ctx.trips[TRIP_MANUAL].startLongitude = _ctx.gnss.longitude;
+            _ctx.trips[TRIP_MANUAL].hasStartAnchor = true;
+        }
+        if (_ctx.recordTripMode == TRIP_MANUAL) {
+            _ctx.storage.requestNewSegment = true;
+        }
+    }
+    Preferences prefs;
+    if (prefs.begin("m5track", false)) {
+        prefs.putBool("man_trip_act", _ctx.manualTripActive);
+        prefs.end();
+    }
+    _ctx.trip = _ctx.trips[_ctx.activeTripCategory];
+    unlock();
+}
+
+inline void SystemState::setRecordTripMode(TripCategory mode) {
+    lock();
+    if (mode < TRIP_CATEGORY_COUNT) {
+        _ctx.recordTripMode = mode;
+        Preferences prefs;
+        if (prefs.begin("m5track", false)) {
+            prefs.putUChar("rec_trip_mode", (uint8_t)mode);
+            prefs.end();
+        }
+        _ctx.storage.requestNewSegment = true;
+    }
+    unlock();
+}
+
+inline void SystemState::syncActiveTripDisplay() {
+    lock();
+    _ctx.trip = _ctx.trips[_ctx.activeTripCategory];
+    unlock();
+}
+
+inline void SystemState::updateTripsMotion(float spd, uint32_t elapsedSec, double stepM, double lat, double lon, bool hasFix) {
+    lock();
+    bool isMoving = (spd > MotionPowerConfig::STANDSTILL_HEADING_LOCK_KMH);
+
+    auto updateOneTrip = [&](TripStats& t, bool canRecordDist) {
+        if (!t.hasStartAnchor && hasFix && lat != 0.0 && lon != 0.0) {
+            t.startLatitude  = lat;
+            t.startLongitude = lon;
+            t.hasStartAnchor = true;
+        }
+
+        if (isMoving) {
+            t.movingDurationSec += elapsedSec;
+            if (spd > 80.0f)       t.highwaySec += elapsedSec;
+            else if (spd >= 40.0f) t.urbanSec   += elapsedSec;
+            else                   t.slowSec    += elapsedSec;
+
+            if (spd > t.maxSpeedKmh) {
+                t.maxSpeedKmh = spd;
+            }
+
+            if (canRecordDist && stepM >= 2.0 && stepM < 250.0) {
+                t.tripDistanceKm += (stepM * 0.001);
+            }
+
+            if (t.movingDurationSec > 0) {
+                t.avgSpeedKmh = (float)((t.tripDistanceKm * 3600.0) / (double)t.movingDurationSec);
+            }
+        } else {
+            t.idleDurationSec += elapsedSec;
+        }
+    };
+
+    // 1. Single Trip always updates
+    updateOneTrip(_ctx.trips[TRIP_SINGLE], true);
+
+    // 2. Daily Trip always updates
+    updateOneTrip(_ctx.trips[TRIP_DAILY], true);
+
+    // 3. Manual Trip updates only when active
+    if (_ctx.manualTripActive) {
+        updateOneTrip(_ctx.trips[TRIP_MANUAL], true);
+    }
+
+    _ctx.isVehicleMoving = isMoving;
+    _ctx.trip = _ctx.trips[_ctx.activeTripCategory];
+    unlock();
+}
+
+inline void SystemState::updateTripsAltitude(float fusedAlt, float dAlt, float dt, float slopePct) {
+    lock();
+    auto updateOneAlt = [&](TripStats& t) {
+        t.currentAltitudeM = fusedAlt;
+        if (t.maxAltitudeM == 0.0f && t.minAltitudeM == 0.0f) {
+            t.maxAltitudeM = fusedAlt;
+            t.minAltitudeM = fusedAlt;
+        } else {
+            if (fusedAlt > t.maxAltitudeM) t.maxAltitudeM = fusedAlt;
+            if (fusedAlt < t.minAltitudeM) t.minAltitudeM = fusedAlt;
+        }
+        t.verticalSpeedMps = (dt > 0.001f) ? (dAlt / dt) : 0.0f;
+        if (dAlt > 0.05f) {
+            t.cumulativeClimbM += dAlt;
+        }
+        t.roadSlopePercent = t.roadSlopePercent * 0.6f + slopePct * 0.4f;
+    };
+
+    updateOneAlt(_ctx.trips[TRIP_SINGLE]);
+    updateOneAlt(_ctx.trips[TRIP_DAILY]);
+    if (_ctx.manualTripActive) {
+        updateOneAlt(_ctx.trips[TRIP_MANUAL]);
+    }
+
+    _ctx.trip = _ctx.trips[_ctx.activeTripCategory];
+    unlock();
+}
+
+inline void SystemState::updateTripsDynamics(float latG, float lonG) {
+    lock();
+    auto updateOneG = [&](TripStats& t) {
+        if (latG > t.maxLateralG) t.maxLateralG = latG;
+        if (lonG > t.maxLongitudinalG) t.maxLongitudinalG = lonG;
+    };
+    updateOneG(_ctx.trips[TRIP_SINGLE]);
+    updateOneG(_ctx.trips[TRIP_DAILY]);
+    if (_ctx.manualTripActive) {
+        updateOneG(_ctx.trips[TRIP_MANUAL]);
+    }
+    _ctx.trip = _ctx.trips[_ctx.activeTripCategory];
+    unlock();
+}
+
+inline void SystemState::checkDailyMidnightRollover(uint32_t currentLocalDateInt) {
+    if (currentLocalDateInt == 0) return;
+    lock();
+    if (_ctx.lastLocalDateInt == 0) {
+        _ctx.lastLocalDateInt = currentLocalDateInt;
+        unlock();
+        return;
+    }
+    if (currentLocalDateInt != _ctx.lastLocalDateInt) {
+        Serial.printf("[TRIP] Midnight 00:00 Rollover in GPS Timezone: %u -> %u. Resetting Daily Trip!\n",
+                      _ctx.lastLocalDateInt, currentLocalDateInt);
+        _ctx.lastLocalDateInt = currentLocalDateInt;
+        unlock();
+        triggerTripReset(TRIP_DAILY);
+        return;
+    }
+    unlock();
+}
+
+inline void SystemState::loadTripStatsFromNvs() {
+    Preferences prefs;
+    if (prefs.begin("m5track", true)) {
+        _ctx.recordTripMode     = (TripCategory)prefs.getUChar("rec_trip_mode", (uint8_t)TRIP_SINGLE);
+        _ctx.activeTripCategory = (TripCategory)prefs.getUChar("act_trip_view", (uint8_t)TRIP_SINGLE);
+        _ctx.manualTripActive   = prefs.getBool("man_trip_act", false);
+        _ctx.lastLocalDateInt   = prefs.getUInt("last_day_int", 0);
+
+        _ctx.trips[TRIP_DAILY].tripDistanceKm     = prefs.getDouble("day_dist", 0.0);
+        _ctx.trips[TRIP_DAILY].movingDurationSec  = prefs.getUInt("day_mov_sec", 0);
+        _ctx.trips[TRIP_DAILY].idleDurationSec    = prefs.getUInt("day_idl_sec", 0);
+        _ctx.trips[TRIP_DAILY].cumulativeClimbM   = prefs.getDouble("day_climb", 0.0);
+        _ctx.trips[TRIP_DAILY].maxSpeedKmh        = prefs.getFloat("day_max_spd", 0.0f);
+        if (_ctx.trips[TRIP_DAILY].movingDurationSec > 0) {
+            _ctx.trips[TRIP_DAILY].avgSpeedKmh = (float)((_ctx.trips[TRIP_DAILY].tripDistanceKm * 3600.0) / _ctx.trips[TRIP_DAILY].movingDurationSec);
+        }
+
+        _ctx.trips[TRIP_MANUAL].tripDistanceKm    = prefs.getDouble("man_dist", 0.0);
+        _ctx.trips[TRIP_MANUAL].movingDurationSec = prefs.getUInt("man_mov_sec", 0);
+        _ctx.trips[TRIP_MANUAL].idleDurationSec   = prefs.getUInt("man_idl_sec", 0);
+        _ctx.trips[TRIP_MANUAL].cumulativeClimbM  = prefs.getDouble("man_climb", 0.0);
+        _ctx.trips[TRIP_MANUAL].maxSpeedKmh       = prefs.getFloat("man_max_spd", 0.0f);
+        if (_ctx.trips[TRIP_MANUAL].movingDurationSec > 0) {
+            _ctx.trips[TRIP_MANUAL].avgSpeedKmh = (float)((_ctx.trips[TRIP_MANUAL].tripDistanceKm * 3600.0) / _ctx.trips[TRIP_MANUAL].movingDurationSec);
+        }
+        prefs.end();
+    }
+    _ctx.trip = _ctx.trips[_ctx.activeTripCategory];
+}
+
+inline void SystemState::saveTripStatsToNvs() {
+    lock();
+    Preferences prefs;
+    if (prefs.begin("m5track", false)) {
+        prefs.putUChar("rec_trip_mode", (uint8_t)_ctx.recordTripMode);
+        prefs.putUChar("act_trip_view", (uint8_t)_ctx.activeTripCategory);
+        prefs.putBool("man_trip_act", _ctx.manualTripActive);
+        prefs.putUInt("last_day_int", _ctx.lastLocalDateInt);
+
+        prefs.putDouble("day_dist", _ctx.trips[TRIP_DAILY].tripDistanceKm);
+        prefs.putUInt("day_mov_sec", _ctx.trips[TRIP_DAILY].movingDurationSec);
+        prefs.putUInt("day_idl_sec", _ctx.trips[TRIP_DAILY].idleDurationSec);
+        prefs.putDouble("day_climb", _ctx.trips[TRIP_DAILY].cumulativeClimbM);
+        prefs.putFloat("day_max_spd", _ctx.trips[TRIP_DAILY].maxSpeedKmh);
+
+        prefs.putDouble("man_dist", _ctx.trips[TRIP_MANUAL].tripDistanceKm);
+        prefs.putUInt("man_mov_sec", _ctx.trips[TRIP_MANUAL].movingDurationSec);
+        prefs.putUInt("man_idl_sec", _ctx.trips[TRIP_MANUAL].idleDurationSec);
+        prefs.putDouble("man_climb", _ctx.trips[TRIP_MANUAL].cumulativeClimbM);
+        prefs.putFloat("man_max_spd", _ctx.trips[TRIP_MANUAL].maxSpeedKmh);
+
+        prefs.end();
+    }
     unlock();
 }
