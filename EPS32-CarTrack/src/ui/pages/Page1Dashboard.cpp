@@ -270,28 +270,48 @@ bool Page1Dashboard::onTouchTap(int16_t x, int16_t y, SystemContext& ctx) {
         return true;
     }
 
-    // TRIP Card Tab 0: [单次 TRIP] (X: 660..775, Y: 475..520)
-    if (x >= 660 && x <= 775 && y >= 475 && y <= 520) {
-        SystemState::instance().switchActiveTripCategory(TRIP_SINGLE);
-        HapticDriver::instance().triggerShortPulse(50);
-        return true;
-    }
-    // TRIP Card Tab 1: [单日 DAY] (X: 780..895, Y: 475..520)
-    if (x >= 780 && x <= 895 && y >= 475 && y <= 520) {
-        SystemState::instance().switchActiveTripCategory(TRIP_DAILY);
-        HapticDriver::instance().triggerShortPulse(50);
-        return true;
-    }
-    // TRIP Card Tab 2: [小记 SUB] (X: 900..1015, Y: 475..520)
-    if (x >= 900 && x <= 1015 && y >= 475 && y <= 520) {
-        SystemState::instance().switchActiveTripCategory(TRIP_MANUAL);
-        HapticDriver::instance().triggerShortPulse(50);
-        return true;
-    }
-    // TRIP Card Action Button (X: 1025..1240, Y: 475..520)
-    if (x >= 1025 && x <= 1240 && y >= 475 && y <= 520) {
-        if (ctx.activeTripCategory == TRIP_MANUAL) {
-            SystemState::instance().toggleManualTrip();
+    // Dynamic TRIP Card Tabs & Actions
+    if (!ctx.manualTripActive) {
+        // Tab 0: [TRIP单次] (X: 660..795, Y: 475..520)
+        if (x >= 660 && x <= 795 && y >= 475 && y <= 520) {
+            SystemState::instance().switchActiveTripCategory(TRIP_SINGLE);
+            HapticDriver::instance().triggerShortPulse(50);
+            return true;
+        }
+        // Tab 1: [DAY单日] (X: 805..945, Y: 475..520)
+        if (x >= 805 && x <= 945 && y >= 475 && y <= 520) {
+            SystemState::instance().switchActiveTripCategory(TRIP_DAILY);
+            HapticDriver::instance().triggerShortPulse(50);
+            return true;
+        }
+        // Action Button: [+ 小记开始] (X: 955..1240, Y: 475..520)
+        if (x >= 955 && x <= 1240 && y >= 475 && y <= 520) {
+            SystemState::instance().startManualTrip();
+            HapticDriver::instance().triggerShortPulse(80);
+            return true;
+        }
+    } else {
+        // Tab 0: [TRIP单次] (X: 660..770, Y: 475..520)
+        if (x >= 660 && x <= 770 && y >= 475 && y <= 520) {
+            SystemState::instance().switchActiveTripCategory(TRIP_SINGLE);
+            HapticDriver::instance().triggerShortPulse(50);
+            return true;
+        }
+        // Tab 1: [DAY单日] (X: 775..885, Y: 475..520)
+        if (x >= 775 && x <= 885 && y >= 475 && y <= 520) {
+            SystemState::instance().switchActiveTripCategory(TRIP_DAILY);
+            HapticDriver::instance().triggerShortPulse(50);
+            return true;
+        }
+        // Tab 2: [SUB小记] (X: 890..1000, Y: 475..520)
+        if (x >= 890 && x <= 1000 && y >= 475 && y <= 520) {
+            SystemState::instance().switchActiveTripCategory(TRIP_MANUAL);
+            HapticDriver::instance().triggerShortPulse(50);
+            return true;
+        }
+        // Action Button: [⏹ 小记结束] (X: 1010..1240, Y: 475..520)
+        if (x >= 1010 && x <= 1240 && y >= 475 && y <= 520) {
+            SystemState::instance().stopManualTrip();
             HapticDriver::instance().triggerShortPulse(80);
             return true;
         }
