@@ -590,3 +590,24 @@ littlefs, data, spiffs,  0xc90000,0x300000,
 3. 将剩余最新数据块（约 80KB）流式写入 `/tracks/power.tmp`，调用 `sync()` 刷盘并关闭；
 4. 移除原文件，并将临时文件原子重命名为 `/tracks/power.log`；
 5. 追加新日志行，调用 `file.sync()` 完成落盘。全流程由递归互斥锁 `_sdMutex` 严格保护。
+
+---
+
+## 8. 三类行程统计与轨迹分卷技术契约 (Trip Categories & Track Splitting Contract)
+
+### 8.1 行程枚举契约 (`TripCategory`)
+```cpp
+enum TripCategory : uint8_t {
+    TRIP_SINGLE = 0, // 单次行程：随车辆通电/唤醒开始，连续静止 20min 待机或长按 2s 清零
+    TRIP_DAILY  = 1, // 单日行程：每日 00:00:00 至 23:59:59，跨段全天累加，次日自动清零
+    TRIP_MANUAL = 2, // 小记行程：手动 START / STOP，跨天跨次长期累计，手动终结
+    TRIP_CATEGORY_COUNT = 3
+};
+```
+
+### 8.2 轨迹文件命名规则与分卷逻辑
+| 记录模式 (`recordTripMode`) | WGS-84 文件名 | GCJ-02 文件名 | 分卷与闭合时机 |
+| :--- | :--- | :--- | :--- |
+| **0. 单次切卷 (`TRIP_SINGLE`)** | `W-Single-YYYYMMDD-HHMMSS.gpx` | `C-Single-YYYYMMDD-HHMMSS.gpx` | 车辆起步新建，静止 20min 或单次清零时闭合存盘 |
+| **1. 单日归档 (`TRIP_DAILY`)** | `W-Day-YYYYMMDD.gpx` | `C-Day-YYYYMMDD.gpx` | 当日多次行程以 `<trkseg>` 拼接追加，午夜跨天换新卷 |
+| **2. 小记专属 (`TRIP_MANUAL`)** | `W-Manual-YYYYMMDD-HHMMSS.gpx` | `C-Manual-YYYYMMDD-HHMMSS.gpx` | 仅在小记处于活动状态时记录，多次起停以 `<trkseg>` 缝合，手动点击 STOP 彻底闭合 |
