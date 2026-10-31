@@ -1,6 +1,7 @@
 #include "service/NetworkManager.h"
 #include "service/TrackLogger.h"
 #include "service/TunnelService.h"
+#include "service/OneDriveSyncService.h"
 #include <Preferences.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
@@ -423,6 +424,44 @@ void AppNetworkManager::setupHttpRoutes() {
 
     _server.on("/api/tunnel/info", HTTP_GET, [this]() {
         _server.send(200, "application/json", "{\"version\":\"2026.10\",\"count\":82,\"source\":\"LittleFS\"}");
+    });
+
+    _server.on("/api/onedrive/status", HTTP_GET, [this]() {
+        SystemState& state = SystemState::instance();
+        state.lock();
+        auto od = state.getContextUnsafe().onedrive;
+        state.unlock();
+
+        JsonDocument doc;
+        doc["isBound"]         = od.isBound;
+        doc["isSyncing"]       = od.isSyncing;
+        doc["authInProgress"]  = od.authInProgress;
+        doc["autoSyncEnabled"] = od.autoSyncEnabled;
+        doc["userCode"]        = od.userCode;
+        doc["verifyUrl"]       = od.verifyUrl;
+        doc["accountEmail"]    = od.accountEmail;
+        doc["lastSyncEpoch"]   = od.lastSyncEpoch;
+        doc["pendingCount"]    = od.pendingCount;
+        doc["uploadPercent"]   = od.uploadProgressPercent;
+        doc["currentFile"]     = od.currentUploadingFile;
+        String out;
+        serializeJson(doc, out);
+        _server.send(200, "application/json", out);
+    });
+
+    _server.on("/api/onedrive/login", HTTP_POST, [this]() {
+        bool ok = OneDriveSyncService::instance().startDeviceLogin();
+        _server.send(200, "application/json", ok ? "{\"success\":true}" : "{\"success\":false,\"message\":\"Wi-Fi required\"}");
+    });
+
+    _server.on("/api/onedrive/sync", HTTP_POST, [this]() {
+        OneDriveSyncService::instance().triggerManualSync();
+        _server.send(200, "application/json", "{\"success\":true}");
+    });
+
+    _server.on("/api/onedrive/unbind", HTTP_POST, [this]() {
+        OneDriveSyncService::instance().unbindAccount();
+        _server.send(200, "application/json", "{\"success\":true}");
     });
 }
 
