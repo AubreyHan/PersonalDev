@@ -39,6 +39,7 @@ BasePage* UiManager::getActivePage(AppPageId id) {
         case SUBPAGE_TOOL_WIFI:  return &_toolWifi;
         case SUBPAGE_TOOL_GNSS:  return &_toolGnss;
         case SUBPAGE_TOOL_SYS:   return &_toolSys;
+        case SUBPAGE_TOOL_ONEDRIVE: return &_toolOneDrive;
         default:                 return &_page1;
     }
 }

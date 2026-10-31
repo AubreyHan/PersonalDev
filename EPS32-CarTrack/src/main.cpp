@@ -21,6 +21,7 @@
 #include "service/TrackLogger.h"
 #include "service/WeatherService.h"
 #include "service/NetworkManager.h"
+#include "service/OneDriveSyncService.h"
 #include "ui/UiManager.h"
 
 // Global Driver & Service Instances
@@ -152,6 +153,8 @@ void setup() {
     g_powerService.init(&g_ina226Driver);
     g_weatherService.init();
     AppNetworkManager::instance().init();
+    OneDriveSyncService::instance().init();
+    OneDriveSyncService::instance().startTask();
 
     // Structured Hardware & Sensor Diagnostic Summary
     SystemContext snap = SystemState::instance().getSnapshot();
