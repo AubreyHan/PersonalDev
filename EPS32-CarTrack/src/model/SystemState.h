@@ -413,7 +413,20 @@ public:
         return snap;
     }
 
+    void triggerTripReset(TripCategory category);
     void triggerFullTripReset();
+    void switchActiveTripCategory(TripCategory category);
+    void cycleActiveTripCategory();
+    void toggleManualTrip();
+    void setRecordTripMode(TripCategory mode);
+    void syncActiveTripDisplay();
+
+    void updateTripsMotion(float spd, uint32_t elapsedSec, double stepM, double lat, double lon, bool hasFix);
+    void updateTripsAltitude(float fusedAlt, float dAlt, float dt, float slopePct);
+    void updateTripsDynamics(float latG, float lonG);
+    void checkDailyMidnightRollover(uint32_t currentLocalDateInt);
+    void loadTripStatsFromNvs();
+    void saveTripStatsToNvs();
 
     // Trail points stored in PSRAM (up to 4096 points for full-bleed map)
     static constexpr size_t MAX_TRAIL_POINTS = 4096;
