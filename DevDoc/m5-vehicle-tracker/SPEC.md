@@ -556,6 +556,8 @@ littlefs, data, spiffs,  0xc90000,0x300000,
 | `rec_trip_mode`| `uint8_t` | 0   | 轨迹分卷记录模式 (0: 单次切卷, 1: 单日归档, 2: 小记专属) |
 | `act_trip_view`| `uint8_t` | 0   | 仪表盘当前查看的行程类别 (0: 单次, 1: 单日, 2: 小记) |
 | `man_trip_act` | `bool`    | false | 小记行程是否处于活动记录状态 |
+| `sub_idx`      | `uint16_t`| 0   | 小记行程总计数器 (1, 2, 3...)，用于 `sub001` 文件命名 |
+| `sub_s_idx`    | `uint16_t`| 1   | 本次小记当前 10MB 自动分卷序号 (1, 2, 3...)，用于 `-001` 分卷命名 |
 | `last_day_int` | `uint32_t`| 0   | 上次记录的本地日期整数 (YYYYMMDD，用于检测跨天午夜清零) |
 | `day_dist`     | `double`  | 0.0 | 当日累计行驶里程 (km) |
 | `man_dist`     | `double`  | 0.0 | 小记累计行驶里程 (km) |
