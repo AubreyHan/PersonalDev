@@ -116,6 +116,7 @@ struct HistoryBuffer {
 };
 
 struct TripStats {
+    uint32_t      startTimeUtc; // UTC epoch when trip started
     double        tripDistanceKm;
     uint32_t      movingDurationSec;
     uint32_t      idleDurationSec;
