@@ -191,6 +191,7 @@ namespace StorageConfig {
     constexpr const char* POWER_LOG_TMP_PATH   = "/tracks/power.tmp";
     constexpr uint32_t    POWER_LOG_MAX_BYTES  = 100 * 1024; // 100 KB hard limit
     constexpr uint32_t    POWER_LOG_TRIM_BYTES = 20 * 1024;  // Prune oldest 20 KB when reaching 100 KB
+    constexpr const char* TRIPS_CSV_PATH       = "/tracks/trips.csv";
 }
 
 namespace UiColors {
