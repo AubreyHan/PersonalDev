@@ -102,50 +102,37 @@ void DeadReckoningService::update() {
         ctx.gnss.isDeadReckoning = false;
     }
 
-    // Update 1Hz Trip distance, moving/idle timers, and speed structure stats
+    // Update 1Hz Trip distance, moving/idle timers, and speed structure stats across all 3 trip tiers
     uint32_t curSec = now / 1000;
     if (curSec != _lastStatSec) {
         uint32_t elapsedSec = curSec - _lastStatSec;
         _lastStatSec = curSec;
 
+        double stepM = 0.0;
         if (spd > MotionPowerConfig::STANDSTILL_HEADING_LOCK_KMH) {
-            ctx.trip.movingDurationSec += elapsedSec;
-            ctx.isVehicleMoving        = true;
             ctx.lastStandstillChangeMs = now;
-
-            if (spd > 80.0f)      ctx.trip.highwaySec += elapsedSec;
-            else if (spd >= 40.0f) ctx.trip.urbanSec  += elapsedSec;
-            else                   ctx.trip.slowSec   += elapsedSec;
-
-            if (spd > ctx.trip.maxSpeedKmh) {
-                ctx.trip.maxSpeedKmh = spd;
-            }
-
-            if (ctx.trip.hasStartAnchor && (gnssValid || ctx.gnss.isDeadReckoning)) {
-                if (ctx.trip.tripDistanceKm == 0.0 && _lastTripLat != ctx.trip.startLatitude) {
-                    _lastTripLat = ctx.trip.startLatitude;
-                    _lastTripLon = ctx.trip.startLongitude;
-                }
-                double dLatM = (lat - _lastTripLat) * 111139.0;
-                double dLonM = (lon - _lastTripLon) * 111139.0 * cos(lat * 0.0174532925);
-                double stepM = sqrt(dLatM * dLatM + dLonM * dLonM);
-                if (stepM >= 2.0 && stepM < 250.0) {
-                    ctx.trip.tripDistanceKm += (stepM * 0.001);
+            if (gnssValid || ctx.gnss.isDeadReckoning) {
+                if (_lastTripLat == 0.0 && _lastTripLon == 0.0) {
                     _lastTripLat = lat;
                     _lastTripLon = lon;
-                    state.unlock();
-                    state.pushTrailPoint(lat, lon, spd);
-                    state.lock();
+                } else {
+                    double dLatM = (lat - _lastTripLat) * 111139.0;
+                    double dLonM = (lon - _lastTripLon) * 111139.0 * cos(lat * 0.0174532925);
+                    stepM = sqrt(dLatM * dLatM + dLonM * dLonM);
+                    if (stepM >= 2.0 && stepM < 250.0) {
+                        _lastTripLat = lat;
+                        _lastTripLon = lon;
+                        state.unlock();
+                        state.pushTrailPoint(lat, lon, spd);
+                        state.lock();
+                    } else {
+                        stepM = 0.0;
+                    }
                 }
             }
-
-            if (ctx.trip.movingDurationSec > 0) {
-                ctx.trip.avgSpeedKmh = (float)((ctx.trip.tripDistanceKm * 3600.0) / (double)ctx.trip.movingDurationSec);
-            }
-        } else {
-            ctx.trip.idleDurationSec += elapsedSec;
-            ctx.isVehicleMoving = false;
         }
+
+        state.updateTripsMotion(spd, elapsedSec, stepM, lat, lon, gnssValid || ctx.gnss.isDeadReckoning);
     }
 
     state.unlock();
