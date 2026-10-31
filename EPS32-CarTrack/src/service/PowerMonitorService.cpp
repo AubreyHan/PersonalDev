@@ -192,7 +192,8 @@ void PowerMonitorService::enterStandstillStandby() {
     _isStandbySleep = true;
     _sustainedMoveStartMs = 0;
 
-    // 1. End active trip recording and close GPX streams
+    // 1. Record Single Trip summary to /tracks/trips.csv and close active GPX streams
+    TrackLogger::instance().recordTripSummary(TRIP_SINGLE);
     TrackLogger::instance().closeActiveStreams();
     SystemState::instance().saveTripStatsToNvs();
 
