@@ -1,6 +1,7 @@
 #include "ui/pages/tools/ToolTfManager.h"
 #include "service/NetworkManager.h"
 #include "service/TrackLogger.h"
+#include "driver/HapticDriver.h"
 
 void ToolTfManager::render(M5Canvas& canvas, const SystemContext& ctx) {
     beginViewport(canvas);
