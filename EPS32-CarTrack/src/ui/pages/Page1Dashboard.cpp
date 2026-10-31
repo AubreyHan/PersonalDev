@@ -152,44 +152,44 @@ void Page1Dashboard::render(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.fillRoundRect(650, 470, 600, 220, 12, UiColors::COLOR_PANEL_BG);
     canvas.drawRoundRect(650, 470, 600, 220, 12, UiColors::COLOR_SECONDARY);
 
-    // 3 Interactive Tabs at Top: [单次 TRIP] [单日 DAY] [小记 SUB]
-    auto drawTab = [&](int x, const char* label, bool active) {
+    // Dynamic Interactive Tabs at Top: [TRIP单次] [DAY单日] (and [SUB小记] only when active)
+    auto drawTab = [&](int x, int w, const char* label, bool active) {
         if (active) {
-            canvas.fillRoundRect(x, 480, 110, 34, 6, 0x0208);
-            canvas.drawRoundRect(x, 480, 110, 34, 6, UiColors::COLOR_PRIMARY);
+            canvas.fillRoundRect(x, 480, w, 34, 6, 0x0208);
+            canvas.drawRoundRect(x, 480, w, 34, 6, UiColors::COLOR_PRIMARY);
             canvas.setTextColor(UiColors::COLOR_PRIMARY);
         } else {
-            canvas.fillRoundRect(x, 480, 110, 34, 6, UiColors::COLOR_CARD_BG);
-            canvas.drawRoundRect(x, 480, 110, 34, 6, UiColors::COLOR_BORDER);
+            canvas.fillRoundRect(x, 480, w, 34, 6, UiColors::COLOR_CARD_BG);
+            canvas.drawRoundRect(x, 480, w, 34, 6, UiColors::COLOR_BORDER);
             canvas.setTextColor(UiColors::COLOR_MUTED);
         }
         canvas.setTextDatum(middle_center);
         canvas.setTextSize(2);
-        canvas.drawString(label, x + 55, 497);
+        canvas.drawString(label, x + w / 2, 497);
     };
 
-    drawTab(665, "TRIP单次", ctx.activeTripCategory == TRIP_SINGLE);
-    drawTab(785, "DAY单日",  ctx.activeTripCategory == TRIP_DAILY);
-    drawTab(905, "SUB小记",  ctx.activeTripCategory == TRIP_MANUAL);
+    if (!ctx.manualTripActive) {
+        // No active sub-trip: Only provide Single & Daily view tabs, plus [+ 小记开始] action button
+        drawTab(665, 130, "TRIP单次", ctx.activeTripCategory == TRIP_SINGLE);
+        drawTab(810, 130, "DAY单日",  ctx.activeTripCategory == TRIP_DAILY);
 
-    // Right Action Area (Y: 480..514)
-    canvas.setTextDatum(middle_center);
-    canvas.setTextSize(2);
-    if (ctx.activeTripCategory == TRIP_MANUAL) {
-        if (ctx.manualTripActive) {
-            canvas.fillRoundRect(1030, 480, 205, 34, 6, UiColors::COLOR_DANGER);
-            canvas.setTextColor(UiColors::COLOR_WHITE);
-            canvas.drawString("STOP 结束", 1132, 497);
-        } else {
-            canvas.fillRoundRect(1030, 480, 205, 34, 6, 0x03E0);
-            canvas.drawRoundRect(1030, 480, 205, 34, 6, UiColors::COLOR_PRIMARY);
-            canvas.setTextColor(UiColors::COLOR_PRIMARY);
-            canvas.drawString("START 开始", 1132, 497);
-        }
+        canvas.fillRoundRect(960, 480, 275, 34, 6, 0x0208);
+        canvas.drawRoundRect(960, 480, 275, 34, 6, UiColors::COLOR_PRIMARY);
+        canvas.setTextDatum(middle_center);
+        canvas.setTextSize(2);
+        canvas.setTextColor(UiColors::COLOR_PRIMARY);
+        canvas.drawString("+ 小记开始", 1097, 497);
     } else {
-        canvas.setTextSize(1);
-        canvas.setTextColor(UiColors::COLOR_MUTED);
-        canvas.drawString("Hold 2s to Zero", 1132, 497);
+        // Active sub-trip: Provide all 3 view tabs, plus [⏹ 小记结束] action button
+        drawTab(665, 105, "TRIP单次", ctx.activeTripCategory == TRIP_SINGLE);
+        drawTab(780, 105, "DAY单日",  ctx.activeTripCategory == TRIP_DAILY);
+        drawTab(895, 105, "SUB小记",  ctx.activeTripCategory == TRIP_MANUAL);
+
+        canvas.fillRoundRect(1015, 480, 220, 34, 6, UiColors::COLOR_DANGER);
+        canvas.setTextDatum(middle_center);
+        canvas.setTextSize(2);
+        canvas.setTextColor(UiColors::COLOR_WHITE);
+        canvas.drawString("⏹ 小记结束", 1125, 497);
     }
 
     // Distance display
@@ -204,13 +204,10 @@ void Page1Dashboard::render(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.setTextDatum(middle_right);
     canvas.setTextSize(2);
     if (ctx.activeTripCategory == TRIP_MANUAL) {
-        if (ctx.manualTripActive) {
-            canvas.setTextColor(UiColors::COLOR_PRIMARY);
-            canvas.drawString("REC ACTIVE", 1230, 545);
-        } else {
-            canvas.setTextColor(UiColors::COLOR_MUTED);
-            canvas.drawString("PAUSED", 1230, 545);
-        }
+        char subBadge[48];
+        snprintf(subBadge, sizeof(subBadge), "SUB #%03u-%03u", ctx.subIndex, ctx.subSplitIndex);
+        canvas.setTextColor(UiColors::COLOR_PRIMARY);
+        canvas.drawString(subBadge, 1230, 545);
     } else if (ctx.activeTripCategory == TRIP_DAILY) {
         canvas.setTextColor(UiColors::COLOR_SECONDARY);
         canvas.drawString("00:00~24:00", 1230, 545);
