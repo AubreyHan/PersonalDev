@@ -225,13 +225,50 @@ bool TrackLogger::openNewTrackPair(const SystemContext& snap, uint16_t y, uint8_
     closeActiveStreams();
     enforceStorageQuota50Percent();
 
-    char wName[40], cName[40];
-    snprintf(wName, sizeof(wName), "W-%04u%02u%02u-%02u%02u%02u.gpx", y, m, d, hh, mm, ss);
-    snprintf(cName, sizeof(cName), "C-%04u%02u%02u-%02u%02u%02u.gpx", y, m, d, hh, mm, ss);
+    char wName[48], cName[48];
+    if (snap.recordTripMode == TRIP_DAILY) {
+        snprintf(wName, sizeof(wName), "W-Day-%04u%02u%02u.gpx", y, m, d);
+        snprintf(cName, sizeof(cName), "C-Day-%04u%02u%02u.gpx", y, m, d);
+    } else if (snap.recordTripMode == TRIP_MANUAL) {
+        snprintf(wName, sizeof(wName), "W-Manual-%04u%02u%02u-%02u%02u%02u.gpx", y, m, d, hh, mm, ss);
+        snprintf(cName, sizeof(cName), "C-Manual-%04u%02u%02u-%02u%02u%02u.gpx", y, m, d, hh, mm, ss);
+    } else {
+        snprintf(wName, sizeof(wName), "W-Single-%04u%02u%02u-%02u%02u%02u.gpx", y, m, d, hh, mm, ss);
+        snprintf(cName, sizeof(cName), "C-Single-%04u%02u%02u-%02u%02u%02u.gpx", y, m, d, hh, mm, ss);
+    }
 
-    char wPath[64], cPath[64];
+    char wPath[72], cPath[72];
     snprintf(wPath, sizeof(wPath), "%s/%s", StorageConfig::TRACKS_DIR, wName);
     snprintf(cPath, sizeof(cPath), "%s/%s", StorageConfig::TRACKS_DIR, cName);
+
+    // If in Daily mode and file already exists for today, append new track segment
+    if (snap.recordTripMode == TRIP_DAILY && _sd.exists(wPath) && _sd.exists(cPath)) {
+        if (_fileWgs.open(wPath, O_RDWR) && _fileGcj.open(cPath, O_RDWR)) {
+            const char* footer = "    </trkseg>\n  </trk>\n</gpx>\n";
+            const char* segTag = "    </trkseg>\n    <trkseg>\n    </trkseg>\n  </trk>\n</gpx>\n";
+            if (_fileWgs.fileSize() > strlen(footer)) {
+                _fileWgs.seekSet(_fileWgs.fileSize() - strlen(footer));
+                _fileWgs.write(segTag, strlen(segTag));
+                _fileWgs.sync();
+            }
+            if (_fileGcj.fileSize() > strlen(footer)) {
+                _fileGcj.seekSet(_fileGcj.fileSize() - strlen(footer));
+                _fileGcj.write(segTag, strlen(segTag));
+                _fileGcj.sync();
+            }
+            _recording       = true;
+            _pointsInFile    = 0;
+            _pointsSinceSync = 0;
+            SystemState& state = SystemState::instance();
+            state.lock();
+            auto& st = state.getContextUnsafe().storage;
+            st.isRecording = true;
+            strncpy(st.currentWgsFile, wName, sizeof(st.currentWgsFile) - 1);
+            strncpy(st.currentGcjFile, cName, sizeof(st.currentGcjFile) - 1);
+            state.unlock();
+            return true;
+        }
+    }
 
     if (!_fileWgs.open(wPath, O_RDWR | O_CREAT | O_TRUNC) ||
         !_fileGcj.open(cPath, O_RDWR | O_CREAT | O_TRUNC)) {
