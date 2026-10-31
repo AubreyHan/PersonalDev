@@ -9,6 +9,7 @@ public:
     void update();
     static float lookupOcvSocPercent(float busVoltV);
     bool isSleeping() const { return _isStandbySleep; }
+    void wakeFromStandby(const char* reason = "Screen touch detected");
 
 private:
     void enterStandstillStandby();
