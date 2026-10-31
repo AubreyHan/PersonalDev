@@ -28,6 +28,8 @@ public:
     size_t listTrackFiles(TrackFileEntry* outList, size_t maxEntries);
     bool openFileForRead(const char* filename, FsFile& outFile);
     bool logPowerEvent(const char* eventType, const char* details);
+    bool recordTripSummary(TripCategory category);
+    void formatEpochToLocalTime(uint32_t epochSec, char* outBuf, size_t maxLen);
     void lockSd() { if (_sdMutex) xSemaphoreTakeRecursive(_sdMutex, portMAX_DELAY); }
     void unlockSd() { if (_sdMutex) xSemaphoreGiveRecursive(_sdMutex); }
 
