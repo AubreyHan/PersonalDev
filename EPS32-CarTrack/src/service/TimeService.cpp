@@ -221,6 +221,22 @@ void TimeService::update() {
             syncFromNtpWhenNoGps();
         }
     }
+
+    // 3. Check 00:00 midnight daily rollover in local GPS timezone
+    uint16_t lYr; uint8_t lMo, lDy, lH, lM, lS, lWd;
+    state.lock();
+    int16_t tzMin = state.getContextUnsafe().clocks[0].tzOffsetMinutes;
+    bool autoDst  = state.getContextUnsafe().clocks[0].autoDst;
+    state.unlock();
+    getLocalTimeParts(tzMin, autoDst, lYr, lMo, lDy, lH, lM, lS, lWd);
+    uint32_t currentLocalDateInt = (uint32_t)lYr * 10000 + (uint32_t)lMo * 100 + (uint32_t)lDy;
+    state.checkDailyMidnightRollover(currentLocalDateInt);
+
+    // 4. Save persistent Trip Stats (Daily & Manual) every 5 minutes
+    if (now - _lastTripSaveMs >= 300000 || _lastTripSaveMs == 0) {
+        _lastTripSaveMs = now;
+        state.saveTripStatsToNvs();
+    }
 }
 
 // Calculate exact US/EU Daylight Saving Time (DST)
