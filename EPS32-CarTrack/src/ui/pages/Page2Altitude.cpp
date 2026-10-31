@@ -128,3 +128,37 @@ void Page2Altitude::render(M5Canvas& canvas, const SystemContext& ctx) {
 
     endViewport(canvas);
 }
+
+bool Page2Altitude::onTouchTap(int16_t x, int16_t y, SystemContext& ctx) {
+    if (y >= 20 && y <= 68) {
+        if (!ctx.manualTripActive) {
+            if (x >= 585 && x <= 705) {
+                SystemState::instance().switchActiveTripCategory(TRIP_SINGLE);
+                HapticDriver::instance().triggerShortPulse(50);
+                return true;
+            }
+            if (x >= 710 && x <= 830) {
+                SystemState::instance().switchActiveTripCategory(TRIP_DAILY);
+                HapticDriver::instance().triggerShortPulse(50);
+                return true;
+            }
+        } else {
+            if (x >= 555 && x <= 665) {
+                SystemState::instance().switchActiveTripCategory(TRIP_SINGLE);
+                HapticDriver::instance().triggerShortPulse(50);
+                return true;
+            }
+            if (x >= 665 && x <= 775) {
+                SystemState::instance().switchActiveTripCategory(TRIP_DAILY);
+                HapticDriver::instance().triggerShortPulse(50);
+                return true;
+            }
+            if (x >= 775 && x <= 885) {
+                SystemState::instance().switchActiveTripCategory(TRIP_MANUAL);
+                HapticDriver::instance().triggerShortPulse(50);
+                return true;
+            }
+        }
+    }
+    return false;
+}
