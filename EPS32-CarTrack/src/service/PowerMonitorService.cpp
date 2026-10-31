@@ -194,6 +194,7 @@ void PowerMonitorService::enterStandstillStandby() {
 
     // 1. End active trip recording and close GPX streams
     TrackLogger::instance().closeActiveStreams();
+    SystemState::instance().saveTripStatsToNvs();
 
     SystemState& state = SystemState::instance();
     state.lock();
