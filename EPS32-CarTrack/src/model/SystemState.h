@@ -547,6 +547,10 @@ inline void SystemState::triggerFullTripReset() {
 inline void SystemState::switchActiveTripCategory(TripCategory category) {
     lock();
     if (category < TRIP_CATEGORY_COUNT) {
+        // If manual sub-trip is not active, fallback to TRIP_SINGLE
+        if (category == TRIP_MANUAL && !_ctx.manualTripActive) {
+            category = TRIP_SINGLE;
+        }
         _ctx.activeTripCategory = category;
         _ctx.trip = _ctx.trips[category];
         Preferences prefs;
@@ -560,31 +564,96 @@ inline void SystemState::switchActiveTripCategory(TripCategory category) {
 
 inline void SystemState::cycleActiveTripCategory() {
     lock();
-    TripCategory nextCat = (TripCategory)((_ctx.activeTripCategory + 1) % TRIP_CATEGORY_COUNT);
+    TripCategory nextCat;
+    if (_ctx.manualTripActive) {
+        nextCat = (TripCategory)((_ctx.activeTripCategory + 1) % TRIP_CATEGORY_COUNT);
+    } else {
+        // Only cycle between TRIP_SINGLE and TRIP_DAILY when no active sub-trip
+        nextCat = (_ctx.activeTripCategory == TRIP_SINGLE) ? TRIP_DAILY : TRIP_SINGLE;
+    }
     switchActiveTripCategory(nextCat);
     unlock();
 }
 
-inline void SystemState::toggleManualTrip() {
+inline void SystemState::startManualTrip() {
     lock();
-    _ctx.manualTripActive = !_ctx.manualTripActive;
-    if (_ctx.manualTripActive) {
-        if (!_ctx.trips[TRIP_MANUAL].hasStartAnchor && _ctx.gnss.isValid) {
-            _ctx.trips[TRIP_MANUAL].startLatitude = _ctx.gnss.latitude;
-            _ctx.trips[TRIP_MANUAL].startLongitude = _ctx.gnss.longitude;
-            _ctx.trips[TRIP_MANUAL].hasStartAnchor = true;
-        }
-        if (_ctx.recordTripMode == TRIP_MANUAL) {
-            _ctx.storage.requestNewSegment = true;
-        }
+    _ctx.manualTripActive = true;
+    _ctx.subIndex++;
+    if (_ctx.subIndex == 0) _ctx.subIndex = 1;
+    _ctx.subSplitIndex = 1;
+
+    // Reset manual trip statistics for fresh sub-trip
+    float curAlt = _ctx.trip.currentAltitudeM;
+    float curSpd = _ctx.gnss.speedKmh;
+    double curLat = _ctx.gnss.latitude;
+    double curLon = _ctx.gnss.longitude;
+    bool hasFix = _ctx.gnss.isValid;
+
+    TripStats& t = _ctx.trips[TRIP_MANUAL];
+    t.tripDistanceKm = 0.0;
+    t.movingDurationSec = 0;
+    t.idleDurationSec = 0;
+    t.highwaySec = 0;
+    t.urbanSec = 0;
+    t.slowSec = 0;
+    t.maxAltitudeM = curAlt;
+    t.minAltitudeM = curAlt;
+    t.cumulativeClimbM = 0.0;
+    t.verticalSpeedMps = 0.0f;
+    t.altitudeHistory.reset();
+    t.altitudeHistory.push(curAlt);
+    t.maxSpeedKmh = curSpd;
+    t.avgSpeedKmh = curSpd;
+    t.speedHistory.reset();
+    t.speedHistory.push(curSpd);
+    t.maxLateralG = 0.0f;
+    t.maxLongitudinalG = 0.0f;
+
+    if (hasFix && curLat != 0.0 && curLon != 0.0) {
+        t.startLatitude = curLat;
+        t.startLongitude = curLon;
+        t.hasStartAnchor = true;
+    } else {
+        t.hasStartAnchor = false;
     }
+
+    _ctx.activeTripCategory = TRIP_MANUAL;
+    _ctx.trip = _ctx.trips[TRIP_MANUAL];
+
     Preferences prefs;
     if (prefs.begin("m5track", false)) {
-        prefs.putBool("man_trip_act", _ctx.manualTripActive);
+        prefs.putBool("man_trip_act", true);
+        prefs.putUShort("sub_idx", _ctx.subIndex);
+        prefs.putUShort("sub_s_idx", _ctx.subSplitIndex);
+        prefs.putUChar("act_trip_view", (uint8_t)TRIP_MANUAL);
         prefs.end();
     }
-    _ctx.trip = _ctx.trips[_ctx.activeTripCategory];
     unlock();
+}
+
+inline void SystemState::stopManualTrip() {
+    lock();
+    _ctx.manualTripActive = false;
+    if (_ctx.activeTripCategory == TRIP_MANUAL) {
+        _ctx.activeTripCategory = TRIP_SINGLE;
+    }
+    _ctx.trip = _ctx.trips[_ctx.activeTripCategory];
+
+    Preferences prefs;
+    if (prefs.begin("m5track", false)) {
+        prefs.putBool("man_trip_act", false);
+        prefs.putUChar("act_trip_view", (uint8_t)_ctx.activeTripCategory);
+        prefs.end();
+    }
+    unlock();
+}
+
+inline void SystemState::toggleManualTrip() {
+    if (_ctx.manualTripActive) {
+        stopManualTrip();
+    } else {
+        startManualTrip();
+    }
 }
 
 inline void SystemState::setRecordTripMode(TripCategory mode) {
