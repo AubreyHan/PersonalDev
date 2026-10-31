@@ -223,7 +223,7 @@ bool ToolOneDrive::onTouchTap(int16_t x, int16_t y, SystemContext& ctx) {
                     OneDriveSyncService::instance().startDeviceLogin();
                     HapticDriver::instance().triggerShortPulse(80);
                 } else {
-                    HapticDriver::instance().triggerErrorPattern();
+                    HapticDriver::instance().triggerAlertBeep();
                 }
                 return true;
             }
@@ -235,7 +235,7 @@ bool ToolOneDrive::onTouchTap(int16_t x, int16_t y, SystemContext& ctx) {
                 OneDriveSyncService::instance().triggerManualSync();
                 HapticDriver::instance().triggerShortPulse(80);
             } else {
-                HapticDriver::instance().triggerErrorPattern();
+                HapticDriver::instance().triggerAlertBeep();
             }
             return true;
         }
@@ -256,7 +256,7 @@ bool ToolOneDrive::onTouchTap(int16_t x, int16_t y, SystemContext& ctx) {
             } else {
                 _confirmUnbind = false;
                 OneDriveSyncService::instance().unbindAccount();
-                HapticDriver::instance().triggerDoublePulse();
+                HapticDriver::instance().triggerShortPulse(120);
             }
             return true;
         }
