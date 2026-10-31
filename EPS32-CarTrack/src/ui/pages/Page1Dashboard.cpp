@@ -1,5 +1,6 @@
 #include "ui/pages/Page1Dashboard.h"
 #include "driver/HapticDriver.h"
+#include "service/TrackLogger.h"
 #include <math.h>
 
 static const char* headingCardinal(float deg) {
