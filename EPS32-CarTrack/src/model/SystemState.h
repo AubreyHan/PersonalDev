@@ -376,6 +376,13 @@ public:
             _ctx.weather.hourly[i].precipProb = (i >= 2 && i <= 4) ? 75 : 5;
             _ctx.weather.hourly[i].weatherCode = (i >= 2 && i <= 4) ? 61 : 1;
         }
+
+        _ctx.activeTripCategory = TRIP_SINGLE;
+        _ctx.recordTripMode     = TRIP_SINGLE;
+        _ctx.manualTripActive   = false;
+        _ctx.lastLocalDateInt   = 0;
+        loadTripStatsFromNvs();
+
         unlock();
     }
 
