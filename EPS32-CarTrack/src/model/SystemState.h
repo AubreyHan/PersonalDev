@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include <Preferences.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include "config.h"
@@ -139,6 +140,13 @@ struct TripStats {
 
     HistoryBuffer altitudeHistory;
     HistoryBuffer speedHistory;
+};
+
+enum TripCategory : uint8_t {
+    TRIP_SINGLE = 0, // 1. 单次行程：每次通电（唤醒）下电（休眠或手工清零）
+    TRIP_DAILY  = 1, // 2. 单日行程：每天 0 点到 24 点
+    TRIP_MANUAL = 2, // 3. 小记行程：手工开始和结束
+    TRIP_CATEGORY_COUNT = 3
 };
 
 struct FullTripResetPayload {
@@ -300,7 +308,12 @@ struct SystemContext {
     DualImuStatus        imu;
     BaroData             baro;
     PowerMonitorData     power;
-    TripStats            trip;
+    TripStats            trip;              // Active trip displayed on Dashboard/HUD
+    TripStats            trips[TRIP_CATEGORY_COUNT]; // Independent stats for [0]: Single, [1]: Daily, [2]: Manual
+    TripCategory         activeTripCategory;// Which trip category is currently displayed
+    TripCategory         recordTripMode;    // Which trip mode governs GPX track file grouping
+    bool                 manualTripActive;  // Whether manual trip is actively recording
+    uint32_t             lastLocalDateInt;  // YYYYMMDD in local GPS timezone for daily rollover
     WeatherData          weather;
     StorageStatus        storage;
     WifiStatus           wifi;
