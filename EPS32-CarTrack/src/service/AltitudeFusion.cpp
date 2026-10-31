@@ -55,33 +55,25 @@ void AltitudeFusion::update() {
         }
     }
 
-    ctx.baro.fusedAltitudeM   = _fusedAltitudeM;
-    ctx.trip.currentAltitudeM = _fusedAltitudeM;
+    ctx.baro.fusedAltitudeM = _fusedAltitudeM;
 
-    if (_initialized) {
-        if (ctx.trip.maxAltitudeM == 0.0f && ctx.trip.minAltitudeM == 0.0f) {
-            ctx.trip.maxAltitudeM = _fusedAltitudeM;
-            ctx.trip.minAltitudeM = _fusedAltitudeM;
-        } else {
-            if (_fusedAltitudeM > ctx.trip.maxAltitudeM) ctx.trip.maxAltitudeM = _fusedAltitudeM;
-            if (_fusedAltitudeM < ctx.trip.minAltitudeM) ctx.trip.minAltitudeM = _fusedAltitudeM;
-        }
-    }
+    float dClimb = 0.0f;
+    float dtCalc = 0.0f;
+    float slopePctCalc = ctx.trip.roadSlopePercent;
 
     uint32_t now = millis();
     if (now - _lastVerticalSampleMs >= 1000) {
-        float dt = (now - _lastVerticalSampleMs) * 0.001f;
+        dtCalc = (now - _lastVerticalSampleMs) * 0.001f;
         _lastVerticalSampleMs = now;
 
         float dAlt = _fusedAltitudeM - _lastAltitudeM;
         _lastAltitudeM = _fusedAltitudeM;
-        ctx.trip.verticalSpeedMps = dAlt / dt;
 
         if (dAlt > 0.35f && ctx.gnss.speedKmh > 2.0f) {
-            ctx.trip.cumulativeClimbM += dAlt;
+            dClimb = dAlt;
         }
 
-        // Road slope % calculation when vehicle moves >= 10m
+        // Road slope % calculation when vehicle moves >= 15m
         if (ctx.gnss.isValid && ctx.gnss.speedKmh > 3.0f) {
             if (_lastSlopeLat == 0.0 && _lastSlopeLon == 0.0) {
                 _lastSlopeLat  = ctx.gnss.latitude;
@@ -93,26 +85,29 @@ void AltitudeFusion::update() {
                 double horizDist = sqrt(dLatM * dLatM + dLonM * dLonM);
                 if (horizDist >= 15.0) {
                     float dH = _fusedAltitudeM - _lastSlopeAltM;
-                    float slopePct = (float)(dH / horizDist) * 100.0f;
-                    if (slopePct > 35.0f)  slopePct = 35.0f;
-                    if (slopePct < -35.0f) slopePct = -35.0f;
-                    ctx.trip.roadSlopePercent = ctx.trip.roadSlopePercent * 0.6f + slopePct * 0.4f;
+                    float rawSlope = (float)(dH / horizDist) * 100.0f;
+                    if (rawSlope > 35.0f)  rawSlope = 35.0f;
+                    if (rawSlope < -35.0f) rawSlope = -35.0f;
+                    slopePctCalc = rawSlope;
 
                     _lastSlopeLat  = ctx.gnss.latitude;
                     _lastSlopeLon  = ctx.gnss.longitude;
                     _lastSlopeAltM = _fusedAltitudeM;
                 }
             }
-        } else if (ctx.gnss.speedKmh <= MotionPowerConfig::STANDSTILL_HEADING_LOCK_KMH) {
-            // ZUPT standstill slope lock
         }
     }
+
+    state.updateTripsAltitude(_fusedAltitudeM, dClimb, dtCalc, slopePctCalc);
 
     // Push 1-hour history sample every 30 seconds (120 points = 60 minutes)
     if (now - _lastHistoryPushMs >= 30000 || ctx.trip.altitudeHistory.count == 0) {
         _lastHistoryPushMs = now;
-        ctx.trip.altitudeHistory.push(_fusedAltitudeM);
-        ctx.trip.speedHistory.push(ctx.gnss.speedKmh);
+        for (int i = 0; i < TRIP_CATEGORY_COUNT; i++) {
+            ctx.trips[i].altitudeHistory.push(_fusedAltitudeM);
+            ctx.trips[i].speedHistory.push(ctx.gnss.speedKmh);
+        }
+        ctx.trip = ctx.trips[ctx.activeTripCategory];
     }
 
     state.unlock();
