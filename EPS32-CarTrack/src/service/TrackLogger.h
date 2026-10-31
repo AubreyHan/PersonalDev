@@ -4,7 +4,7 @@
 #include "model/SystemState.h"
 
 struct TrackFileEntry {
-    char     name[44];
+    char     name[64];
     uint32_t sizeBytes;
     bool     isGcj02;
 };
@@ -42,7 +42,8 @@ private:
         _sdMutex = xSemaphoreCreateRecursiveMutex();
     }
 
-    bool openOrAppendGpx(FsFile& wgsFile, FsFile& gcjFile, const char* wName, const char* cName,
+    bool openOrAppendGpx(FsFile& wgsFile, FsFile& gcjFile, const char* dirPath,
+                         const char* wName, const char* cName,
                          uint16_t y, uint8_t m, uint8_t d, uint8_t hh, uint8_t mm, uint8_t ss,
                          bool isContinuation);
     void appendTrackPoint(FsFile& file, double lat, double lon, const SystemContext& snap,

@@ -363,6 +363,7 @@ public:
         _ctx.power.busVoltageV = 8.15f;
         _ctx.power.hasExternalPower = true;
         _ctx.power.uiDisplayColor = PowerColorConfig::COLOR_EXTERNAL_POWER_GREEN;
+        _ctx.onedrive.autoSyncEnabled = true;
 
         // Default 4 World Clock cards per PRD 3.3 Page 7
         strncpy(_ctx.clocks[0].cityName, "Beijing", sizeof(_ctx.clocks[0].cityName) - 1);
