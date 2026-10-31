@@ -93,6 +93,33 @@ void Page4Trail::render(M5Canvas& canvas, const SystemContext& ctx) {
     snprintf(tlBuf, sizeof(tlBuf), "  To Start: %.2f km (%03.0f deg)", distStartKm, retBearing);
     canvas.drawString(tlBuf, 195, 41);
 
+    // Top-Center Capsule: Dynamic Interactive Trip View Switcher [TRIP单次] [DAY单日] (and [SUB小记] when active)
+    canvas.fillRoundRect(630, 18, 275, 46, 23, UiColors::COLOR_PANEL_BG);
+    canvas.drawRoundRect(630, 18, 275, 46, 23, UiColors::COLOR_BORDER);
+
+    auto drawTrailTab = [&](int x, int w, const char* label, bool active) {
+        if (active) {
+            canvas.fillRoundRect(x, 24, w, 34, 17, 0x0208);
+            canvas.drawRoundRect(x, 24, w, 34, 17, UiColors::COLOR_PRIMARY);
+            canvas.setTextColor(UiColors::COLOR_PRIMARY);
+        } else {
+            canvas.fillRoundRect(x, 24, w, 34, 17, UiColors::COLOR_CARD_BG);
+            canvas.setTextColor(UiColors::COLOR_MUTED);
+        }
+        canvas.setTextDatum(middle_center);
+        canvas.setTextSize(2);
+        canvas.drawString(label, x + w / 2, 41);
+    };
+
+    if (!ctx.manualTripActive) {
+        drawTrailTab(638, 126, "TRIP单次", ctx.activeTripCategory == TRIP_SINGLE);
+        drawTrailTab(770, 126, "DAY单日",  ctx.activeTripCategory == TRIP_DAILY);
+    } else {
+        drawTrailTab(636, 84, "TRIP单次", ctx.activeTripCategory == TRIP_SINGLE);
+        drawTrailTab(725, 84, "DAY单日",  ctx.activeTripCategory == TRIP_DAILY);
+        drawTrailTab(814, 84, "SUB小记",  ctx.activeTripCategory == TRIP_MANUAL);
+    }
+
     // Top-Right Capsule: Full-Bleed Panorama vs 5km Follow Toggle
     canvas.fillRoundRect(920, 18, 340, 46, 23, UiColors::COLOR_PANEL_BG);
     canvas.drawRoundRect(920, 18, 340, 46, 23, UiColors::COLOR_SECONDARY);
@@ -126,6 +153,38 @@ void Page4Trail::render(M5Canvas& canvas, const SystemContext& ctx) {
 }
 
 bool Page4Trail::onTouchTap(int16_t x, int16_t y, SystemContext& ctx) {
+    // Top-Center Trip View Switcher Capsule (X: 630..905, Y: 18..64)
+    if (y >= 18 && y <= 64) {
+        if (!ctx.manualTripActive) {
+            if (x >= 635 && x <= 765) {
+                SystemState::instance().switchActiveTripCategory(TRIP_SINGLE);
+                HapticDriver::instance().triggerShortPulse(50);
+                return true;
+            }
+            if (x >= 765 && x <= 900) {
+                SystemState::instance().switchActiveTripCategory(TRIP_DAILY);
+                HapticDriver::instance().triggerShortPulse(50);
+                return true;
+            }
+        } else {
+            if (x >= 635 && x <= 722) {
+                SystemState::instance().switchActiveTripCategory(TRIP_SINGLE);
+                HapticDriver::instance().triggerShortPulse(50);
+                return true;
+            }
+            if (x >= 722 && x <= 810) {
+                SystemState::instance().switchActiveTripCategory(TRIP_DAILY);
+                HapticDriver::instance().triggerShortPulse(50);
+                return true;
+            }
+            if (x >= 810 && x <= 900) {
+                SystemState::instance().switchActiveTripCategory(TRIP_MANUAL);
+                HapticDriver::instance().triggerShortPulse(50);
+                return true;
+            }
+        }
+    }
+
     // Top-Right Mode Toggle Capsule (X: 920..1260, Y: 18..64)
     if (x >= 920 && x <= 1260 && y >= 18 && y <= 64) {
         _followMode5Km = !_followMode5Km;
