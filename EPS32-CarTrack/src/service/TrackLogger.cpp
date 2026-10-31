@@ -749,3 +749,103 @@ bool TrackLogger::logPowerEvent(const char* eventType, const char* details) {
     Serial.printf("[POWER_LOG] %s", line);
     return true;
 }
+
+void TrackLogger::formatEpochToLocalTime(uint32_t epochSec, char* outBuf, size_t maxLen) {
+    if (!outBuf || maxLen == 0) return;
+    if (epochSec < 1704067200) {
+        epochSec = (uint32_t)time(nullptr);
+        if (epochSec < 1704067200) {
+            epochSec = 1793342128 + (millis() / 1000);
+        }
+    }
+    SystemState& state = SystemState::instance();
+    state.lock();
+    int16_t tzMin = state.getContextUnsafe().clocks[0].tzOffsetMinutes;
+    state.unlock();
+
+    time_t localSec = (time_t)epochSec + (tzMin * 60);
+    struct tm tmLocal;
+    gmtime_r(&localSec, &tmLocal);
+
+    snprintf(outBuf, maxLen, "%04u-%02u-%02u %02u:%02u:%02u",
+             tmLocal.tm_year + 1900, tmLocal.tm_mon + 1, tmLocal.tm_mday,
+             tmLocal.tm_hour, tmLocal.tm_min, tmLocal.tm_sec);
+}
+
+bool TrackLogger::recordTripSummary(TripCategory category) {
+    if (!_mounted) return false;
+
+    SystemState& state = SystemState::instance();
+    state.lock();
+    TripStats stats = state.getContextUnsafe().trips[category];
+    char gpxName[48] = {0};
+    char catStr[24] = {0};
+
+    if (category == TRIP_SINGLE) {
+        strncpy(catStr, "SINGLE", sizeof(catStr) - 1);
+        strncpy(gpxName, state.getContextUnsafe().storage.currentWgsFile, sizeof(gpxName) - 1);
+    } else if (category == TRIP_DAILY) {
+        strncpy(catStr, "DAILY", sizeof(catStr) - 1);
+        strncpy(gpxName, state.getContextUnsafe().storage.currentDailyFile, sizeof(gpxName) - 1);
+    } else {
+        snprintf(catStr, sizeof(catStr), "SUB-%03u", state.getContextUnsafe().subIndex);
+        strncpy(gpxName, state.getContextUnsafe().storage.currentSubFile, sizeof(gpxName) - 1);
+    }
+    state.unlock();
+
+    // Avoid logging trivial empty trips (<50 meters and <10 seconds drive time)
+    if (stats.tripDistanceKm < 0.05 && stats.movingDurationSec < 10) {
+        return false;
+    }
+
+    lockSd();
+    char startStr[32], endStr[32];
+    formatEpochToLocalTime(stats.startTimeUtc, startStr, sizeof(startStr));
+    formatEpochToLocalTime(0, endStr, sizeof(endStr)); // current time
+
+    uint32_t mTot = stats.movingDurationSec;
+    uint32_t mH = mTot / 3600, mM = (mTot % 3600) / 60, mS = mTot % 60;
+    uint32_t iTot = stats.idleDurationSec;
+    uint32_t iH = iTot / 3600, iM = (iTot % 3600) / 60, iS = iTot % 60;
+
+    const char* gpx = (gpxName[0] != '\0') ? gpxName : "None";
+
+    if (!_sd.exists(StorageConfig::TRACKS_DIR)) {
+        _sd.mkdir(StorageConfig::TRACKS_DIR);
+    }
+
+    bool exists = _sd.exists(StorageConfig::TRIPS_CSV_PATH);
+    FsFile file;
+    if (!file.open(StorageConfig::TRIPS_CSV_PATH, O_RDWR | O_CREAT | O_APPEND)) {
+        unlockSd();
+        return false;
+    }
+
+    if (!exists || file.fileSize() == 0) {
+        const char* header = "Start Time,End Time,Category,Distance(km),Drive Time,Idle Time,Avg Speed(km/h),Max Speed(km/h),Climb(m),Max Alt(m),Min Alt(m),Max Lat G,Max Long G,GPX File\n";
+        file.write((const uint8_t*)header, strlen(header));
+    }
+
+    char row[256];
+    snprintf(row, sizeof(row),
+        "%s,%s,%s,%.2f,%02u:%02u:%02u,%02u:%02u:%02u,%.1f,%.1f,%.0f,%.1f,%.1f,%.2f,%.2f,%s\n",
+        startStr, endStr, catStr,
+        stats.tripDistanceKm,
+        mH, mM, mS,
+        iH, iM, iS,
+        stats.avgSpeedKmh, stats.maxSpeedKmh,
+        stats.cumulativeClimbM,
+        stats.maxAltitudeM, stats.minAltitudeM,
+        stats.maxLateralG, stats.maxLongitudinalG,
+        gpx);
+
+    file.write((const uint8_t*)row, strlen(row));
+    file.sync();
+    file.close();
+
+    Serial.printf("[TRIP-LOG] Saved to %s: [%s] %.2f km, Drive %02u:%02u:%02u, GPX: %s\n",
+                  StorageConfig::TRIPS_CSV_PATH, catStr, stats.tripDistanceKm, mH, mM, mS, gpx);
+
+    unlockSd();
+    return true;
+}
