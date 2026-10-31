@@ -622,3 +622,41 @@ enum TripCategory : uint8_t {
   - 在 Page 1 仪表盘提供专属 `[+ 小记开始]` 触控按键；
   - 当点击开启小记后，`manualTripActive` 转为 `true`，全系统所有对应页面动态呈现 `[SUB小记]` 切换按钮，Page 1 操作按键变为 `[⏹ 小记结束]`，并自动切入 `TRIP_MANUAL` 视图；
   - 当点击结束小记后，小记安全封口，视图回退至 `TRIP_SINGLE`，`[SUB小记]` 按钮在所有页面再次自动隐藏。
+
+---
+
+## 9. TF 卡历史行程流水日志技术规范 (Historical Trip Journal: `/tracks/trips.csv`)
+
+### 9.1 文件路径与数据格式
+- **目标路径**：`/tracks/trips.csv`（MicroSD 卡根目录 `/tracks` 下）；
+- **文件编码**：标准 UTF-8，逗号分隔，首行为固定字段标头；
+- **首行标头契约**：
+  ```csv
+  Start Time,End Time,Category,Distance(km),Drive Time,Idle Time,Avg Speed(km/h),Max Speed(km/h),Climb(m),Max Alt(m),Min Alt(m),Max Lat G,Max Long G,GPX File
+  ```
+
+### 9.2 字段说明与格式
+| 字段序号 | 字段名 | 格式 | 含义说明 |
+| :--- | :--- | :--- | :--- |
+| 1 | `Start Time` | `YYYY-MM-DD HH:MM:SS` | 行程起步时间（依据车辆 GPS 定位推算的本地时区时间） |
+| 2 | `End Time` | `YYYY-MM-DD HH:MM:SS` | 行程归档结算时间（本地时区时间） |
+| 3 | `Category` | 字符串 | 行程类别标识（`SINGLE` / `DAILY` / `SUB-001` 等） |
+| 4 | `Distance(km)` | `%.2f` | 本次行程累计行驶距离（千米） |
+| 5 | `Drive Time` | `HH:MM:SS` | 纯车动有效驾驶时间 |
+| 6 | `Idle Time` | `HH:MM:SS` | 怠速停驶时间（等红灯、拥堵） |
+| 7 | `Avg Speed(km/h)` | `%.1f` | 纯行驶平均速度 |
+| 8 | `Max Speed(km/h)` | `%.1f` | 最高车速极值 |
+| 9 | `Climb(m)` | `%.0f` | 累计爬升高度（米） |
+| 10 | `Max Alt(m)` | `%.1f` | 最高海拔极值（米） |
+| 11 | `Min Alt(m)` | `%.1f` | 最低海拔极值（米） |
+| 12 | `Max Lat G` | `%.2f` | 极限横向离心 G 值 |
+| 13 | `Max Long G` | `%.2f` | 极限纵向制动/加速 G 值 |
+| 14 | `GPX File` | 字符串 | 本行程关联的轨迹源文件名称（如 `W-20261101-073000.gpx`） |
+
+### 9.3 结算写入触发时机与防抖规则
+1. **触发时机**：
+   - **单次行程**：车辆熄火或连续静止满 20 分钟切入低功耗休眠前自动追加写入；或驾驶员在仪表盘右下角长按 2 秒全链路归零瞬间追加写入；
+   - **单日行程**：每日午夜 00:00:00 跨天清零前自动追加写入当日全天汇总；
+   - **小记行程**：驾驶员点击【⏹ 小记结束】结算归档瞬间追加写入；
+2. **防抖过滤规则**：
+   - 若 `tripDistanceKm < 0.05` 且 `movingDurationSec < 10`（如原地挪车、误触启停），判定为空跑，自动忽略不追加，保持日志整洁有效。
