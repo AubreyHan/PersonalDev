@@ -553,6 +553,12 @@ littlefs, data, spiffs,  0xc90000,0x300000,
 | `last_lat_e7`  | `int32_t` | 0   | 熄火断电时最后已知有效纬度 (*1e7)，用于地库开机极速温启动 |
 | `last_lon_e7`  | `int32_t` | 0   | 熄火断电时最后已知有效经度 (*1e7) |
 | `last_alt_cm`  | `int32_t` | 0   | 熄火断电时最后已知海拔高程 (厘米) |
+| `rec_trip_mode`| `uint8_t` | 0   | 轨迹分卷记录模式 (0: 单次切卷, 1: 单日归档, 2: 小记专属) |
+| `act_trip_view`| `uint8_t` | 0   | 仪表盘当前查看的行程类别 (0: 单次, 1: 单日, 2: 小记) |
+| `man_trip_act` | `bool`    | false | 小记行程是否处于活动记录状态 |
+| `last_day_int` | `uint32_t`| 0   | 上次记录的本地日期整数 (YYYYMMDD，用于检测跨天午夜清零) |
+| `day_dist`     | `double`  | 0.0 | 当日累计行驶里程 (km) |
+| `man_dist`     | `double`  | 0.0 | 小记累计行驶里程 (km) |
 
 ---
 
