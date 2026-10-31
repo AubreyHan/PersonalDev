@@ -1,4 +1,5 @@
 #include "ui/pages/Page2Altitude.h"
+#include "driver/HapticDriver.h"
 #include <math.h>
 
 void Page2Altitude::render(M5Canvas& canvas, const SystemContext& ctx) {
@@ -13,6 +14,32 @@ void Page2Altitude::render(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.setTextColor(UiColors::COLOR_MUTED);
     canvas.drawString("CURRENT ALTITUDE (BMP280 + GNSS Fused)", 210, 34);
 
+    // Dynamic Interactive Trip View Tabs: [单次 TRIP] [单日 DAY] (and [SUB小记] only when active)
+    auto drawTripTab = [&](int x, int w, const char* label, bool active) {
+        if (active) {
+            canvas.fillRoundRect(x, 28, w, 32, 6, 0x0208);
+            canvas.drawRoundRect(x, 28, w, 32, 6, UiColors::COLOR_PRIMARY);
+            canvas.setTextColor(UiColors::COLOR_PRIMARY);
+        } else {
+            canvas.fillRoundRect(x, 28, w, 32, 6, UiColors::COLOR_CARD_BG);
+            canvas.drawRoundRect(x, 28, w, 32, 6, UiColors::COLOR_BORDER);
+            canvas.setTextColor(UiColors::COLOR_MUTED);
+        }
+        canvas.setTextDatum(middle_center);
+        canvas.setTextSize(2);
+        canvas.drawString(label, x + w / 2, 44);
+    };
+
+    if (!ctx.manualTripActive) {
+        drawTripTab(590, 110, "TRIP单次", ctx.activeTripCategory == TRIP_SINGLE);
+        drawTripTab(715, 110, "DAY单日",  ctx.activeTripCategory == TRIP_DAILY);
+    } else {
+        drawTripTab(560, 100, "TRIP单次", ctx.activeTripCategory == TRIP_SINGLE);
+        drawTripTab(670, 100, "DAY单日",  ctx.activeTripCategory == TRIP_DAILY);
+        drawTripTab(780, 100, "SUB小记",  ctx.activeTripCategory == TRIP_MANUAL);
+    }
+
+    canvas.setTextDatum(top_left);
     canvas.setTextSize(5);
     canvas.setTextColor(UiColors::COLOR_PRIMARY);
     char altBuf[32];
