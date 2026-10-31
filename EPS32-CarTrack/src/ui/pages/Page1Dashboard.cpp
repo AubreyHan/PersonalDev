@@ -148,33 +148,97 @@ void Page1Dashboard::render(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.setTextColor(UiColors::COLOR_MUTED);
     canvas.drawString("[Tap -> 1H Elevation Profile]", 1225, 422);
 
-    // 3. TRIP Distance & Duration Card (X: 650..1250, Y: 470..690) -> Hold 2s Full System Reset
+    // 3. TRIP Distance & Duration Card (X: 650..1250, Y: 470..690) -> 3-Tier Trips (Single / Daily / Manual)
     canvas.fillRoundRect(650, 470, 600, 220, 12, UiColors::COLOR_PANEL_BG);
     canvas.drawRoundRect(650, 470, 600, 220, 12, UiColors::COLOR_SECONDARY);
-    canvas.setTextDatum(top_left);
-    canvas.setTextSize(2);
-    canvas.setTextColor(UiColors::COLOR_SECONDARY);
-    canvas.drawString("CURRENT TRIP (Hold 2s to Full Reset)", 675, 490);
 
+    // 3 Interactive Tabs at Top: [单次 TRIP] [单日 DAY] [小记 SUB]
+    auto drawTab = [&](int x, const char* label, bool active) {
+        if (active) {
+            canvas.fillRoundRect(x, 480, 110, 34, 6, 0x0208);
+            canvas.drawRoundRect(x, 480, 110, 34, 6, UiColors::COLOR_PRIMARY);
+            canvas.setTextColor(UiColors::COLOR_PRIMARY);
+        } else {
+            canvas.fillRoundRect(x, 480, 110, 34, 6, UiColors::COLOR_CARD_BG);
+            canvas.drawRoundRect(x, 480, 110, 34, 6, UiColors::COLOR_BORDER);
+            canvas.setTextColor(UiColors::COLOR_MUTED);
+        }
+        canvas.setTextDatum(middle_center);
+        canvas.setTextSize(2);
+        canvas.drawString(label, x + 55, 497);
+    };
+
+    drawTab(665, "TRIP单次", ctx.activeTripCategory == TRIP_SINGLE);
+    drawTab(785, "DAY单日",  ctx.activeTripCategory == TRIP_DAILY);
+    drawTab(905, "SUB小记",  ctx.activeTripCategory == TRIP_MANUAL);
+
+    // Right Action Area (Y: 480..514)
+    canvas.setTextDatum(middle_center);
+    canvas.setTextSize(2);
+    if (ctx.activeTripCategory == TRIP_MANUAL) {
+        if (ctx.manualTripActive) {
+            canvas.fillRoundRect(1030, 480, 205, 34, 6, UiColors::COLOR_DANGER);
+            canvas.setTextColor(UiColors::COLOR_WHITE);
+            canvas.drawString("STOP 结束", 1132, 497);
+        } else {
+            canvas.fillRoundRect(1030, 480, 205, 34, 6, 0x03E0);
+            canvas.drawRoundRect(1030, 480, 205, 34, 6, UiColors::COLOR_PRIMARY);
+            canvas.setTextColor(UiColors::COLOR_PRIMARY);
+            canvas.drawString("START 开始", 1132, 497);
+        }
+    } else {
+        canvas.setTextSize(1);
+        canvas.setTextColor(UiColors::COLOR_MUTED);
+        canvas.drawString("Hold 2s to Zero", 1132, 497);
+    }
+
+    // Distance display
+    canvas.setTextDatum(top_left);
     canvas.setTextSize(4);
     canvas.setTextColor(UiColors::COLOR_WHITE);
     char tripDistStr[32];
     snprintf(tripDistStr, sizeof(tripDistStr), "%.2f km", ctx.trip.tripDistanceKm);
-    canvas.drawString(tripDistStr, 675, 535);
+    canvas.drawString(tripDistStr, 675, 528);
 
-    uint32_t totSec = ctx.trip.movingDurationSec + ctx.trip.idleDurationSec;
-    uint32_t hh = totSec / 3600;
-    uint32_t mm = (totSec % 3600) / 60;
-    uint32_t ss = totSec % 60;
-    char durStr[48];
-    snprintf(durStr, sizeof(durStr), "Drive Time: %02u:%02u:%02u  |  Avg: %.1f km/h", hh, mm, ss, ctx.trip.avgSpeedKmh);
+    // Status Badge to the right of distance
+    canvas.setTextDatum(middle_right);
+    canvas.setTextSize(2);
+    if (ctx.activeTripCategory == TRIP_MANUAL) {
+        if (ctx.manualTripActive) {
+            canvas.setTextColor(UiColors::COLOR_PRIMARY);
+            canvas.drawString("REC ACTIVE", 1230, 545);
+        } else {
+            canvas.setTextColor(UiColors::COLOR_MUTED);
+            canvas.drawString("PAUSED", 1230, 545);
+        }
+    } else if (ctx.activeTripCategory == TRIP_DAILY) {
+        canvas.setTextColor(UiColors::COLOR_SECONDARY);
+        canvas.drawString("00:00~24:00", 1230, 545);
+    } else {
+        canvas.setTextColor(UiColors::COLOR_PRIMARY);
+        canvas.drawString("CURRENT", 1230, 545);
+    }
+
+    // Drive Time, Idle Time and Avg Speed
+    uint32_t totSec = ctx.trip.movingDurationSec;
+    uint32_t hh = totSec / 3600, mm = (totSec % 3600) / 60, ss = totSec % 60;
+    uint32_t idSec = ctx.trip.idleDurationSec;
+    uint32_t iH = idSec / 3600, iM = (idSec % 3600) / 60;
+    char durStr[64];
+    snprintf(durStr, sizeof(durStr), "Drive: %02u:%02u:%02u | Idle: %02u:%02u | Avg: %.1f km/h",
+             hh, mm, ss, iH, iM, ctx.trip.avgSpeedKmh);
+    canvas.setTextDatum(top_left);
     canvas.setTextSize(2);
     canvas.setTextColor(UiColors::COLOR_PRIMARY);
-    canvas.drawString(durStr, 675, 605);
+    canvas.drawString(durStr, 675, 595);
 
+    // Climb & Max speed summary line
+    char climbMaxStr[64];
+    snprintf(climbMaxStr, sizeof(climbMaxStr), "Climb: +%.0fm  |  Max: %.1f km/h  |  Tap tab to switch",
+             ctx.trip.cumulativeClimbM, ctx.trip.maxSpeedKmh);
     canvas.setTextSize(1);
     canvas.setTextColor(UiColors::COLOR_MUTED);
-    canvas.drawString("Long-press TRIP card for 2.0s to zero Trip, Altitude, Speed, Trail & GPX Segment", 675, 655);
+    canvas.drawString(climbMaxStr, 675, 650);
 
     // Full Trip Reset Toast Banner Overlay
     if (ctx.tripResetBannerActive && millis() < ctx.tripResetBannerExpireMs) {
@@ -183,7 +247,9 @@ void Page1Dashboard::render(M5Canvas& canvas, const SystemContext& ctx) {
         canvas.setTextDatum(middle_center);
         canvas.setTextSize(3);
         canvas.setTextColor(UiColors::COLOR_PRIMARY);
-        canvas.drawString("ALL TRIP DATA RESET!", 720, 355);
+        const char* bText = (ctx.activeTripCategory == TRIP_DAILY) ? "DAILY TRIP RESET!" :
+                            ((ctx.activeTripCategory == TRIP_MANUAL) ? "MANUAL TRIP RESET!" : "SINGLE TRIP RESET!");
+        canvas.drawString(bText, 720, 355);
     }
 
     endViewport(canvas);
@@ -206,6 +272,34 @@ bool Page1Dashboard::onTouchTap(int16_t x, int16_t y, SystemContext& ctx) {
         ctx.currentPage = PAGE_2_ALTITUDE;
         return true;
     }
+
+    // TRIP Card Tab 0: [单次 TRIP] (X: 660..775, Y: 475..520)
+    if (x >= 660 && x <= 775 && y >= 475 && y <= 520) {
+        SystemState::instance().switchActiveTripCategory(TRIP_SINGLE);
+        HapticDriver::instance().triggerShortPulse(50);
+        return true;
+    }
+    // TRIP Card Tab 1: [单日 DAY] (X: 780..895, Y: 475..520)
+    if (x >= 780 && x <= 895 && y >= 475 && y <= 520) {
+        SystemState::instance().switchActiveTripCategory(TRIP_DAILY);
+        HapticDriver::instance().triggerShortPulse(50);
+        return true;
+    }
+    // TRIP Card Tab 2: [小记 SUB] (X: 900..1015, Y: 475..520)
+    if (x >= 900 && x <= 1015 && y >= 475 && y <= 520) {
+        SystemState::instance().switchActiveTripCategory(TRIP_MANUAL);
+        HapticDriver::instance().triggerShortPulse(50);
+        return true;
+    }
+    // TRIP Card Action Button (X: 1025..1240, Y: 475..520)
+    if (x >= 1025 && x <= 1240 && y >= 475 && y <= 520) {
+        if (ctx.activeTripCategory == TRIP_MANUAL) {
+            SystemState::instance().toggleManualTrip();
+            HapticDriver::instance().triggerShortPulse(80);
+            return true;
+        }
+    }
+
     return false;
 }
 
@@ -215,7 +309,7 @@ void Page1Dashboard::onTouchHold(int16_t x, int16_t y, uint32_t holdMs, SystemCo
         if (holdMs >= TripResetConfig::LONG_PRESS_MS && !_resetTriggeredThisHold) {
             _resetTriggeredThisHold = true;
             HapticDriver::instance().triggerShortPulse(TripResetConfig::VIBRATION_FEEDBACK_MS);
-            SystemState::instance().triggerFullTripReset();
+            SystemState::instance().triggerTripReset(ctx.activeTripCategory);
         }
     } else {
         _resetTriggeredThisHold = false;
