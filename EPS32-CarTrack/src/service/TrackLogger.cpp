@@ -530,18 +530,18 @@ void TrackLogger::update() {
 
     lockSd();
 
-    // 1. Single Trip Stream: W-yyyymmdd-hhmmss.gpx
+    // 1. Single Trip Stream: W-yyyymmdd-hhmmss.gpx in /tracks/single
     if (!_singleRecording || _singlePoints >= MotionPowerConfig::HOURLY_SPLIT_POINTS) {
         closeSingleStreams();
         char wName[48], cName[48];
         snprintf(wName, sizeof(wName), "W-%04u%02u%02u-%02u%02u%02u.gpx", yr, mo, dy, hh, mm, ss);
         snprintf(cName, sizeof(cName), "C-%04u%02u%02u-%02u%02u%02u.gpx", yr, mo, dy, hh, mm, ss);
-        if (openOrAppendGpx(_fileWgsSingle, _fileGcjSingle, wName, cName, yr, mo, dy, hh, mm, ss, false)) {
+        if (openOrAppendGpx(_fileWgsSingle, _fileGcjSingle, StorageConfig::TRACKS_SINGLE_DIR, wName, cName, yr, mo, dy, hh, mm, ss, false)) {
             _singleRecording = true;
             _singlePoints = 0;
             state.lock();
-            strncpy(state.getContextUnsafe().storage.currentWgsFile, wName, sizeof(state.getContextUnsafe().storage.currentWgsFile) - 1);
-            strncpy(state.getContextUnsafe().storage.currentGcjFile, cName, sizeof(state.getContextUnsafe().storage.currentGcjFile) - 1);
+            snprintf(state.getContextUnsafe().storage.currentWgsFile, sizeof(state.getContextUnsafe().storage.currentWgsFile), "single/%s", wName);
+            snprintf(state.getContextUnsafe().storage.currentGcjFile, sizeof(state.getContextUnsafe().storage.currentGcjFile), "single/%s", cName);
             state.unlock();
         }
     }
@@ -551,7 +551,7 @@ void TrackLogger::update() {
         _singlePoints++;
     }
 
-    // 2. Daily Trip Stream: W-Day-YYYYMMDD.gpx (100% AUTOMATIC parallel)
+    // 2. Daily Trip Stream: W-Day-YYYYMMDD.gpx in /tracks/daily (100% AUTOMATIC parallel)
     uint16_t lYr; uint8_t lMo, lDy, lH, lM, lS, lWd;
     g_timeService.getLocalTimeParts(_snapBuf.clocks[0].tzOffsetMinutes, _snapBuf.clocks[0].autoDst,
                                    lYr, lMo, lDy, lH, lM, lS, lWd);
@@ -565,10 +565,10 @@ void TrackLogger::update() {
         char wName[48], cName[48];
         snprintf(wName, sizeof(wName), "W-Day-%08u.gpx", localDateInt);
         snprintf(cName, sizeof(cName), "C-Day-%08u.gpx", localDateInt);
-        if (openOrAppendGpx(_fileWgsDaily, _fileGcjDaily, wName, cName, yr, mo, dy, hh, mm, ss, true)) {
+        if (openOrAppendGpx(_fileWgsDaily, _fileGcjDaily, StorageConfig::TRACKS_DAILY_DIR, wName, cName, yr, mo, dy, hh, mm, ss, true)) {
             _dailyRecording = true;
             state.lock();
-            strncpy(state.getContextUnsafe().storage.currentDailyFile, wName, sizeof(state.getContextUnsafe().storage.currentDailyFile) - 1);
+            snprintf(state.getContextUnsafe().storage.currentDailyFile, sizeof(state.getContextUnsafe().storage.currentDailyFile), "daily/%s", wName);
             state.unlock();
         }
     }
@@ -577,7 +577,7 @@ void TrackLogger::update() {
         appendTrackPoint(_fileGcjDaily, cLat, cLon, _snapBuf, yr, mo, dy, hh, mm, ss);
     }
 
-    // 3. Sub-Trip Stream: W-sub001-001.gpx (Manual Start/Stop, 10MB auto-split)
+    // 3. Sub-Trip Stream: W-sub001-001.gpx in /tracks/sub (Manual Start/Stop, 10MB auto-split)
     if (_snapBuf.manualTripActive) {
         if (_subIndex != _snapBuf.subIndex) {
             closeSubStreams();
@@ -604,10 +604,10 @@ void TrackLogger::update() {
             char wName[48], cName[48];
             snprintf(wName, sizeof(wName), "W-sub%03u-%03u.gpx", _subIndex, _subSplitIndex);
             snprintf(cName, sizeof(cName), "C-sub%03u-%03u.gpx", _subIndex, _subSplitIndex);
-            if (openOrAppendGpx(_fileWgsSub, _fileGcjSub, wName, cName, yr, mo, dy, hh, mm, ss, true)) {
+            if (openOrAppendGpx(_fileWgsSub, _fileGcjSub, StorageConfig::TRACKS_SUB_DIR, wName, cName, yr, mo, dy, hh, mm, ss, true)) {
                 _subRecording = true;
                 state.lock();
-                strncpy(state.getContextUnsafe().storage.currentSubFile, wName, sizeof(state.getContextUnsafe().storage.currentSubFile) - 1);
+                snprintf(state.getContextUnsafe().storage.currentSubFile, sizeof(state.getContextUnsafe().storage.currentSubFile), "sub/%s", wName);
                 state.unlock();
             }
         }
