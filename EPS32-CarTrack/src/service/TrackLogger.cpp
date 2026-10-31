@@ -57,9 +57,11 @@ bool TrackLogger::init() {
 
     _mounted = _sd.begin(spiCfg);
     if (_mounted) {
-        if (!_sd.exists(StorageConfig::TRACKS_DIR)) {
-            _sd.mkdir(StorageConfig::TRACKS_DIR);
-        }
+        if (!_sd.exists(StorageConfig::TRACKS_DIR))        _sd.mkdir(StorageConfig::TRACKS_DIR);
+        if (!_sd.exists(StorageConfig::TRACKS_SINGLE_DIR)) _sd.mkdir(StorageConfig::TRACKS_SINGLE_DIR);
+        if (!_sd.exists(StorageConfig::TRACKS_DAILY_DIR))  _sd.mkdir(StorageConfig::TRACKS_DAILY_DIR);
+        if (!_sd.exists(StorageConfig::TRACKS_SUB_DIR))    _sd.mkdir(StorageConfig::TRACKS_SUB_DIR);
+
         healUnclosedGpxFiles();
         enforceStorageQuota50Percent();
         refreshStorageStats();
@@ -89,6 +91,9 @@ bool TrackLogger::formatFat32() {
     if (ok && _sd.begin(spiCfg)) {
         _mounted = true;
         _sd.mkdir(StorageConfig::TRACKS_DIR);
+        _sd.mkdir(StorageConfig::TRACKS_SINGLE_DIR);
+        _sd.mkdir(StorageConfig::TRACKS_DAILY_DIR);
+        _sd.mkdir(StorageConfig::TRACKS_SUB_DIR);
         refreshStorageStats();
         unlockSd();
         return true;
@@ -99,32 +104,39 @@ bool TrackLogger::formatFat32() {
 
 void TrackLogger::healUnclosedGpxFiles() {
     if (!_mounted) return;
-    FsFile dir;
-    if (!dir.open(StorageConfig::TRACKS_DIR)) return;
-
-    FsFile entry;
-    char name[48];
+    const char* dirsToScan[] = {
+        StorageConfig::TRACKS_SINGLE_DIR,
+        StorageConfig::TRACKS_DAILY_DIR,
+        StorageConfig::TRACKS_SUB_DIR,
+        StorageConfig::TRACKS_DIR
+    };
     const char* footer = "</trkseg>\n  </trk>\n</gpx>\n";
 
-    while (entry.openNext(&dir, O_RDWR)) {
-        if (!entry.isDir()) {
-            entry.getName(name, sizeof(name));
-            uint64_t sz = entry.fileSize();
-            if (sz > 128 && strstr(name, ".gpx") != nullptr) {
-                entry.seekSet(sz - 16);
-                char tail[17] = {0};
-                entry.read(tail, 16);
-                if (strstr(tail, "</gpx>") == nullptr) {
-                    entry.seekEnd();
-                    entry.write(footer, strlen(footer));
-                    entry.sync();
-                    Serial.printf("[SD] Self-healed unclosed GPX file: %s\n", name);
+    for (const char* dPath : dirsToScan) {
+        FsFile dir;
+        if (!dir.open(dPath)) continue;
+        FsFile entry;
+        char name[48];
+        while (entry.openNext(&dir, O_RDWR)) {
+            if (!entry.isDir()) {
+                entry.getName(name, sizeof(name));
+                uint64_t sz = entry.fileSize();
+                if (sz > 128 && strstr(name, ".gpx") != nullptr) {
+                    entry.seekSet(sz - 16);
+                    char tail[17] = {0};
+                    entry.read(tail, 16);
+                    if (strstr(tail, "</gpx>") == nullptr) {
+                        entry.seekEnd();
+                        entry.write(footer, strlen(footer));
+                        entry.sync();
+                        Serial.printf("[SD] Self-healed unclosed GPX: %s/%s\n", dPath, name);
+                    }
                 }
             }
+            entry.close();
         }
-        entry.close();
+        dir.close();
     }
-    dir.close();
 }
 
 void TrackLogger::enforceStorageQuota50Percent() {
@@ -135,42 +147,60 @@ void TrackLogger::enforceStorageQuota50Percent() {
     uint64_t maxTracksBytes = (uint64_t)(totalBytes * MotionPowerConfig::TRACK_STORAGE_QUOTA_RATIO);
     uint64_t targetBytes    = (uint64_t)(totalBytes * MotionPowerConfig::TRACK_RECOVERY_QUOTA_RATIO);
 
-    FsFile dir;
-    if (!dir.open(StorageConfig::TRACKS_DIR)) return;
+    const char* dirsToScan[] = {
+        StorageConfig::TRACKS_SINGLE_DIR,
+        StorageConfig::TRACKS_DAILY_DIR,
+        StorageConfig::TRACKS_SUB_DIR,
+        StorageConfig::TRACKS_DIR
+    };
 
     uint64_t tracksUsed = 0;
-    FsFile entry;
-    while (entry.openNext(&dir, O_RDONLY)) {
-        if (!entry.isDir()) {
-            tracksUsed += entry.fileSize();
+    for (const char* dPath : dirsToScan) {
+        FsFile dir;
+        if (dir.open(dPath)) {
+            FsFile entry;
+            while (entry.openNext(&dir, O_RDONLY)) {
+                if (!entry.isDir()) {
+                    tracksUsed += entry.fileSize();
+                }
+                entry.close();
+            }
+            dir.close();
         }
-        entry.close();
     }
-    dir.close();
 
-    // If /tracks/ exceeds 50% of total card capacity, delete oldest W/C pairs until < 40%
+    // If tracks exceed 50% of total card capacity, delete oldest W/C pairs until < 40%
     int guard = 0;
     while (tracksUsed > maxTracksBytes && guard++ < 64) {
-        if (!dir.open(StorageConfig::TRACKS_DIR)) break;
         char oldestWgs[48] = {0};
-        while (entry.openNext(&dir, O_RDONLY)) {
-            char fname[48] = {0};
-            entry.getName(fname, sizeof(fname));
-            if (fname[0] == 'W' && strstr(fname, ".gpx")) {
-                if (oldestWgs[0] == '\0' || strcmp(fname, oldestWgs) < 0) {
-                    strncpy(oldestWgs, fname, sizeof(oldestWgs) - 1);
+        char oldestDir[48] = {0};
+
+        for (const char* dPath : dirsToScan) {
+            FsFile dir;
+            if (!dir.open(dPath)) continue;
+            FsFile entry;
+            while (entry.openNext(&dir, O_RDONLY)) {
+                if (!entry.isDir()) {
+                    char fname[48] = {0};
+                    entry.getName(fname, sizeof(fname));
+                    if (fname[0] == 'W' && strstr(fname, ".gpx")) {
+                        if (oldestWgs[0] == '\0' || strcmp(fname, oldestWgs) < 0) {
+                            strncpy(oldestWgs, fname, sizeof(oldestWgs) - 1);
+                            strncpy(oldestDir, dPath, sizeof(oldestDir) - 1);
+                        }
+                    }
                 }
+                entry.close();
             }
-            entry.close();
+            dir.close();
         }
-        dir.close();
 
         if (oldestWgs[0] == '\0') break;
 
-        char wPath[64], cPath[64];
-        snprintf(wPath, sizeof(wPath), "%s/%s", StorageConfig::TRACKS_DIR, oldestWgs);
+        char wPath[96], cPath[96];
+        snprintf(wPath, sizeof(wPath), "%s/%s", oldestDir, oldestWgs);
         oldestWgs[0] = 'C';
-        snprintf(cPath, sizeof(cPath), "%s/%s", StorageConfig::TRACKS_DIR, oldestWgs);
+        snprintf(cPath, sizeof(cPath), "%s/%s", oldestDir, oldestWgs);
 
         FsFile f;
         if (f.open(wPath, O_RDONLY)) { tracksUsed -= f.fileSize(); f.close(); _sd.remove(wPath); }
@@ -190,21 +220,30 @@ void TrackLogger::refreshStorageStats() {
     uint64_t tracksBytes = 0;
     uint32_t wgsCount    = 0;
 
-    FsFile dir;
-    if (dir.open(StorageConfig::TRACKS_DIR)) {
-        FsFile entry;
-        char fname[48];
-        while (entry.openNext(&dir, O_RDONLY)) {
-            if (!entry.isDir()) {
-                tracksBytes += entry.fileSize();
-                entry.getName(fname, sizeof(fname));
-                if (fname[0] == 'W' && strstr(fname, ".gpx")) {
-                    wgsCount++;
+    const char* dirsToScan[] = {
+        StorageConfig::TRACKS_SINGLE_DIR,
+        StorageConfig::TRACKS_DAILY_DIR,
+        StorageConfig::TRACKS_SUB_DIR,
+        StorageConfig::TRACKS_DIR
+    };
+
+    for (const char* dPath : dirsToScan) {
+        FsFile dir;
+        if (dir.open(dPath)) {
+            FsFile entry;
+            char fname[48];
+            while (entry.openNext(&dir, O_RDONLY)) {
+                if (!entry.isDir()) {
+                    tracksBytes += entry.fileSize();
+                    entry.getName(fname, sizeof(fname));
+                    if (fname[0] == 'W' && strstr(fname, ".gpx")) {
+                        wgsCount++;
+                    }
                 }
+                entry.close();
             }
-            entry.close();
+            dir.close();
         }
-        dir.close();
     }
 
     SystemState& state = SystemState::instance();
@@ -220,15 +259,20 @@ void TrackLogger::refreshStorageStats() {
     state.unlock();
 }
 
-bool TrackLogger::openOrAppendGpx(FsFile& wgsFile, FsFile& gcjFile, const char* wName, const char* cName,
+bool TrackLogger::openOrAppendGpx(FsFile& wgsFile, FsFile& gcjFile, const char* dirPath,
+                                  const char* wName, const char* cName,
                                   uint16_t y, uint8_t m, uint8_t d, uint8_t hh, uint8_t mm, uint8_t ss,
                                   bool isContinuation) {
     if (!_mounted) return false;
     enforceStorageQuota50Percent();
 
-    char wPath[72], cPath[72];
-    snprintf(wPath, sizeof(wPath), "%s/%s", StorageConfig::TRACKS_DIR, wName);
-    snprintf(cPath, sizeof(cPath), "%s/%s", StorageConfig::TRACKS_DIR, cName);
+    if (!_sd.exists(dirPath)) {
+        _sd.mkdir(dirPath);
+    }
+
+    char wPath[96], cPath[96];
+    snprintf(wPath, sizeof(wPath), "%s/%s", dirPath, wName);
+    snprintf(cPath, sizeof(cPath), "%s/%s", dirPath, cName);
 
     const char* footer = "    </trkseg>\n  </trk>\n</gpx>\n";
     const char* segTag = "    </trkseg>\n    <trkseg>\n    </trkseg>\n  </trk>\n</gpx>\n";
