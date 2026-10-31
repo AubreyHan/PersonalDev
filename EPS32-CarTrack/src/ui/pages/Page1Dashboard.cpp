@@ -312,6 +312,7 @@ bool Page1Dashboard::onTouchTap(int16_t x, int16_t y, SystemContext& ctx) {
         }
         // Action Button: [⏹ 小记结束] (X: 1010..1240, Y: 475..520)
         if (x >= 1010 && x <= 1240 && y >= 475 && y <= 520) {
+            TrackLogger::instance().recordTripSummary(TRIP_MANUAL);
             SystemState::instance().stopManualTrip();
             HapticDriver::instance().triggerShortPulse(80);
             return true;
@@ -327,6 +328,7 @@ void Page1Dashboard::onTouchHold(int16_t x, int16_t y, uint32_t holdMs, SystemCo
         if (holdMs >= TripResetConfig::LONG_PRESS_MS && !_resetTriggeredThisHold) {
             _resetTriggeredThisHold = true;
             HapticDriver::instance().triggerShortPulse(TripResetConfig::VIBRATION_FEEDBACK_MS);
+            TrackLogger::instance().recordTripSummary(ctx.activeTripCategory);
             SystemState::instance().triggerTripReset(ctx.activeTripCategory);
         }
     } else {
