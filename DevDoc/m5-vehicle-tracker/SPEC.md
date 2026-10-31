@@ -607,9 +607,18 @@ enum TripCategory : uint8_t {
 };
 ```
 
-### 8.2 轨迹文件命名规则与分卷逻辑
-| 记录模式 (`recordTripMode`) | WGS-84 文件名 | GCJ-02 文件名 | 分卷与闭合时机 |
+### 8.2 并行多流轨迹文件命名规则与 10MB 自动分卷逻辑 (Parallel Streams & 10MB Split)
+三类轨迹记录方式互不干扰、并行流式落盘：
+
+| 行程类别 (`TripCategory`) | WGS-84 文件名 | GCJ-02 文件名 | 分卷、容量与闭合规则 |
 | :--- | :--- | :--- | :--- |
-| **0. 单次切卷 (`TRIP_SINGLE`)** | `W-Single-YYYYMMDD-HHMMSS.gpx` | `C-Single-YYYYMMDD-HHMMSS.gpx` | 车辆起步新建，静止 20min 或单次清零时闭合存盘 |
-| **1. 单日归档 (`TRIP_DAILY`)** | `W-Day-YYYYMMDD.gpx` | `C-Day-YYYYMMDD.gpx` | 当日多次行程以 `<trkseg>` 拼接追加，午夜跨天换新卷 |
-| **2. 小记专属 (`TRIP_MANUAL`)** | `W-Manual-YYYYMMDD-HHMMSS.gpx` | `C-Manual-YYYYMMDD-HHMMSS.gpx` | 仅在小记处于活动状态时记录，多次起停以 `<trkseg>` 缝合，手动点击 STOP 彻底闭合 |
+| **0. 单次行程 (`TRIP_SINGLE`)** | `W-YYYYMMDD-HHMMSS.gpx` | `C-YYYYMMDD-HHMMSS.gpx` | 保持现有方式。每次通电/唤醒起步新建，连续静止 20min 休眠或单次归零时闭合存盘 |
+| **1. 单日行程 (`TRIP_DAILY`)** | `W-Day-YYYYMMDD.gpx` | `C-Day-YYYYMMDD.gpx` | 100% 自动在后台并行生成。当日多次行程以 `<trkseg>` 多段自动缝合拼接，当地 GPS 时区午夜 00:00 跨天自动换新卷 |
+| **2. 小记行程 (`TRIP_MANUAL`)** | `W-sub001-001.gpx` | `C-sub001-001.gpx` | 专属开关（【+ 小记开始】/【⏹ 小记结束】）。格式 `W(C)-subXXX-YYY.gpx`，**单卷最大严格保持在 10MB**，超出自动切卷为 `-002`, `-003`...；点击结束彻底闭合 |
+
+### 8.3 相应页面视图切换与动态显隐逻辑 (Dynamic View Switcher Contract)
+- **动态显隐准则**：
+  - 当无活动小记时（`!manualTripActive`）：在 Page 1 仪表盘、Page 2 海拔页、Page 3 车速页、Page 4 轨迹页中，仅提供 `[TRIP单次]` 和 `[DAY单日]` 两个切换按钮，**不提供也不显示 `[SUB小记]` 按钮**；
+  - 在 Page 1 仪表盘提供专属 `[+ 小记开始]` 触控按键；
+  - 当点击开启小记后，`manualTripActive` 转为 `true`，全系统所有对应页面动态呈现 `[SUB小记]` 切换按钮，Page 1 操作按键变为 `[⏹ 小记结束]`，并自动切入 `TRIP_MANUAL` 视图；
+  - 当点击结束小记后，小记安全封口，视图回退至 `TRIP_SINGLE`，`[SUB小记]` 按钮在所有页面再次自动隐藏。
