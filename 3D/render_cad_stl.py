@@ -166,18 +166,18 @@ if __name__ == '__main__':
     tris_asm = load_stl(asm_stl)
     tris_bot = load_stl(bot_stl)
 
-    # 1. Top Orthographic View (shows the exact 29.2mm antenna width vs 55mm circle!)
+    # 1. Top Orthographic View
     render_view(tris_asm, os.path.join(base_dir, "CAD_Actual_Mesh_Top_View.png"),
-                view_type='top', title="True CAD Geometry: Top View (Front Bezel & 29.2mm Antenna Pod)")
+                view_type='top', title="True CAD Geometry: Top Front View (Type-C at 9 o'clock, Opening at 3 o'clock)")
 
-    # 2. Isometric 3D View (Right & Top)
-    render_view(tris_asm, os.path.join(base_dir, "CAD_Actual_Mesh_Isometric.png"),
-                view_type='iso', title="True CAD Geometry: Isometric View (Actual 3D Mesh)")
+    # 2. Isometric 3D View (Right side showing 3 o'clock Unified PWR/TF/BOOT Opening)
+    render_view(tris_asm, os.path.join(base_dir, "CAD_Actual_Mesh_Iso_Right_Cutout.png"),
+                view_type='iso', title="True CAD Geometry: Right Side (3 o'clock) Unified Cutout (PWR / TF / BOOT)")
 
-    # 2b. Isometric 3D View (Left side showing Unified PWR/TF/BOOT Opening)
-    render_view(tris_asm, os.path.join(base_dir, "CAD_Actual_Mesh_Iso_Left_Opening.png"),
-                view_type='iso_left', title="True CAD Geometry: Left Side Unified Opening (Direct Finger Access)")
+    # 3. Isometric 3D View (Left side showing 9 o'clock Type-C port & Mics)
+    render_view(tris_asm, os.path.join(base_dir, "CAD_Actual_Mesh_Iso_Left_TypeC.png"),
+                view_type='iso_left', title="True CAD Geometry: Left Side (9 o'clock) Type-C & Mic Ports")
 
-    # 3. Bottom View (showing MagSafe ring and ports)
+    # 4. Bottom View (showing MagSafe ring and ports)
     render_view(tris_bot, os.path.join(base_dir, "CAD_Actual_Mesh_Bottom_View.png"),
-                view_type='bottom', title="True CAD Geometry: Bottom View (MagSafe Recess & Port Cutouts)")
+                view_type='bottom', title="True CAD Geometry: Bottom View (MagSafe Recess & Base)")
