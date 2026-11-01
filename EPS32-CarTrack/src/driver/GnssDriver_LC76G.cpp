@@ -3,11 +3,11 @@
 #include <Preferences.h>
 #include <cmath>
 
+#define LC76G_ADDR_W   0x50
+#define LC76G_ADDR_R   0x54
 #define LC76G_PIN_RX   18
 #define LC76G_PIN_TX   17
 #define LC76G_BAUD     9600
-#define LC76G_ADDR_W   0x50
-#define LC76G_ADDR_R   0x54
 
 static uint8_t calcChecksum(const char* sentence) {
     uint8_t checksum = 0;
@@ -19,16 +19,27 @@ static uint8_t calcChecksum(const char* sentence) {
 }
 
 bool GnssDriver_LC76G::init() {
-    Serial.println("[LC76G] Initializing Quectel LC76G GNSS...");
+    Serial.println("[LC76G] Initializing Quectel LC76G GNSS (I2C + UART)...");
 
-    // 1. Initialize Hardware UART (RX:18, TX:17)
+    // Initialize UART as backup/dual
     Serial1.begin(LC76G_BAUD, SERIAL_8N1, LC76G_PIN_RX, LC76G_PIN_TX);
-    _isOnline = true;
 
-    // 2. Configure Constellations & Output Rates
+    // Test probe I2C
+    Wire.beginTransmission(LC76G_ADDR_W);
+    byte err = Wire.endTransmission();
+    if (err == 0) {
+        _isOnline = true;
+        _usingI2c = true;
+        Serial.println("[LC76G] Found LC76G on I2C (0x50/0x54)!");
+    } else {
+        Serial.printf("[LC76G] I2C probe returned %d, defaulting to UART\n", err);
+        _isOnline = true;
+    }
+
+    // Configure GNSS Performance Parameters
     configureAutomotiveModel();
 
-    // 3. Attempt Hot Start injection from NVS
+    // Attempt Hot Start injection from NVS
     loadAndInjectHotStart();
 
     return _isOnline;
@@ -41,7 +52,7 @@ void GnssDriver_LC76G::sendPairCommand(const char* cmd) {
 
     Serial1.print(fullCmd);
 
-    // Also send over I2C write address if available
+    // Also send over I2C write address
     Wire.beginTransmission(LC76G_ADDR_W);
     Wire.write((const uint8_t*)fullCmd, strlen(fullCmd));
     Wire.endTransmission();
@@ -80,7 +91,7 @@ void GnssDriver_LC76G::configureAutomotiveModel() {
 }
 
 void GnssDriver_LC76G::pollI2cStream() {
-    // Quectel LC76G I2C Mailbox protocol length query
+    // 1. Handshake / Poll: send length query to 0x50
     uint8_t queryData[] = { 0x08, 0x00, 0x51, 0xAA, 0x04, 0x00, 0x00, 0x00 };
     Wire.beginTransmission(LC76G_ADDR_W);
     Wire.write(queryData, sizeof(queryData));
@@ -88,24 +99,45 @@ void GnssDriver_LC76G::pollI2cStream() {
         return;
     }
 
-    vTaskDelay(pdMS_TO_TICKS(5));
+    delayMicroseconds(600);
 
+    // 2. Header Read: 4 bytes from 0x54 (Little-Endian Length)
     if (Wire.requestFrom((uint8_t)LC76G_ADDR_R, (size_t)4) != 4) {
         return;
     }
 
-    uint32_t availLen = 0;
-    availLen |= Wire.read();
-    availLen |= (Wire.read() << 8);
-    availLen |= (Wire.read() << 16);
-    availLen |= (Wire.read() << 24);
+    uint8_t header[4];
+    for (int i = 0; i < 4; i++) {
+        header[i] = Wire.read();
+    }
 
-    if (availLen > 0 && availLen < 512) {
-        _usingI2c = true;
-        uint8_t readCount = Wire.requestFrom((uint8_t)LC76G_ADDR_R, (size_t)availLen);
-        while (readCount > 0 && Wire.available()) {
+    uint32_t dataLength = (uint32_t)header[0] |
+                          ((uint32_t)header[1] << 8) |
+                          ((uint32_t)header[2] << 16) |
+                          ((uint32_t)header[3] << 24);
+
+    if (dataLength == 0 || dataLength > 2048) {
+        return;
+    }
+
+    // 3. Acknowledgment (Ack): Write the received header bytes back to 0x50!
+    Wire.beginTransmission(LC76G_ADDR_W);
+    Wire.write(header, 4);
+    if (Wire.endTransmission() != 0) {
+        return;
+    }
+
+    delayMicroseconds(300);
+
+    // 4. Body Read: Read payload matching dataLength from 0x54
+    _usingI2c = true;
+    while (dataLength > 0) {
+        size_t chunk = (dataLength > 64) ? 64 : dataLength;
+        size_t received = Wire.requestFrom((uint8_t)LC76G_ADDR_R, chunk);
+        if (received == 0) break;
+
+        for (size_t i = 0; i < received; i++) {
             char c = (char)Wire.read();
-            readCount--;
             _totalBytes++;
             _gps.encode(c);
 
@@ -119,16 +151,16 @@ void GnssDriver_LC76G::pollI2cStream() {
                 _nmeaBuffer[_nmeaIndex++] = c;
             }
         }
+        dataLength -= received;
     }
 }
 
 void GnssDriver_LC76G::update() {
-    parseNmeaStream();
+    // 1. Check I2C Mailbox
+    pollI2cStream();
 
-    // If UART has zero bytes received after 2 seconds, check I2C mailbox
-    if (_totalBytes == 0 && millis() > 2000) {
-        pollI2cStream();
-    }
+    // 2. Check UART stream
+    parseNmeaStream();
 
     updateStabilityFilter();
 
@@ -194,7 +226,6 @@ void GnssDriver_LC76G::parseNmeaSentence(const char* sentence) {
     }
     // 3. Parse Quectel Antenna Status ($PQTMANT)
     else if (strstr(sentence, "PQTMANT") != nullptr) {
-        // Format: $PQTMANT,status*cs
         const char* p = strchr(sentence, ',');
         if (p) {
             int code = atoi(p + 1);
@@ -226,7 +257,7 @@ void GnssDriver_LC76G::parseGsvSentence(const char* sentence) {
             _satsInView = totalSats;
         }
 
-        // Each satellite has 4 fields: PRN, Elevation, Azimuth, SNR
+        // Each satellite block has: PRN, Elevation, Azimuth, SNR
         int satBlock = 4;
         while (satBlock + 3 < field) {
             uint8_t prn = atoi(fields[satBlock]);
@@ -238,7 +269,6 @@ void GnssDriver_LC76G::parseGsvSentence(const char* sentence) {
                 _maxSnr = snr;
             }
 
-            // Save to top satellites list
             if (prn > 0 && _topSatCount < 12) {
                 bool found = false;
                 for (uint8_t s = 0; s < _topSatCount; ++s) {
@@ -263,7 +293,7 @@ void GnssDriver_LC76G::parseGsvSentence(const char* sentence) {
     if (_satsInView == 0) {
         strncpy(_antennaStatus, "SEARCHING (0 SATS)", sizeof(_antennaStatus));
     } else if (_maxSnr == 0) {
-        strncpy(_antennaStatus, "NO RF (ANTENNA DISCONN?)", sizeof(_antennaStatus));
+        strncpy(_antennaStatus, "NO RF (CHECK ANTENNA!)", sizeof(_antennaStatus));
     } else if (_maxSnr < 25) {
         strncpy(_antennaStatus, "WEAK (INDOOR)", sizeof(_antennaStatus));
     } else if (_maxSnr < 35) {
@@ -276,10 +306,10 @@ void GnssDriver_LC76G::parseGsvSentence(const char* sentence) {
 void GnssDriver_LC76G::logDiagnostics() {
     Serial.println("\n----------------- [GPS & ANTENNA DIAGNOSTICS] -----------------");
     Serial.printf(" Interface      : %s | Total Stream Bytes: %u\n",
-                  _usingI2c ? "I2C (0x50/0x54)" : "UART1 (RX:GPIO18, TX:GPIO17)", _totalBytes);
+                  _usingI2c ? "I2C (0x50/0x54 Handshake)" : "UART1 (RX:GPIO18, TX:GPIO17)", _totalBytes);
     Serial.printf(" Antenna Status : %s\n", _antennaStatus);
     Serial.printf(" Satellites     : In View: %u | In Fix: %u\n", _satsInView, _activeSats);
-    Serial.printf(" Peak RF SNR    : %u dB-Hz (Threshold for 3D FIX: >=28 dB-Hz)\n", _maxSnr);
+    Serial.printf(" Peak RF SNR    : %u dB-Hz (Fix Threshold: >=28 dB-Hz)\n", _maxSnr);
     Serial.printf(" Precision      : HDOP: %.1f | VDOP: %.1f\n", _hdop, _vdop);
 
     if (_gps.location.isValid()) {
@@ -307,7 +337,6 @@ void GnssDriver_LC76G::logDiagnostics() {
 void GnssDriver_LC76G::updateStabilityFilter() {
     uint32_t now = millis();
 
-    // Read satellites and DOP
     if (_gps.satellites.isValid()) {
         _activeSats = _gps.satellites.value();
     }
@@ -331,7 +360,6 @@ void GnssDriver_LC76G::updateStabilityFilter() {
         _isStable = false;
     }
 
-    // Zero-velocity clamping
     float rawSpeedKmh = _gps.speed.isValid() ? _gps.speed.kmph() : 0.0f;
     if (rawSpeedKmh < GnssFilterConfig::STATIC_SPEED_THRESHOLD_KMH) {
         _isStaticLocked = true;
@@ -339,12 +367,10 @@ void GnssDriver_LC76G::updateStabilityFilter() {
         _isStaticLocked = false;
     }
 
-    // Process Altitude filtering
     if (_gps.altitude.isValid()) {
         updateAltitudeFilter((float)_gps.altitude.meters());
     }
 
-    // Update global state
     auto& gnssData = SystemState::instance().getContextUnsafe().gnss;
     gnssData.isValid = _gps.location.isValid();
     gnssData.latitude = _gps.location.lat();
@@ -380,19 +406,16 @@ void GnssDriver_LC76G::updateAltitudeFilter(float rawMslAlt) {
     if (dt <= 0.0f) dt = 0.05f;
     _lastAltUpdateMs = now;
 
-    // Outlier rejection
     float diff = rawMslAlt - _filteredAltitude;
     float maxDelta = GnssFilterConfig::MAX_CLIMB_RATE_MPS * dt + 1.0f;
     if (fabs(diff) > maxDelta && !_isStaticLocked) {
         rawMslAlt = _filteredAltitude + (diff > 0 ? maxDelta : -maxDelta);
     }
 
-    // If static locked (vehicle stationary), clamp altitude to prevent drift
     if (_isStaticLocked) {
         return;
     }
 
-    // Dynamic measurement variance based on VDOP
     float R = (_vdop > 0.5f) ? (_vdop * _vdop * 0.8f) : 2.0f;
     float Q = 0.04f * dt;
 
