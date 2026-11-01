@@ -133,7 +133,7 @@ def render_view(triangles, out_png, view_type='iso', width=1200, height=900, tit
         # Gradient backdrop circle
         f'<circle cx="{width/2}" cy="{height/2}" r="{min(width,height)*0.45}" fill="#1A202C" opacity="0.6"/>',
         # Title text
-        f'<text x="40" y="50" font-family="-apple-system, BlinkMacSystemFont, Arial" font-size="22" font-weight="bold" fill="#E2E8F0">{title}</text>',
+        f'<text x="40" y="50" font-family="-apple-system, BlinkMacSystemFont, Arial" font-size="22" font-weight="bold" fill="#E2E8F0">{title.replace("&", "&amp;")}</text>',
         f'<text x="40" y="75" font-family="-apple-system, BlinkMacSystemFont, Arial" font-size="13" fill="#94A3B8">Waveshare ESP32-S3-Touch-AMOLED-1.75-G MagSafe Enclosure | Actual 3D Mesh</text>',
     ]
 

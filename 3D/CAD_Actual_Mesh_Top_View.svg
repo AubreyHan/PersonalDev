@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
 <rect width="1200" height="900" fill="#14181F"/>
 <circle cx="600.0" cy="450.0" r="405.0" fill="#1A202C" opacity="0.6"/>
-<text x="40" y="50" font-family="-apple-system, BlinkMacSystemFont, Arial" font-size="22" font-weight="bold" fill="#E2E8F0">True CAD Geometry: Top View (Front Bezel & 29.2mm Antenna Pod)</text>
+<text x="40" y="50" font-family="-apple-system, BlinkMacSystemFont, Arial" font-size="22" font-weight="bold" fill="#E2E8F0">True CAD Geometry: Top View (Front Bezel &amp; 29.2mm Antenna Pod)</text>
 <text x="40" y="75" font-family="-apple-system, BlinkMacSystemFont, Arial" font-size="13" fill="#94A3B8">Waveshare ESP32-S3-Touch-AMOLED-1.75-G MagSafe Enclosure | Actual 3D Mesh</text>
 <polygon points="600.0,816.1 600.0,819.8 600.0,819.9" fill="rgb(50,57,67)" stroke="rgb(15,22,32)" stroke-width="0.3"/>
 <polygon points="577.8,815.1 577.5,818.8 577.5,818.9" fill="rgb(50,57,67)" stroke="rgb(15,22,32)" stroke-width="0.3"/>
