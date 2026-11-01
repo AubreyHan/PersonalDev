@@ -103,10 +103,10 @@ def create_enclosure_3mf():
     proj_cfg["textured_plate_temp_initial_layer"] = ["70"]
     proj_cfg["nozzle_temperature"] = ["245"]
     proj_cfg["nozzle_temperature_initial_layer"] = ["245"]
-    proj_cfg["auxiliary_fan"] = 0
-    proj_cfg["wall_loops"] = 4
-    proj_cfg["top_shell_layers"] = 5
-    proj_cfg["bottom_shell_layers"] = 5
+    proj_cfg["auxiliary_fan"] = ["0"]
+    proj_cfg["wall_loops"] = "4"
+    proj_cfg["top_shell_layers"] = "5"
+    proj_cfg["bottom_shell_layers"] = "5"
     proj_cfg["brim_type"] = "no_brim"
     proj_cfg["sparse_infill_pattern"] = "gyroid"
     proj_cfg["sparse_infill_density"] = "25%"
