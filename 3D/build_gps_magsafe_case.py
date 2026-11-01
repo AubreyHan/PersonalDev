@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 """
 ESP32-S3-Touch-AMOLED-1.75-G (GNSS/GPS Version) MagSafe Case Generator
-Updated with Full 25x25mm GNSS Ceramic Antenna Pod Housing.
-Generates 100% Watertight 2-Manifold Modular Binary STL Files.
+Updated with EXACT Official Waveshare Hardware Layout:
+- 3 o'clock (East): USB Type-C Port
+- 2 o'clock & 4 o'clock: Dual Microphones (MIC1 & MIC2)
+- 9 o'clock (West): MicroSD (TF) Card Slot
+- 10 o'clock: PWR Push Button
+- 8 o'clock: BOOT Push Button
+- 12 o'clock: 25x25mm GNSS Ceramic Antenna Pod
+- Bottom Base: MagSafe Ring Recess (OD 54.2mm, ID 45.8mm, Depth 1.2mm)
 """
 
 import math
@@ -53,11 +59,11 @@ class ModularSTL:
         v3 = (p0[0], p0[1], z1)
         v4 = (p1[0], p1[1], z1)
         v5 = (p2[0], p2[1], z1)
-        self.add_triangle(v0, v2, v1) # Bottom (-Z)
-        self.add_triangle(v3, v4, v5) # Top (+Z)
-        self.add_quad(v0, v1, v4, v3) # Side 0-1
-        self.add_quad(v1, v2, v5, v4) # Side 1-2
-        self.add_quad(v2, v0, v3, v5) # Side 2-0
+        self.add_triangle(v0, v2, v1)
+        self.add_triangle(v3, v4, v5)
+        self.add_quad(v0, v1, v4, v3)
+        self.add_quad(v1, v2, v5, v4)
+        self.add_quad(v2, v0, v3, v5)
 
     def add_corner_arc(self, cx, cy, r_in, r_out, a_start, a_end, z0, z1, n_segs=8):
         for i in range(n_segs):
@@ -114,11 +120,10 @@ class ModularSTL:
 
 def build_bottom_shell(filepath):
     """
-    Constructs Bottom Base Shell with enlarged 25x25mm GNSS Antenna Pod.
+    Constructs Bottom Base Shell with EXACT Official Hardware Layout.
     """
     stl = ModularSTL()
 
-    # Geometry parameters (mm)
     case_r = 27.5
     cavity_r = 24.8  # Inner PCB cavity dia 49.6 mm
     ms_r_in = 22.9   # MagSafe inner dia 45.8 mm
@@ -127,9 +132,7 @@ def build_bottom_shell(filepath):
     z_floor = 2.0    # Bottom solid floor
     z_parting = 5.8  # Parting line
 
-    # 25x25mm Antenna Pod parameters:
-    # Outer width: 29.2 mm, Outer length: 29.2 mm
-    # Inner cavity: 25.6 mm x 25.6 mm (fits standard 25x25mm ceramic antenna + 0.6mm clearance)
+    # 25x25mm GNSS Antenna Pod (12 o'clock)
     ant_w = 29.2
     ant_y_start = 22.0
     ant_y_end = 51.2
@@ -140,30 +143,25 @@ def build_bottom_shell(filepath):
     # -------------------------------------------------------------
     # 1. Floor Base (Z = 0.0 to 2.0)
     # -------------------------------------------------------------
-    # A. Central solid core disc (r <= ms_r_in, Z = 0.0 to 2.0)
+    # Central solid core disc
     stl.add_solid_corner(0, 0, ms_r_in, 0, 2.0 * math.pi, 0.0, z_floor, n_segs=72)
-
-    # B. MagSafe groove floor (ms_r_in <= r <= ms_r_out, Z = 1.2 to 2.0)
+    # MagSafe annular groove floor
     stl.add_corner_arc(0, 0, ms_r_in, ms_r_out, 0, 2.0 * math.pi, ms_depth, z_floor, n_segs=72)
-
-    # C. Outer rim (ms_r_out <= r <= case_r, Z = 0.0 to 2.0)
+    # Outer base rim
     stl.add_corner_arc(0, 0, ms_r_out, case_r, 0, 2.0 * math.pi, 0.0, z_floor, n_segs=72)
 
-    # D. Enlarged 25x25 Antenna Pod Bottom Floor Plate (Z = 0.0 to 2.0)
-    # Center block
+    # Antenna Pod Floor Plate (12 o'clock)
     stl.add_box(-ant_w/2.0 + 3.5, ant_w/2.0 - 3.5, ant_y_start, ant_y_end, 0.0, z_floor)
-    # Left & right strips
     stl.add_box(-ant_w/2.0, -ant_w/2.0 + 3.5, ant_y_start, ant_y_end - 3.5, 0.0, z_floor)
     stl.add_box(ant_w/2.0 - 3.5, ant_w/2.0, ant_y_start, ant_y_end - 3.5, 0.0, z_floor)
-    # Rounded corners at antenna pod top
     stl.add_solid_corner(-ant_w/2.0 + 3.5, ant_y_end - 3.5, 3.5, math.pi/2.0, math.pi, 0.0, z_floor, n_segs=8)
     stl.add_solid_corner(ant_w/2.0 - 3.5, ant_y_end - 3.5, 3.5, 0, math.pi/2.0, 0.0, z_floor, n_segs=8)
     stl.add_box(-ant_w/2.0 + 3.5, ant_w/2.0 - 3.5, ant_y_end - 3.5, ant_y_end, 0.0, z_floor)
 
     # -------------------------------------------------------------
-    # 2. Main PCB Circular Wall (Z = 2.0 to 5.8)
+    # 2. Main PCB Perimeter Walls (Z = 2.0 to 5.8)
     # -------------------------------------------------------------
-    def add_pcb_wall(a_start_deg, a_end_deg, z0=z_floor, z1=z_parting, n=8):
+    def add_pcb_wall(a_start_deg, a_end_deg, z0=z_floor, z1=z_parting, n=6):
         stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(a_start_deg), math.radians(a_end_deg), z0, z1, n_segs=n)
 
     def add_snap_recess(cen_deg):
@@ -174,55 +172,54 @@ def build_bottom_shell(filepath):
         stl.add_corner_arc(0, 0, cavity_r + 0.45, case_r, math.radians(a0), math.radians(a1), 3.6, 5.2, n_segs=4)
         stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(a0), math.radians(a1), 5.2, z_parting, n_segs=4)
 
-    # 1. East Sector (0 to 58 deg) with Snap Recess at 35 deg & Pry notch at 0 deg
-    stl.add_corner_arc(0, 0, cavity_r, case_r - 1.2, math.radians(-3), math.radians(3), 4.8, z_parting, n_segs=4)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(-3), math.radians(3), z_floor, 4.8, n_segs=4)
+    # 1. [348° to 12°] 3 点钟 Type-C 接口 (East / Right side)
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(-12.0), math.radians(12.0), z_floor, 2.3, n_segs=6)
 
-    add_pcb_wall(3, 31.8, n=6)
-    add_snap_recess(35.0)
-    add_pcb_wall(38.2, 58.0, n=4)
+    # 2. [12° to 58°] East-North Sector (包含 32° MIC1 下半及 50° Snap-fit 卡扣)
+    add_pcb_wall(12.0, 46.8, n=6)
+    add_snap_recess(50.0)
+    add_pcb_wall(53.2, 58.0, n=2)
 
-    # 2. 12 o'clock sector (58 to 122 deg) - Opens into enlarged antenna pod!
+    # 3. [58° to 122°] 12 点钟 Antenna Pod 通道与隔桥
     stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(58.0), math.radians(78.0), z_floor, z_parting, n_segs=4)
     stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(102.0), math.radians(122.0), z_floor, z_parting, n_segs=4)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(78.0), math.radians(102.0), 4.2, z_parting, n_segs=6) # Top bridge
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(78.0), math.radians(102.0), 4.2, z_parting, n_segs=6) # 走线过桥
 
-    # 3. North-West Sector (122 to 165 deg) with Snap Recess at 145 deg
-    add_pcb_wall(122.0, 141.8, n=4)
-    add_snap_recess(145.0)
-    add_pcb_wall(148.2, 165.0, n=4)
+    # 4. [122° to 167°] North-West Sector (包含 128° Snap-fit 卡扣 与 148° PWR 按键)
+    add_pcb_wall(122.0, 124.8, n=2)
+    add_snap_recess(128.0)
+    add_pcb_wall(131.2, 142.5, n=4)
+    # PWR 按键开孔 (142.5° to 153.5°, Z=2.8..5.4)
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(142.5), math.radians(153.5), z_floor, 2.8, n_segs=4)
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(142.5), math.radians(153.5), 5.4, z_parting, n_segs=4)
+    add_pcb_wall(153.5, 167.0, n=4)
 
-    # 4. West 9 o'clock sector (165 to 195 deg) - MicroSD Slot & Pry Notch at 180 deg
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(165.0), math.radians(195.0), z_floor, 2.6, n_segs=6)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(165.0), math.radians(177.0), 4.6, z_parting, n_segs=4)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(183.0), math.radians(195.0), 4.6, z_parting, n_segs=4)
-    stl.add_corner_arc(0, 0, cavity_r, case_r - 1.2, math.radians(177.0), math.radians(183.0), 4.6, 4.8, n_segs=2)
+    # 5. [167° to 193°] 9 点钟 TF / MicroSD 卡槽 (West / Left side)
+    # TF 卡插槽开孔 (Z = 2.6 到 4.8)
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(167.0), math.radians(193.0), z_floor, 2.6, n_segs=6)
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(167.0), math.radians(193.0), 4.8, z_parting, n_segs=6)
 
-    # 5. South-West Sector (195 to 255 deg) with Snap Recess at 215 deg
-    add_pcb_wall(195.0, 211.8, n=4)
-    add_snap_recess(215.0)
-    add_pcb_wall(218.2, 255.0, n=8)
+    # 6. [193° to 238°] South-West Sector (包含 212° BOOT 按键 与 232° Snap-fit 卡扣)
+    add_pcb_wall(193.0, 206.5, n=4)
+    # BOOT 按键开孔 (206.5° to 217.5°, Z=2.8..5.4)
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(206.5), math.radians(217.5), z_floor, 2.8, n_segs=4)
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(206.5), math.radians(217.5), 5.4, z_parting, n_segs=4)
+    add_pcb_wall(217.5, 228.8, n=4)
+    add_snap_recess(232.0)
+    add_pcb_wall(235.2, 238.0, n=2)
 
-    # 6. 6 o'clock USB Type-C Port (255 to 285 deg)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(255.0), math.radians(285.0), z_floor, 2.3, n_segs=6)
-
-    # 7. South-East Sector (285 to 360 deg) with Snap Recess at 325 deg
-    add_pcb_wall(285.0, 321.8, n=8)
-    add_snap_recess(325.0)
-    add_pcb_wall(328.2, 357.0, n=6)
+    # 7. [238° to 306°] 6 点钟 底部排母保护与连续外壁
+    add_pcb_wall(238.0, 306.8, n=16)
+    add_snap_recess(310.0)
+    add_pcb_wall(313.2, 348.0, n=8)
 
     # -------------------------------------------------------------
-    # 3. Enlarged Antenna Pod Perimeter Walls (Z = 2.0 to 5.8)
+    # 3. Antenna Pod Walls (Z = 2.0 to 5.8)
     # -------------------------------------------------------------
-    # Left wall (X = -14.6 to -12.8)
     stl.add_box(-ant_w/2.0, -ant_cav_w/2.0, ant_y_start, ant_cav_y_end, z_floor, z_parting)
-    # Right wall (X = 12.8 to 14.6)
     stl.add_box(ant_cav_w/2.0, ant_w/2.0, ant_y_start, ant_cav_y_end, z_floor, z_parting)
-    # Top back wall (Y = 49.4 to 51.2)
     stl.add_box(-ant_w/2.0 + 3.5, ant_w/2.0 - 3.5, ant_cav_y_end, ant_y_end, z_floor, z_parting)
-    # Top-Left rounded corner
     stl.add_corner_arc(-ant_w/2.0 + 3.5, ant_y_end - 3.5, 0, 3.5, math.pi/2.0, math.pi, z_floor, z_parting, n_segs=8)
-    # Top-Right rounded corner
     stl.add_corner_arc(ant_w/2.0 - 3.5, ant_y_end - 3.5, 0, 3.5, 0, math.pi/2.0, z_floor, z_parting, n_segs=8)
 
     is_wt, num_t, unmatched = stl.check_watertight()
@@ -233,13 +230,17 @@ def build_bottom_shell(filepath):
 
 def build_top_shell(filepath):
     """
-    Constructs Top Bezel Shell with Enlarged 25x25mm GNSS Antenna Hood.
+    Constructs Top Bezel Shell matching Official Layout:
+    - 3 o'clock Type-C upper clearance
+    - 2 o'clock & 4 o'clock ES7210 dual microphone acoustic holes
+    - 12 o'clock Antenna pod sealed RF hood
+    - 4 snap-fit tabs at 50°, 128°, 232°, 310°
     """
     stl = ModularSTL()
 
     case_r = 27.5
     cavity_r = 24.8       # Screen glass pocket dia 49.6 mm
-    screen_view_r = 22.7  # AMOLED front window dia 45.4 mm (1.8mm retaining flange)
+    screen_view_r = 22.1  # AMOLED active front window dia 44.2 mm (official screen frame)
     z_parting = 5.8       # Mating line
     z_glass_pocket = 8.2  # Glass pocket depth (2.4mm)
     z_ant_top = 9.6       # Antenna cavity ceiling (leaves 1.2mm solid roof)
@@ -255,11 +256,11 @@ def build_top_shell(filepath):
     # -------------------------------------------------------------
     # 1. Lower Layer of Top Shell (Z = 5.8 to 8.2)
     # -------------------------------------------------------------
-    # Outer circular perimeter wall (cavity_r <= r <= case_r)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(0), math.radians(58.0), z_parting, z_glass_pocket, n_segs=16)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(122.0), math.radians(256.0), z_parting, z_glass_pocket, n_segs=36)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(284.0), math.radians(360.0), z_parting, z_glass_pocket, n_segs=20)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(256.0), math.radians(284.0), 7.0, z_glass_pocket, n_segs=8)
+    # Type-C upper arch clearance at 3 o'clock (-12° to +12°)
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(12.0), math.radians(58.0), z_parting, z_glass_pocket, n_segs=16)
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(122.0), math.radians(348.0), z_parting, z_glass_pocket, n_segs=56)
+    # Type-C upper arch (leaves 1.2mm clearance at parting line)
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(-12.0), math.radians(12.0), 7.0, z_glass_pocket, n_segs=8)
 
     # Antenna pod lower perimeter walls (Z = 5.8 to 8.2)
     stl.add_box(-ant_w/2.0, -ant_cav_w/2.0, ant_y_start, ant_cav_y_end, z_parting, z_glass_pocket)
@@ -271,17 +272,15 @@ def build_top_shell(filepath):
     # -------------------------------------------------------------
     # 2. Upper Layer & Front Bezel (Z = 8.2 to 10.8)
     # -------------------------------------------------------------
-    # Front circular bezel (screen_view_r to case_r)
     stl.add_corner_arc(0, 0, screen_view_r, case_r, 0, 2.0 * math.pi, z_glass_pocket, z_top, n_segs=72)
 
-    # Antenna pod upper walls (Z = 8.2 to 9.6)
+    # Antenna pod upper walls & solid sealed RF roof
     stl.add_box(-ant_w/2.0, -ant_cav_w/2.0, ant_y_start, ant_cav_y_end, z_glass_pocket, z_ant_top)
     stl.add_box(ant_cav_w/2.0, ant_w/2.0, ant_y_start, ant_cav_y_end, z_glass_pocket, z_ant_top)
     stl.add_box(-ant_w/2.0 + 3.5, ant_w/2.0 - 3.5, ant_cav_y_end, ant_y_end, z_glass_pocket, z_ant_top)
     stl.add_corner_arc(-ant_w/2.0 + 3.5, ant_y_end - 3.5, 0, 3.5, math.pi/2.0, math.pi, z_glass_pocket, z_ant_top, n_segs=8)
     stl.add_corner_arc(ant_w/2.0 - 3.5, ant_y_end - 3.5, 0, 3.5, 0, math.pi/2.0, z_glass_pocket, z_ant_top, n_segs=8)
 
-    # Antenna pod solid sealed RF roof (Z = 9.6 to 10.8, 1.2mm thickness)
     stl.add_box(-ant_w/2.0 + 3.5, ant_w/2.0 - 3.5, ant_y_start, ant_y_end, z_ant_top, z_top)
     stl.add_box(-ant_w/2.0, -ant_w/2.0 + 3.5, ant_y_start, ant_y_end - 3.5, z_ant_top, z_top)
     stl.add_box(ant_w/2.0 - 3.5, ant_w/2.0, ant_y_start, ant_y_end - 3.5, z_ant_top, z_top)
@@ -289,10 +288,10 @@ def build_top_shell(filepath):
     stl.add_corner_arc(ant_w/2.0 - 3.5, ant_y_end - 3.5, 0, 3.5, 0, math.pi/2.0, z_ant_top, z_top, n_segs=8)
 
     # -------------------------------------------------------------
-    # 3. 4 Snap-fit Male Cantilever Tabs
+    # 3. 4 Snap-fit Male Cantilever Tabs (at 50°, 128°, 232°, 310°)
     # -------------------------------------------------------------
     tab_h = 2.1
-    for cen_deg in [35, 145, 215, 325]:
+    for cen_deg in [50, 128, 232, 310]:
         rad = math.radians(cen_deg)
         cx = cavity_r * math.cos(rad)
         cy = cavity_r * math.sin(rad)
@@ -302,10 +301,17 @@ def build_top_shell(filepath):
         stl.add_box(cx + dx - 1.2, cx + dx + 1.2, cy + dy - 1.2, cy + dy + 1.2, z_parting - 1.8, z_parting - 0.6)
 
     # -------------------------------------------------------------
-    # 4. ES7210 Dual Microphone Acoustic Pinholes
+    # 4. ES7210 Dual Microphone Acoustic Pinholes (2 o'clock & 4 o'clock)
     # -------------------------------------------------------------
-    stl.add_box(case_r - 2.5, case_r - 1.0, 7.2, 8.6, z_glass_pocket, z_top)
-    stl.add_box(case_r - 2.5, case_r - 1.0, -8.6, -7.2, z_glass_pocket, z_top)
+    # MIC1 at 32° (Y = +14.6mm)
+    rad1 = math.radians(32.0)
+    mx1, my1 = (case_r - 1.8) * math.cos(rad1), (case_r - 1.8) * math.sin(rad1)
+    stl.add_box(mx1 - 1.0, mx1 + 1.0, my1 - 1.0, my1 + 1.0, z_glass_pocket, z_top)
+
+    # MIC2 at 328° / -32° (Y = -14.6mm)
+    rad2 = math.radians(-32.0)
+    mx2, my2 = (case_r - 1.8) * math.cos(rad2), (case_r - 1.8) * math.sin(rad2)
+    stl.add_box(mx2 - 1.0, mx2 + 1.0, my2 - 1.0, my2 + 1.0, z_glass_pocket, z_top)
 
     is_wt, num_t, unmatched = stl.check_watertight()
     print(f"[{os.path.basename(filepath)}] Watertight: {is_wt} (Triangles: {num_t}, Unmatched: {unmatched})")
@@ -340,7 +346,7 @@ if __name__ == "__main__":
 
     print("\n=======================================================")
     print("Building ESP32-S3-Touch-AMOLED-1.75-G MagSafe Enclosure")
-    print("Enlarged Antenna Pod: 25x25mm GNSS Ceramic Antenna Support")
+    print("Updated: Official Physical Port Layout (Type-C at 3 o'clock)")
     print("=======================================================")
     build_bottom_shell(f_bot)
     build_top_shell(f_top)
