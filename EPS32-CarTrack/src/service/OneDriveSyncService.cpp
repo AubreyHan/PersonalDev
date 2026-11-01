@@ -597,6 +597,109 @@ bool OneDriveSyncService::uploadSingleTrack(const char* relPath) {
     return ok;
 }
 
+bool OneDriveSyncService::performSync(uint32_t maxFiles, uint32_t timeoutMs) {
+    if (WiFi.status() != WL_CONNECTED || !_isBound) {
+        return false;
+    }
+
+    if (_mutex) {
+        if (xSemaphoreTakeRecursive(_mutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+            return false;
+        }
+    }
+
+    _isSyncing = true;
+    uint32_t startMs = millis();
+
+    SystemState& state = SystemState::instance();
+    state.lock();
+    state.getContextUnsafe().onedrive.isSyncing = true;
+    state.getContextUnsafe().onedrive.lastSyncError[0] = '\0';
+    state.unlock();
+
+    if (!refreshAccessToken()) {
+        Serial.println("[ONEDRIVE] Could not obtain access token for sync.");
+        _isSyncing = false;
+        state.lock();
+        state.getContextUnsafe().onedrive.isSyncing = false;
+        strncpy(state.getContextUnsafe().onedrive.lastSyncError, "Token refresh failed", 47);
+        state.unlock();
+        if (_mutex) xSemaphoreGiveRecursive(_mutex);
+        return false;
+    }
+
+    // 1. Sync trips.csv first (overwrite cloud copy with latest summaries)
+    syncTripsCsv();
+
+    // 2. Sync closed track files
+    TrackFileEntry entries[64];
+    size_t total = TrackLogger::instance().listTrackFiles(entries, 64);
+
+    state.lock();
+    const auto& st = state.getContextUnsafe().storage;
+    char curW[64], curC[64], curD[64], curS[64];
+    strncpy(curW, st.currentWgsFile, sizeof(curW) - 1);
+    strncpy(curC, st.currentGcjFile, sizeof(curC) - 1);
+    strncpy(curD, st.currentDailyFile, sizeof(curD) - 1);
+    strncpy(curS, st.currentSubFile, sizeof(curS) - 1);
+    state.unlock();
+
+    uint32_t uploadedCount = 0;
+    for (size_t i = 0; i < total; i++) {
+        if (millis() - startMs > timeoutMs) {
+            Serial.println("[ONEDRIVE] Sync reached timeout limit, deferring remaining.");
+            break;
+        }
+        if (maxFiles > 0 && uploadedCount >= maxFiles) {
+            break;
+        }
+
+        const char* name = entries[i].name;
+        // Skip files currently open and being actively recorded
+        if (curW[0] != '\0' && strcmp(name, curW) == 0) continue;
+        if (curC[0] != '\0' && strcmp(name, curC) == 0) continue;
+        if (curD[0] != '\0' && strcmp(name, curD) == 0) continue;
+        if (curS[0] != '\0' && strcmp(name, curS) == 0) continue;
+
+        if (!isFileInSyncedLedger(name)) {
+            Serial.printf("[ONEDRIVE] Syncing %s to OneDrive...\n", name);
+            if (uploadSingleTrack(name)) {
+                uploadedCount++;
+            }
+        }
+    }
+
+    _isSyncing = false;
+    _lastSyncEpoch = (uint32_t)time(nullptr);
+
+    Preferences prefs;
+    if (prefs.begin("m5track", false)) {
+        prefs.putUInt("od_last_sync", _lastSyncEpoch);
+        prefs.end();
+    }
+
+    uint32_t rem = scanPendingFilesCount();
+    state.lock();
+    state.getContextUnsafe().onedrive.isSyncing = false;
+    state.getContextUnsafe().onedrive.lastSyncEpoch = _lastSyncEpoch;
+    state.getContextUnsafe().onedrive.pendingCount = rem;
+    state.getContextUnsafe().onedrive.currentUploadingFile[0] = '\0';
+    state.getContextUnsafe().onedrive.uploadProgressPercent = 0;
+    state.unlock();
+
+    Serial.printf("[ONEDRIVE] Sync finished. Uploaded: %u, Remaining: %u\n", uploadedCount, rem);
+    if (_mutex) xSemaphoreGiveRecursive(_mutex);
+    return true;
+}
+
+bool OneDriveSyncService::syncBeforeSleep(uint32_t timeoutMs) {
+    if (WiFi.status() != WL_CONNECTED || !_isBound) {
+        return false;
+    }
+    Serial.println("[ONEDRIVE] Pre-sleep cloud sync started...");
+    return performSync(0, timeoutMs);
+}
+
 void OneDriveSyncService::taskLoop() {
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -630,71 +733,7 @@ void OneDriveSyncService::taskLoop() {
 
         if (shouldSync) {
             _manualSyncRequested = false;
-            _isSyncing = true;
-
-            SystemState& state = SystemState::instance();
-            state.lock();
-            state.getContextUnsafe().onedrive.isSyncing = true;
-            state.getContextUnsafe().onedrive.lastSyncError[0] = '\0';
-            state.unlock();
-
-            if (!refreshAccessToken()) {
-                Serial.println("[ONEDRIVE] Could not obtain access token for sync.");
-                _isSyncing = false;
-                state.lock();
-                state.getContextUnsafe().onedrive.isSyncing = false;
-                strncpy(state.getContextUnsafe().onedrive.lastSyncError, "Token refresh failed", 47);
-                state.unlock();
-                continue;
-            }
-
-            // Sync trips.csv first
-            syncTripsCsv();
-
-            // Sync closed track files
-            TrackFileEntry entries[64];
-            size_t total = TrackLogger::instance().listTrackFiles(entries, 64);
-
-            state.lock();
-            const auto& st = state.getContextUnsafe().storage;
-            char curW[64], curC[64], curD[64], curS[64];
-            strncpy(curW, st.currentWgsFile, sizeof(curW) - 1);
-            strncpy(curC, st.currentGcjFile, sizeof(curC) - 1);
-            strncpy(curD, st.currentDailyFile, sizeof(curD) - 1);
-            strncpy(curS, st.currentSubFile, sizeof(curS) - 1);
-            state.unlock();
-
-            for (size_t i = 0; i < total; i++) {
-                const char* name = entries[i].name;
-                if (strcmp(name, curW) == 0 || strcmp(name, curC) == 0 ||
-                    strcmp(name, curD) == 0 || strcmp(name, curS) == 0) {
-                    continue; // Skip actively recording tracks
-                }
-                if (!isFileInSyncedLedger(name)) {
-                    Serial.printf("[ONEDRIVE] Syncing %s to OneDrive...\n", name);
-                    uploadSingleTrack(name);
-                }
-            }
-
-            _isSyncing = false;
-            _lastSyncEpoch = (uint32_t)time(nullptr);
-
-            Preferences prefs;
-            if (prefs.begin("m5track", false)) {
-                prefs.putUInt("od_last_sync", _lastSyncEpoch);
-                prefs.end();
-            }
-
-            uint32_t rem = scanPendingFilesCount();
-            state.lock();
-            state.getContextUnsafe().onedrive.isSyncing = false;
-            state.getContextUnsafe().onedrive.lastSyncEpoch = _lastSyncEpoch;
-            state.getContextUnsafe().onedrive.pendingCount = rem;
-            state.getContextUnsafe().onedrive.currentUploadingFile[0] = '\0';
-            state.getContextUnsafe().onedrive.uploadProgressPercent = 0;
-            state.unlock();
-
-            Serial.printf("[ONEDRIVE] Sync complete. Pending remaining: %u\n", rem);
+            performSync(0, 60000);
         }
     }
 }
