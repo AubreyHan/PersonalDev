@@ -1,37 +1,33 @@
 #include "RtcDriver_PCF85063.h"
-#include <driver/i2c.h>
+#include <Wire.h>
 
-#define I2C_PORT         I2C_NUM_0
 #define PCF85063_ADDR    0x51
 #define REG_CONTROL_1    0x00
 #define REG_SECONDS      0x04
 
+static inline uint8_t bcd2dec(uint8_t val) {
+    return ((val >> 4) * 10) + (val & 0x0F);
+}
+
+static inline uint8_t dec2bcd(uint8_t val) {
+    return ((val / 10) << 4) | (val % 10);
+}
+
 bool RtcDriver_PCF85063::init() {
     Serial.println("[PCF85063] Probing PCF85063 RTC at 0x51...");
 
-    // Test probe
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (PCF85063_ADDR << 1) | I2C_MASTER_WRITE, true);
-    i2c_master_stop(cmd);
-    esp_err_t ret = i2c_master_cmd_begin(I2C_PORT, cmd, pdMS_TO_TICKS(100));
-    i2c_cmd_link_delete(cmd);
-
-    if (ret == ESP_OK) {
+    Wire.beginTransmission(PCF85063_ADDR);
+    if (Wire.endTransmission() == 0) {
         _isOnline = true;
         Serial.println("[PCF85063] RTC is online!");
 
         // Clear STOP bit in Control_1 if set
-        uint8_t ctrl[2] = {REG_CONTROL_1, 0x00};
-        cmd = i2c_cmd_link_create();
-        i2c_master_start(cmd);
-        i2c_master_write_byte(cmd, (PCF85063_ADDR << 1) | I2C_MASTER_WRITE, true);
-        i2c_master_write(cmd, ctrl, sizeof(ctrl), true);
-        i2c_master_stop(cmd);
-        i2c_master_cmd_begin(I2C_PORT, cmd, pdMS_TO_TICKS(100));
-        i2c_cmd_link_delete(cmd);
+        Wire.beginTransmission(PCF85063_ADDR);
+        Wire.write(REG_CONTROL_1);
+        Wire.write(0x00);
+        Wire.endTransmission();
     } else {
-        Serial.printf("[PCF85063] Probe failed (err=0x%x)\n", ret);
+        Serial.println("[PCF85063] Probe failed");
         _isOnline = false;
     }
     return _isOnline;
@@ -40,24 +36,16 @@ bool RtcDriver_PCF85063::init() {
 bool RtcDriver_PCF85063::readTime(RtcTimeInfo& outTime) {
     if (!_isOnline) return false;
 
-    // Send register pointer 0x04 (Seconds)
-    uint8_t reg = REG_SECONDS;
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (PCF85063_ADDR << 1) | I2C_MASTER_WRITE, true);
-    i2c_master_write_byte(cmd, reg, true);
+    Wire.beginTransmission(PCF85063_ADDR);
+    Wire.write(REG_SECONDS);
+    if (Wire.endTransmission(false) != 0) return false;
 
-    // Repeated start to read 7 bytes (sec, min, hr, day, weekday, month, yr)
-    uint8_t buf[7] = {0};
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (PCF85063_ADDR << 1) | I2C_MASTER_READ, true);
-    i2c_master_read(cmd, buf, 7, I2C_MASTER_LAST_NACK);
-    i2c_master_stop(cmd);
+    if (Wire.requestFrom((uint8_t)PCF85063_ADDR, (size_t)7) != 7) return false;
 
-    esp_err_t ret = i2c_master_cmd_begin(I2C_PORT, cmd, pdMS_TO_TICKS(100));
-    i2c_cmd_link_delete(cmd);
-
-    if (ret != ESP_OK) return false;
+    uint8_t buf[7];
+    for (int i = 0; i < 7; i++) {
+        buf[i] = Wire.read();
+    }
 
     outTime.second  = bcd2dec(buf[0] & 0x7F);
     outTime.minute  = bcd2dec(buf[1] & 0x7F);
@@ -73,26 +61,17 @@ bool RtcDriver_PCF85063::readTime(RtcTimeInfo& outTime) {
 bool RtcDriver_PCF85063::writeTime(const RtcTimeInfo& inTime) {
     if (!_isOnline) return false;
 
-    uint8_t data[8];
-    data[0] = REG_SECONDS;
-    data[1] = dec2bcd(inTime.second) & 0x7F;
-    data[2] = dec2bcd(inTime.minute) & 0x7F;
-    data[3] = dec2bcd(inTime.hour)   & 0x3F;
-    data[4] = dec2bcd(inTime.day)    & 0x3F;
-    data[5] = dec2bcd(inTime.weekday)& 0x07;
-    data[6] = dec2bcd(inTime.month)  & 0x1F;
-    data[7] = dec2bcd((uint8_t)(inTime.year % 100));
+    Wire.beginTransmission(PCF85063_ADDR);
+    Wire.write(REG_SECONDS);
+    Wire.write(dec2bcd(inTime.second) & 0x7F);
+    Wire.write(dec2bcd(inTime.minute) & 0x7F);
+    Wire.write(dec2bcd(inTime.hour)   & 0x3F);
+    Wire.write(dec2bcd(inTime.day)    & 0x3F);
+    Wire.write(dec2bcd(inTime.weekday)& 0x07);
+    Wire.write(dec2bcd(inTime.month)  & 0x1F);
+    Wire.write(dec2bcd((uint8_t)(inTime.year % 100)));
 
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (PCF85063_ADDR << 1) | I2C_MASTER_WRITE, true);
-    i2c_master_write(cmd, data, sizeof(data), true);
-    i2c_master_stop(cmd);
-
-    esp_err_t ret = i2c_master_cmd_begin(I2C_PORT, cmd, pdMS_TO_TICKS(100));
-    i2c_cmd_link_delete(cmd);
-
-    if (ret == ESP_OK) {
+    if (Wire.endTransmission() == 0) {
         Serial.printf("[PCF85063] Time written: %04d-%02d-%02d %02d:%02d:%02d\n",
                       inTime.year, inTime.month, inTime.day,
                       inTime.hour, inTime.minute, inTime.second);
