@@ -447,15 +447,39 @@ void UiManager_AMOLED::handleTouch(int16_t x, int16_t y, bool isPressed) {
             _touchDown = true;
             _touchStartX = x;
             _touchStartY = y;
+            _touchStartTime = millis();
         }
+        _touchLastX = x;
+        _touchLastY = y;
     } else {
         if (_touchDown) {
             _touchDown = false;
-            int16_t dx = x - _touchStartX;
-            if (dx < -50) {
-                nextPage();
-            } else if (dx > 50) {
-                prevPage();
+            int16_t dx = _touchLastX - _touchStartX;
+            int16_t dy = _touchLastY - _touchStartY;
+            uint32_t duration = millis() - _touchStartTime;
+
+            Serial.printf("[UI Touch] Released! dx=%d, dy=%d, dur=%ums, at=(%d,%d)\n",
+                          dx, dy, duration, _touchLastX, _touchLastY);
+
+            // 1. Horizontal Swipe (dominant horizontal movement >= 35px)
+            if (abs(dx) > abs(dy) && abs(dx) >= 35) {
+                if (dx < 0) {
+                    Serial.println("[UI Touch] Swipe Left -> Next Page");
+                    nextPage();
+                } else {
+                    Serial.println("[UI Touch] Swipe Right -> Prev Page");
+                    prevPage();
+                }
+            }
+            // 2. Tap Gesture (short duration and minimal movement)
+            else if (duration < 600 && abs(dx) < 30 && abs(dy) < 30) {
+                if (_touchLastX > 280) {
+                    Serial.println("[UI Touch] Tap Right -> Next Page");
+                    nextPage();
+                } else if (_touchLastX < 186) {
+                    Serial.println("[UI Touch] Tap Left -> Prev Page");
+                    prevPage();
+                }
             }
         }
     }

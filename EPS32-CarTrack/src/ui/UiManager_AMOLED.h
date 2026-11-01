@@ -54,4 +54,7 @@ private:
     bool    _touchDown = false;
     int16_t _touchStartX = 0;
     int16_t _touchStartY = 0;
+    int16_t _touchLastX = 0;
+    int16_t _touchLastY = 0;
+    uint32_t _touchStartTime = 0;
 };
