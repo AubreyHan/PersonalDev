@@ -4,7 +4,7 @@
 
 void NetworkManager_Setup::init() {
     uint8_t mac[6];
-    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    WiFi.macAddress(mac);
     snprintf(_apSsid, sizeof(_apSsid), "%s%02X%02X",
              NetworkConfig::AP_SSID_PREFIX, mac[4], mac[5]);
     snprintf(_qrString, sizeof(_qrString), "http://%s", NetworkConfig::AP_DEFAULT_IP);
