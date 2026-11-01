@@ -1,10 +1,13 @@
 #include "GnssDriver_LC76G.h"
+#include <Wire.h>
 #include <Preferences.h>
 #include <cmath>
 
 #define LC76G_PIN_RX   18
 #define LC76G_PIN_TX   17
 #define LC76G_BAUD     9600
+#define LC76G_ADDR_W   0x50
+#define LC76G_ADDR_R   0x54
 
 static uint8_t calcChecksum(const char* sentence) {
     uint8_t checksum = 0;
@@ -16,15 +19,16 @@ static uint8_t calcChecksum(const char* sentence) {
 }
 
 bool GnssDriver_LC76G::init() {
-    Serial.println("[LC76G] Initializing Quectel LC76G GNSS via UART (RX:18, TX:17, 9600 baud)...");
+    Serial.println("[LC76G] Initializing Quectel LC76G GNSS...");
 
+    // 1. Initialize Hardware UART (RX:18, TX:17)
     Serial1.begin(LC76G_BAUD, SERIAL_8N1, LC76G_PIN_RX, LC76G_PIN_TX);
     _isOnline = true;
 
-    // Configure GNSS Performance Parameters
+    // 2. Configure Constellations & Output Rates
     configureAutomotiveModel();
 
-    // Attempt Hot Start injection from NVS
+    // 3. Attempt Hot Start injection from NVS
     loadAndInjectHotStart();
 
     return _isOnline;
@@ -36,33 +40,96 @@ void GnssDriver_LC76G::sendPairCommand(const char* cmd) {
     snprintf(fullCmd, sizeof(fullCmd), "$%s*%02X\r\n", cmd, cs);
 
     Serial1.print(fullCmd);
+
+    // Also send over I2C write address if available
+    Wire.beginTransmission(LC76G_ADDR_W);
+    Wire.write((const uint8_t*)fullCmd, strlen(fullCmd));
+    Wire.endTransmission();
+
     Serial.printf("[LC76G TX] %s", fullCmd);
 }
 
 void GnssDriver_LC76G::configureAutomotiveModel() {
     vTaskDelay(pdMS_TO_TICKS(100));
 
-    // 1. Enable Quad-Constellation (GPS=1, GLONASS=1, Galileo=1, BeiDou=1, QZSS=0, NavIC=0)
+    // Wakeup / Ensure Active Mode
+    sendPairCommand("PAIR002");
+    vTaskDelay(pdMS_TO_TICKS(40));
+
+    // Enable Quad-Constellation (GPS=1, GLONASS=1, Galileo=1, BeiDou=1)
     sendPairCommand("PAIR066,1,1,1,1,0,0");
-    vTaskDelay(pdMS_TO_TICKS(50));
+    vTaskDelay(pdMS_TO_TICKS(40));
 
-    // 2. Set Elevation Mask Angle to 15 degrees to filter noisy ground multipath
+    // 15° Elevation Mask Angle
     sendPairCommand("PAIR070,15");
-    vTaskDelay(pdMS_TO_TICKS(50));
+    vTaskDelay(pdMS_TO_TICKS(40));
 
-    // 3. Set Platform Model to Automotive (1: Automotive, 0: Portable, 2: Pedestrian)
+    // Platform Model: Automotive
     sendPairCommand("PAIR080,1");
-    vTaskDelay(pdMS_TO_TICKS(50));
+    vTaskDelay(pdMS_TO_TICKS(40));
 
-    // 4. Enable EASY (Embedded Assist System - autonomous orbit prediction for up to 3 days)
+    // Autonomous Orbit Prediction (EASY)
     sendPairCommand("PAIR432,1");
-    vTaskDelay(pdMS_TO_TICKS(50));
+    vTaskDelay(pdMS_TO_TICKS(40));
+
+    // Enable all standard NMEA sentences output at 1Hz
+    sendPairCommand("PAIR062,-1,1");
+    vTaskDelay(pdMS_TO_TICKS(40));
 
     Serial.println("[LC76G] Configured: Quad-Constellation, 15° Mask, Automotive Model, EASY ON");
 }
 
+void GnssDriver_LC76G::pollI2cStream() {
+    // Quectel LC76G I2C Mailbox protocol length query
+    uint8_t queryData[] = { 0x08, 0x00, 0x51, 0xAA, 0x04, 0x00, 0x00, 0x00 };
+    Wire.beginTransmission(LC76G_ADDR_W);
+    Wire.write(queryData, sizeof(queryData));
+    if (Wire.endTransmission() != 0) {
+        return;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(5));
+
+    if (Wire.requestFrom((uint8_t)LC76G_ADDR_R, (size_t)4) != 4) {
+        return;
+    }
+
+    uint32_t availLen = 0;
+    availLen |= Wire.read();
+    availLen |= (Wire.read() << 8);
+    availLen |= (Wire.read() << 16);
+    availLen |= (Wire.read() << 24);
+
+    if (availLen > 0 && availLen < 512) {
+        _usingI2c = true;
+        uint8_t readCount = Wire.requestFrom((uint8_t)LC76G_ADDR_R, (size_t)availLen);
+        while (readCount > 0 && Wire.available()) {
+            char c = (char)Wire.read();
+            readCount--;
+            _totalBytes++;
+            _gps.encode(c);
+
+            if (c == '\n' || c == '\r') {
+                if (_nmeaIndex > 0) {
+                    _nmeaBuffer[_nmeaIndex] = '\0';
+                    parseNmeaSentence(_nmeaBuffer);
+                    _nmeaIndex = 0;
+                }
+            } else if (_nmeaIndex < sizeof(_nmeaBuffer) - 1) {
+                _nmeaBuffer[_nmeaIndex++] = c;
+            }
+        }
+    }
+}
+
 void GnssDriver_LC76G::update() {
     parseNmeaStream();
+
+    // If UART has zero bytes received after 2 seconds, check I2C mailbox
+    if (_totalBytes == 0 && millis() > 2000) {
+        pollI2cStream();
+    }
+
     updateStabilityFilter();
 
     // Periodic NVS save every 15s when fix is valid
@@ -70,40 +137,171 @@ void GnssDriver_LC76G::update() {
         saveNvsSnapshot();
         _lastNvsSaveMs = millis();
     }
+
+    // Periodic diagnostics log every 2 seconds
+    uint32_t now = millis();
+    if (now - _lastDiagMs >= 2000) {
+        _lastDiagMs = now;
+        logDiagnostics();
+    }
 }
 
 void GnssDriver_LC76G::parseNmeaStream() {
     while (Serial1.available()) {
         char c = (char)Serial1.read();
+        _totalBytes++;
         if (c == 0x00 || (uint8_t)c == 0xFF) continue;
 
         _gps.encode(c);
 
-        // Parse VDOP / GSA sentences manually if available
         if (c == '\n' || c == '\r') {
             if (_nmeaIndex > 0) {
                 _nmeaBuffer[_nmeaIndex] = '\0';
-                if (strstr(_nmeaBuffer, "GSA") != nullptr) {
-                    char* token = strtok(_nmeaBuffer, ",");
-                    int fieldIdx = 0;
-                    float parsedVdop = 0.0f;
-                    while (token != nullptr) {
-                        fieldIdx++;
-                        if (fieldIdx == 17) {
-                            parsedVdop = atof(token);
-                            if (parsedVdop > 0.1f && parsedVdop < 50.0f) {
-                                _vdop = parsedVdop;
-                            }
-                        }
-                        token = strtok(nullptr, ",");
-                    }
-                }
+                parseNmeaSentence(_nmeaBuffer);
                 _nmeaIndex = 0;
             }
         } else if (_nmeaIndex < sizeof(_nmeaBuffer) - 1) {
             _nmeaBuffer[_nmeaIndex++] = c;
         }
     }
+}
+
+void GnssDriver_LC76G::parseNmeaSentence(const char* sentence) {
+    if (!sentence || *sentence != '$') return;
+
+    // 1. Parse GSV (Satellites in view & SNR / C/N0)
+    if (strstr(sentence, "GSV") != nullptr) {
+        parseGsvSentence(sentence);
+    }
+    // 2. Parse GSA (VDOP & Active Fix Type)
+    else if (strstr(sentence, "GSA") != nullptr) {
+        char copy[160];
+        strncpy(copy, sentence, sizeof(copy) - 1);
+        copy[sizeof(copy) - 1] = '\0';
+
+        char* token = strtok(copy, ",");
+        int fieldIdx = 0;
+        while (token != nullptr) {
+            fieldIdx++;
+            if (fieldIdx == 17) { // 17th token is VDOP
+                float parsedVdop = atof(token);
+                if (parsedVdop > 0.1f && parsedVdop < 50.0f) {
+                    _vdop = parsedVdop;
+                }
+            }
+            token = strtok(nullptr, ",");
+        }
+    }
+    // 3. Parse Quectel Antenna Status ($PQTMANT)
+    else if (strstr(sentence, "PQTMANT") != nullptr) {
+        // Format: $PQTMANT,status*cs
+        const char* p = strchr(sentence, ',');
+        if (p) {
+            int code = atoi(p + 1);
+            if (code == 0) strncpy(_antennaStatus, "NORMAL (OK)", sizeof(_antennaStatus));
+            else if (code == 1) strncpy(_antennaStatus, "OPEN (DISCONNECTED)", sizeof(_antennaStatus));
+            else if (code == 2) strncpy(_antennaStatus, "SHORTED", sizeof(_antennaStatus));
+        }
+    }
+}
+
+void GnssDriver_LC76G::parseGsvSentence(const char* sentence) {
+    char copy[160];
+    strncpy(copy, sentence, sizeof(copy) - 1);
+    copy[sizeof(copy) - 1] = '\0';
+
+    char* token = strtok(copy, ",");
+    int field = 0;
+    int totalSats = 0;
+
+    char* fields[24];
+    while (token && field < 24) {
+        fields[field++] = token;
+        token = strtok(nullptr, ",");
+    }
+
+    if (field >= 4) {
+        totalSats = atoi(fields[3]);
+        if (totalSats > 0) {
+            _satsInView = totalSats;
+        }
+
+        // Each satellite has 4 fields: PRN, Elevation, Azimuth, SNR
+        int satBlock = 4;
+        while (satBlock + 3 < field) {
+            uint8_t prn = atoi(fields[satBlock]);
+            uint8_t elev = atoi(fields[satBlock + 1]);
+            uint16_t azim = atoi(fields[satBlock + 2]);
+            uint8_t snr = atoi(fields[satBlock + 3]);
+
+            if (snr > _maxSnr) {
+                _maxSnr = snr;
+            }
+
+            // Save to top satellites list
+            if (prn > 0 && _topSatCount < 12) {
+                bool found = false;
+                for (uint8_t s = 0; s < _topSatCount; ++s) {
+                    if (_topSats[s].prn == prn) {
+                        _topSats[s].snr = snr;
+                        _topSats[s].elevation = elev;
+                        _topSats[s].azimuth = azim;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    _topSats[_topSatCount++] = {prn, elev, azim, snr};
+                }
+            }
+
+            satBlock += 4;
+        }
+    }
+
+    // Determine antenna RF condition from SNR
+    if (_satsInView == 0) {
+        strncpy(_antennaStatus, "SEARCHING (0 SATS)", sizeof(_antennaStatus));
+    } else if (_maxSnr == 0) {
+        strncpy(_antennaStatus, "NO RF (ANTENNA DISCONN?)", sizeof(_antennaStatus));
+    } else if (_maxSnr < 25) {
+        strncpy(_antennaStatus, "WEAK (INDOOR)", sizeof(_antennaStatus));
+    } else if (_maxSnr < 35) {
+        strncpy(_antennaStatus, "MODERATE (ACQUIRING)", sizeof(_antennaStatus));
+    } else {
+        strncpy(_antennaStatus, "EXCELLENT RF (>35dB)", sizeof(_antennaStatus));
+    }
+}
+
+void GnssDriver_LC76G::logDiagnostics() {
+    Serial.println("\n----------------- [GPS & ANTENNA DIAGNOSTICS] -----------------");
+    Serial.printf(" Interface      : %s | Total Stream Bytes: %u\n",
+                  _usingI2c ? "I2C (0x50/0x54)" : "UART1 (RX:GPIO18, TX:GPIO17)", _totalBytes);
+    Serial.printf(" Antenna Status : %s\n", _antennaStatus);
+    Serial.printf(" Satellites     : In View: %u | In Fix: %u\n", _satsInView, _activeSats);
+    Serial.printf(" Peak RF SNR    : %u dB-Hz (Threshold for 3D FIX: >=28 dB-Hz)\n", _maxSnr);
+    Serial.printf(" Precision      : HDOP: %.1f | VDOP: %.1f\n", _hdop, _vdop);
+
+    if (_gps.location.isValid()) {
+        Serial.printf(" Fix Status     : %s\n", _isStable ? "3D FIX [STABLE CONVERGED]" : "3D FIX [CONVERGING]");
+        Serial.printf(" Coordinates    : %.6f %c, %.6f %c | Altitude: %.1f m\n",
+                      fabs(_gps.location.lat()), _gps.location.lat() >= 0 ? 'N' : 'S',
+                      fabs(_gps.location.lng()), _gps.location.lng() >= 0 ? 'E' : 'W',
+                      _filteredAltitude);
+        Serial.printf(" Speed / Heading: %.1f km/h | Course: %.1f deg\n",
+                      _gps.speed.kmph(), _gps.course.deg());
+    } else {
+        Serial.println(" Fix Status     : NO FIX (Acquiring almanac & ephemeris...)");
+    }
+
+    if (_topSatCount > 0) {
+        Serial.print(" Satellites Tracked: ");
+        for (uint8_t i = 0; i < _topSatCount && i < 6; ++i) {
+            Serial.printf("[#%02u: %udB] ", _topSats[i].prn, _topSats[i].snr);
+        }
+        Serial.println();
+    }
+    Serial.println("----------------------------------------------------------------");
 }
 
 void GnssDriver_LC76G::updateStabilityFilter() {
@@ -182,28 +380,23 @@ void GnssDriver_LC76G::updateAltitudeFilter(float rawMslAlt) {
     if (dt <= 0.0f) dt = 0.05f;
     _lastAltUpdateMs = now;
 
-    // Outlier rejection: reject physical jumps > MAX_CLIMB_RATE_M_S * dt
+    // Outlier rejection
     float diff = rawMslAlt - _filteredAltitude;
     float maxDelta = GnssFilterConfig::MAX_CLIMB_RATE_MPS * dt + 1.0f;
     if (fabs(diff) > maxDelta && !_isStaticLocked) {
-        // Dampen extreme jumps
         rawMslAlt = _filteredAltitude + (diff > 0 ? maxDelta : -maxDelta);
     }
 
     // If static locked (vehicle stationary), clamp altitude to prevent drift
     if (_isStaticLocked) {
-        // High process stability: altitude shouldn't move when stationary
         return;
     }
 
     // Dynamic measurement variance based on VDOP
     float R = (_vdop > 0.5f) ? (_vdop * _vdop * 0.8f) : 2.0f;
-    float Q = 0.04f * dt; // Process noise
+    float Q = 0.04f * dt;
 
-    // Prediction
     float pPredicted = _altVarianceEstimate + Q;
-
-    // Measurement update
     float K = pPredicted / (pPredicted + R);
     _filteredAltitude = _filteredAltitude + K * (rawMslAlt - _filteredAltitude);
     _altVarianceEstimate = (1.0f - K) * pPredicted;
@@ -250,7 +443,6 @@ bool GnssDriver_LC76G::loadAndInjectHotStart() {
         return false;
     }
 
-    // Inject PAIR006: Position & Time initialization for 1-3s hot start TTFF
     char injectCmd[80];
     snprintf(injectCmd, sizeof(injectCmd),
              "PAIR006,%04d,%02d,%02d,%02d,%02d,%02d,%.6f,%.6f,%.1f",
