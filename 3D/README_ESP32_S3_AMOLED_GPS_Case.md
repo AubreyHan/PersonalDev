@@ -41,7 +41,7 @@
 | **内部 PCB 仓内径** | $\varnothing 49.6\text{ mm}$ | 单边预留 $0.3\text{ mm}$ 3D 打印装配公差 |
 | **屏幕正面视窗直径** | $\varnothing 45.4\text{ mm}$ | 完整露出圆形显示区，保护边缘玻璃 |
 | **MagSafe 沉槽尺寸** | 外径 $54.2$ / 内径 $45.8$ / 深 $1.2\text{ mm}$ | 适配通用磁吸引磁片/磁吸圈，贴合后全平整 |
-| **外置天线仓容积** | $18.6\text{ mm} \times 18.6\text{ mm} \times 4.6\text{ mm}$ | 完美容纳标配 $15\times 15$ 或 $18\times 18$ 陶瓷天线 |
+| **外置天线仓容积** | $25.6\text{ mm} \times 25.6\text{ mm} \times 7.6\text{ mm}$ | 完美容纳标配 $25\times 25\text{ mm}$ 大尺寸高增益陶瓷天线（支持厚度达 6.5mm 带屏蔽罩的有源天线） |
 | **Type-C 开口尺寸** | $11.2\text{ mm} \times 4.8\text{ mm}$ | 带倒角扩展，兼容车载粗外壳线缆 |
 | **卡扣锁紧行程** | 伸出 $0.45\text{ mm}$ / 高度 $2.1\text{ mm}$ | PETG/PLA 弹性极限安全区内，抗疲劳断裂 |
 
