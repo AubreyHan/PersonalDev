@@ -89,19 +89,11 @@ void GnssDriver_LC76G::update() {
 }
 
 void GnssDriver_LC76G::parseNmeaStream() {
-    uint8_t buffer[64];
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (LC76G_ADDR_R << 1) | I2C_MASTER_READ, true);
-    i2c_master_read(cmd, buffer, sizeof(buffer), I2C_MASTER_LAST_NACK);
-    i2c_master_stop(cmd);
-    esp_err_t ret = i2c_master_cmd_begin(I2C_PORT, cmd, pdMS_TO_TICKS(50));
-    i2c_cmd_link_delete(cmd);
+    uint8_t count = Wire.requestFrom((uint8_t)LC76G_ADDR_R, (size_t)64);
+    if (count == 0) return;
 
-    if (ret != ESP_OK) return;
-
-    for (size_t i = 0; i < sizeof(buffer); ++i) {
-        char c = (char)buffer[i];
+    while (Wire.available()) {
+        char c = (char)Wire.read();
         if (c == 0x00 || (uint8_t)c == 0xFF) continue; // Skip idle bytes
 
         _gps.encode(c);

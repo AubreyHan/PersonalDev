@@ -5,35 +5,30 @@
 // Waveshare ESP32-S3-Touch-AMOLED-1.75 CarTrack Firmware
 // Dual-Core FreeRTOS Architecture (Core 0: GNSS & Network, Core 1: AMOLED UI)
 // =============================================================================
-#include <driver/i2c.h>
+#include <Wire.h>
 #include <esp_task_wdt.h>
 #include "config_s3_amoled.h"
 #include "driver/GnssDriver_LC76G.h"
 #include "driver/RtcDriver_PCF85063.h"
+#include "driver/TouchDriver_CST9217.h"
 #include "service/TimeService_Dual.h"
 #include "service/CarTrackService.h"
 #include "service/NetworkManager_Setup.h"
 #include "ui/UiManager_AMOLED.h"
 
 static void initI2cMaster() {
-    i2c_config_t conf = {};
-    conf.mode = I2C_MODE_MASTER;
-    conf.sda_io_num = (gpio_num_t)BoardConfig::I2C_SDA;
-    conf.scl_io_num = (gpio_num_t)BoardConfig::I2C_SCL;
-    conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
-    conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
-    conf.master.clk_speed = BoardConfig::I2C_FREQ;
-    i2c_param_config(I2C_NUM_0, &conf);
-    i2c_driver_install(I2C_NUM_0, conf.mode, 0, 0, 0);
+    Wire.begin(BoardConfig::I2C_SDA, BoardConfig::I2C_SCL, BoardConfig::I2C_FREQ);
+    Wire.setTimeOut(50);
 }
 
-// Core 0 Task: GNSS I2C NMEA streaming, Kalman filtering, Distance & History
+// Core 0 Task: Touch Input, GNSS I2C NMEA streaming, Kalman filtering, Distance & History
 static void gnssAndSensorTask(void* pvParameters) {
     for (;;) {
+        TouchDriver_CST9217::instance().update();
         GnssDriver_LC76G::instance().update();
         CarTrackService::instance().update();
         TimeService_Dual::instance().update();
-        vTaskDelay(pdMS_TO_TICKS(20)); // ~50Hz sampling
+        vTaskDelay(pdMS_TO_TICKS(15)); // ~66Hz sampling
     }
 }
 
@@ -67,16 +62,19 @@ void setup() {
     // 2. Initialize QSPI AMOLED Display (CO5300 466x466)
     UiManager_AMOLED::instance().init();
 
-    // 3. Initialize PCF85063 Hardware RTC & Dual Time Service (GPS + NTP)
+    // 3. Initialize CST9217 Capacitive Touch Controller (GPIO11 INT, GPIO40 RST)
+    TouchDriver_CST9217::instance().init();
+
+    // 4. Initialize PCF85063 Hardware RTC & Dual Time Service (GPS + NTP)
     TimeService_Dual::instance().init();
 
-    // 4. Initialize Quectel LC76G GNSS (Quad-Constellation, 15° Mask, Hot Start)
+    // 5. Initialize Quectel LC76G GNSS (Quad-Constellation, 15° Mask, Hot Start)
     GnssDriver_LC76G::instance().init();
 
-    // 5. Initialize CarTrack Engine (Kalman Altitude, Speed, Distance, 1h Buffers)
+    // 6. Initialize CarTrack Engine (Kalman Altitude, Speed, Distance, 1h Buffers)
     CarTrackService::instance().init();
 
-    // 6. Initialize WiFi SoftAP & Captive Portal Setup Page
+    // 7. Initialize WiFi SoftAP & Captive Portal Setup Page
     NetworkManager_Setup::instance().init();
 
     Serial.println("[System] Launching Dual-Core FreeRTOS Tasks...");
