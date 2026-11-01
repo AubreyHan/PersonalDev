@@ -128,9 +128,10 @@ void GnssDriver_LC76G::pollI2cStream() {
                           ((uint32_t)header[2] << 16) |
                           ((uint32_t)header[3] << 24);
 
-    Serial.printf("[LC76G I2C] Length: %u bytes\n", dataLength);
+    Serial.printf("[LC76G I2C] Header bytes: 0x%02X 0x%02X 0x%02X 0x%02X -> len=%u\n",
+                  header[0], header[1], header[2], header[3], dataLength);
 
-    if (dataLength == 0 || dataLength > 2048) {
+    if (dataLength == 0 || dataLength > 16384) {
         return;
     }
 
@@ -143,7 +144,9 @@ void GnssDriver_LC76G::pollI2cStream() {
     delay(50);
     Wire.beginTransmission(LC76G_ADDR_W);
     Wire.write(ackPayload, sizeof(ackPayload));
-    if (Wire.endTransmission() != 0) {
+    byte aErr = Wire.endTransmission();
+    if (aErr != 0) {
+        Serial.printf("[LC76G I2C] Ack write err=%d\n", aErr);
         return;
     }
 
@@ -151,11 +154,10 @@ void GnssDriver_LC76G::pollI2cStream() {
 
     // 4. Body Read: Read payload matching dataLength from 0x54
     _usingI2c = true;
-    while (dataLength > 0) {
-        size_t chunk = (dataLength > 64) ? 64 : dataLength;
-        size_t received = Wire.requestFrom((uint8_t)LC76G_ADDR_R, chunk);
-        if (received == 0) break;
-
+    uint8_t* buf = (uint8_t*)malloc(dataLength);
+    if (buf) {
+        size_t received = Wire.requestFrom((uint8_t)LC76G_ADDR_R, (size_t)dataLength);
+        Serial.printf("[LC76G I2C] Read %d/%u bytes\n", received, dataLength);
         for (size_t i = 0; i < received; i++) {
             char c = (char)Wire.read();
             _totalBytes++;
@@ -171,7 +173,7 @@ void GnssDriver_LC76G::pollI2cStream() {
                 _nmeaBuffer[_nmeaIndex++] = c;
             }
         }
-        dataLength -= received;
+        free(buf);
     }
 }
 
