@@ -18,27 +18,7 @@
 
 static void initI2cMaster() {
     Wire.begin(BoardConfig::I2C_SDA, BoardConfig::I2C_SCL, BoardConfig::I2C_FREQ);
-    Wire.setTimeOut(100);
-
-    Serial.println("[I2C] Scanning I2C bus (SDA=15, SCL=14, 100kHz)...");
-    int nDevices = 0;
-    for (uint8_t address = 1; address < 127; address++) {
-        Wire.beginTransmission(address);
-        uint8_t error = Wire.endTransmission();
-        if (error == 0) {
-            Serial.printf("[I2C] Found device at 0x%02X", address);
-            if (address == 0x20) Serial.print(" (TCA9554 IO Expander)");
-            else if (address == 0x34) Serial.print(" (AXP2101 PMIC)");
-            else if (address == 0x50) Serial.print(" (LC76G GNSS Write)");
-            else if (address == 0x51) Serial.print(" (PCF85063 RTC)");
-            else if (address == 0x54) Serial.print(" (LC76G GNSS Read)");
-            else if (address == 0x5A) Serial.print(" (CST9217 Touch)");
-            else if (address == 0x6B || address == 0x6A) Serial.print(" (QMI8658 IMU)");
-            Serial.println();
-            nDevices++;
-        }
-    }
-    Serial.printf("[I2C] Scan complete: %d devices found.\n", nDevices);
+    Wire.setTimeOut(50);
 }
 
 // Core 0 Task: Touch Input, GNSS I2C NMEA streaming, Kalman filtering, Distance & History
