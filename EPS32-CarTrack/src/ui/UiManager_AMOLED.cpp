@@ -31,7 +31,6 @@ bool UiManager_AMOLED::init() {
         _bus,
         BoardConfig::LCD_RST,
         0,                      // Rotation 0
-        false,                  // IPS
         BoardConfig::SCREEN_WIDTH,
         BoardConfig::SCREEN_HEIGHT,
         BoardConfig::COL_OFFSET,
