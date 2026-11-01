@@ -166,37 +166,34 @@ def build_bottom_shell(filepath):
         stl.add_corner_arc(0, 0, cavity_r + 0.45, case_r, math.radians(a0), math.radians(a1), 3.6, 5.2, n_segs=4)
         stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(a0), math.radians(a1), 5.2, z_parting, n_segs=4)
 
-    # 1. [348° to 12°] 3 点钟 Type-C 接口 (East / Right side)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(-12.0), math.radians(12.0), z_floor, 2.3, n_segs=6)
+    # 1. [320° to 40° / -40° to +40°] 3 点钟方向 (East / Right side) 一体化全景大镂空窗 (覆盖 PWR、TF卡槽、BOOT键)
+    # 底部留 0.4mm 微台阶 (Z=2.0..2.4)，从 Z=2.4 到 5.8 完全贯通开放！
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(-40.0), math.radians(40.0), z_floor, 2.4, n_segs=16)
 
-    # 2. [12° to 58°] East-North Sector (包含 32° MIC1 与 50° Snap-fit 卡扣)
-    add_pcb_wall(12.0, 46.8, n=6)
+    # 2. [40° to 60°] East-North Sector (包含 50° Snap-fit 卡扣)
+    add_pcb_wall(40.0, 46.8, n=3)
     add_snap_recess(50.0)
-    add_pcb_wall(53.2, 58.0, n=2)
+    add_pcb_wall(53.2, 60.0, n=3)
 
-    # 3. [58° to 122°] 12 点钟 Antenna Pod 通道与隔桥
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(58.0), math.radians(78.0), z_floor, z_parting, n_segs=4)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(102.0), math.radians(122.0), z_floor, z_parting, n_segs=4)
+    # 3. [60° to 120°] 12 点钟 Antenna Pod 通道与隔桥
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(60.0), math.radians(78.0), z_floor, z_parting, n_segs=4)
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(102.0), math.radians(120.0), z_floor, z_parting, n_segs=4)
     stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(78.0), math.radians(102.0), 4.2, z_parting, n_segs=6)
 
-    # 4. [122° to 138°] North-West Corner Pillar (包含 125° Snap-fit 卡扣)
-    add_pcb_wall(122.0, 121.8, n=1)
-    add_snap_recess(125.0)
-    add_pcb_wall(128.2, 138.0, n=2)
+    # 4. [120° to 168°] North-West Corner Sector (包含 130° Snap-fit 卡扣)
+    add_pcb_wall(120.0, 126.8, n=3)
+    add_snap_recess(130.0)
+    add_pcb_wall(133.2, 168.0, n=8)
 
-    # 5. [138° to 222°] 8点至10点钟方向 一体化全景大镂空窗 (覆盖 PWR、TF卡槽、BOOT键)
-    # 底部留 0.4mm 微台阶 (Z=2.0..2.4)，从 Z=2.4 到 5.8 完全贯通开放！
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(138.0), math.radians(222.0), z_floor, 2.4, n_segs=16)
+    # 5. [168° to 192°] 9 点钟方向 (West / Left side) Type-C 接口
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(168.0), math.radians(192.0), z_floor, 2.3, n_segs=6)
 
-    # 6. [222° to 240°] South-West Corner Pillar (包含 235° Snap-fit 卡扣)
-    add_pcb_wall(222.0, 231.8, n=2)
-    add_snap_recess(235.0)
-    add_pcb_wall(238.2, 240.0, n=1)
-
-    # 7. [240° to 348°] 6 点钟 底部扩展排母保护与连续外壁 (包含 310° Snap-fit 卡扣 与 328° MIC2)
-    add_pcb_wall(240.0, 306.8, n=14)
+    # 6. [192° to 320°] South-West & South & South-East Sector (包含 230° Snap-fit 与 310° Snap-fit)
+    add_pcb_wall(192.0, 226.8, n=8)
+    add_snap_recess(230.0)
+    add_pcb_wall(233.2, 306.8, n=16)
     add_snap_recess(310.0)
-    add_pcb_wall(313.2, 348.0, n=8)
+    add_pcb_wall(313.2, 320.0, n=3)
 
     # -------------------------------------------------------------
     # 3. Antenna Pod Walls (Z = 2.0 to 5.8)
