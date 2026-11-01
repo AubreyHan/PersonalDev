@@ -36,6 +36,9 @@ def render_view(triangles, out_png, view_type='iso', width=1200, height=900, tit
     if view_type == 'iso':
         az = math.radians(40) # Azimuth
         el = math.radians(35) # Elevation
+    elif view_type == 'iso_left':
+        az = math.radians(145) # View from left side (showing PWR / TF / BOOT opening)
+        el = math.radians(35)
     elif view_type == 'top':
         az = math.radians(0)
         el = math.radians(89.9)
@@ -167,9 +170,13 @@ if __name__ == '__main__':
     render_view(tris_asm, os.path.join(base_dir, "CAD_Actual_Mesh_Top_View.png"),
                 view_type='top', title="True CAD Geometry: Top View (Front Bezel & 29.2mm Antenna Pod)")
 
-    # 2. Isometric 3D View
+    # 2. Isometric 3D View (Right & Top)
     render_view(tris_asm, os.path.join(base_dir, "CAD_Actual_Mesh_Isometric.png"),
                 view_type='iso', title="True CAD Geometry: Isometric View (Actual 3D Mesh)")
+
+    # 2b. Isometric 3D View (Left side showing Unified PWR/TF/BOOT Opening)
+    render_view(tris_asm, os.path.join(base_dir, "CAD_Actual_Mesh_Iso_Left_Opening.png"),
+                view_type='iso_left', title="True CAD Geometry: Left Side Unified Opening (Direct Finger Access)")
 
     # 3. Bottom View (showing MagSafe ring and ports)
     render_view(tris_bot, os.path.join(base_dir, "CAD_Actual_Mesh_Bottom_View.png"),
