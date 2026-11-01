@@ -234,16 +234,20 @@ def build_top_shell(filepath):
     # -------------------------------------------------------------
     # 1. Lower Layer of Top Shell (Z = 5.8 to 8.2)
     # -------------------------------------------------------------
-    # Type-C upper arch clearance at 3 o'clock (-12° to +12°)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(12.0), math.radians(58.0), z_parting, z_glass_pocket, n_segs=16)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(122.0), math.radians(140.0), z_parting, z_glass_pocket, n_segs=4)
-
-    # Left-side unified opening upper clearance (140° to 220°):
+    # Right-side (3 o'clock / East: 320° to 40° / -40° to +40°) unified opening upper clearance:
     # Leaves 1.6mm clearance (Z=5.8 to 7.4 is open) for finger access
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(140.0), math.radians(220.0), 7.4, z_glass_pocket, n_segs=16)
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(-40.0), math.radians(40.0), 7.4, z_glass_pocket, n_segs=16)
 
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(220.0), math.radians(348.0), z_parting, z_glass_pocket, n_segs=32)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(-12.0), math.radians(12.0), 7.0, z_glass_pocket, n_segs=8)
+    # Perimeter walls from 40° to 168°
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(40.0), math.radians(60.0), z_parting, z_glass_pocket, n_segs=6)
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(120.0), math.radians(168.0), z_parting, z_glass_pocket, n_segs=12)
+
+    # Left-side (9 o'clock / West: 168° to 192°) Type-C upper arch clearance:
+    # Leaves 1.2mm clearance (Z=5.8 to 7.0 is open) for Type-C plug header
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(168.0), math.radians(192.0), 7.0, z_glass_pocket, n_segs=6)
+
+    # Perimeter walls from 192° to 320°
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(192.0), math.radians(320.0), z_parting, z_glass_pocket, n_segs=24)
 
     # Antenna pod lower perimeter walls (Z = 5.8 to 8.2)
     stl.add_box(-ant_w/2.0, -ant_cav_w/2.0, ant_y_start, ant_cav_y_end, z_parting, z_glass_pocket)
@@ -271,10 +275,10 @@ def build_top_shell(filepath):
     stl.add_corner_arc(ant_w/2.0 - 3.5, ant_y_end - 3.5, 0, 3.5, 0, math.pi/2.0, z_ant_top, z_top, n_segs=8)
 
     # -------------------------------------------------------------
-    # 3. 4 Snap-fit Male Cantilever Tabs (at 50°, 125°, 235°, 310°)
+    # 3. 4 Snap-fit Male Cantilever Tabs (at 50°, 130°, 230°, 310°)
     # -------------------------------------------------------------
     tab_h = 2.1
-    for cen_deg in [50, 125, 235, 310]:
+    for cen_deg in [50, 130, 230, 310]:
         rad = math.radians(cen_deg)
         cx = cavity_r * math.cos(rad)
         cy = cavity_r * math.sin(rad)
@@ -284,13 +288,13 @@ def build_top_shell(filepath):
         stl.add_box(cx + dx - 1.2, cx + dx + 1.2, cy + dy - 1.2, cy + dy + 1.2, z_parting - 1.8, z_parting - 0.6)
 
     # -------------------------------------------------------------
-    # 4. ES7210 Dual Microphone Acoustic Pinholes (2 o'clock & 4 o'clock)
+    # 4. ES7210 Dual Microphone Acoustic Pinholes (Left-side: 10 o'clock & 8 o'clock)
     # -------------------------------------------------------------
-    rad1 = math.radians(32.0)
+    rad1 = math.radians(148.0)
     mx1, my1 = (case_r - 1.8) * math.cos(rad1), (case_r - 1.8) * math.sin(rad1)
     stl.add_box(mx1 - 1.0, mx1 + 1.0, my1 - 1.0, my1 + 1.0, z_glass_pocket, z_top)
 
-    rad2 = math.radians(-32.0)
+    rad2 = math.radians(212.0)
     mx2, my2 = (case_r - 1.8) * math.cos(rad2), (case_r - 1.8) * math.sin(rad2)
     stl.add_box(mx2 - 1.0, mx2 + 1.0, my2 - 1.0, my2 + 1.0, z_glass_pocket, z_top)
 
