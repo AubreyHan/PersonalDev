@@ -28,7 +28,7 @@ namespace BoardConfig {
 
     // CST9217 Capacitive Touch Controller
     constexpr int TP_RST    = 40;
-    constexpr int TP_INT    = 41;
+    constexpr int TP_INT    = 11;
 
     // Reserved Expansion Header (8-Pin 2.54mm)
     constexpr int EXP_GPIO16 = 16;
