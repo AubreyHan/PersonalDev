@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """
 ESP32-S3-Touch-AMOLED-1.75-G (GNSS/GPS Version) MagSafe Case Generator
-Updated with EXACT Official Waveshare Hardware Layout:
-- 3 o'clock (East): USB Type-C Port
-- 2 o'clock & 4 o'clock: Dual Microphones (MIC1 & MIC2)
-- 9 o'clock (West): MicroSD (TF) Card Slot
-- 10 o'clock: PWR Push Button
-- 8 o'clock: BOOT Push Button
-- 12 o'clock: 25x25mm GNSS Ceramic Antenna Pod
-- Bottom Base: MagSafe Ring Recess (OD 54.2mm, ID 45.8mm, Depth 1.2mm)
+Features:
+- Left-side (8 to 10 o'clock) Unified Panoramic Opening (covering PWR, TF slot, and BOOT buttons for direct finger access)
+- Right-side (3 o'clock) USB Type-C Port
+- 2 & 4 o'clock ES7210 Dual Microphone Ports
+- Top (12 o'clock) 25x25mm GNSS Ceramic Antenna Pod (thin sealed RF radome)
+- Bottom Base MagSafe Recess (OD 54.2mm, ID 45.8mm, Depth 1.2mm)
 """
 
 import math
@@ -120,7 +118,7 @@ class ModularSTL:
 
 def build_bottom_shell(filepath):
     """
-    Constructs Bottom Base Shell with EXACT Official Hardware Layout.
+    Constructs Bottom Base Shell with Unified Left-Side Opening.
     """
     stl = ModularSTL()
 
@@ -132,7 +130,6 @@ def build_bottom_shell(filepath):
     z_floor = 2.0    # Bottom solid floor
     z_parting = 5.8  # Parting line
 
-    # 25x25mm GNSS Antenna Pod (12 o'clock)
     ant_w = 29.2
     ant_y_start = 22.0
     ant_y_end = 51.2
@@ -143,11 +140,8 @@ def build_bottom_shell(filepath):
     # -------------------------------------------------------------
     # 1. Floor Base (Z = 0.0 to 2.0)
     # -------------------------------------------------------------
-    # Central solid core disc
     stl.add_solid_corner(0, 0, ms_r_in, 0, 2.0 * math.pi, 0.0, z_floor, n_segs=72)
-    # MagSafe annular groove floor
     stl.add_corner_arc(0, 0, ms_r_in, ms_r_out, 0, 2.0 * math.pi, ms_depth, z_floor, n_segs=72)
-    # Outer base rim
     stl.add_corner_arc(0, 0, ms_r_out, case_r, 0, 2.0 * math.pi, 0.0, z_floor, n_segs=72)
 
     # Antenna Pod Floor Plate (12 o'clock)
@@ -175,7 +169,7 @@ def build_bottom_shell(filepath):
     # 1. [348° to 12°] 3 点钟 Type-C 接口 (East / Right side)
     stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(-12.0), math.radians(12.0), z_floor, 2.3, n_segs=6)
 
-    # 2. [12° to 58°] East-North Sector (包含 32° MIC1 下半及 50° Snap-fit 卡扣)
+    # 2. [12° to 58°] East-North Sector (包含 32° MIC1 与 50° Snap-fit 卡扣)
     add_pcb_wall(12.0, 46.8, n=6)
     add_snap_recess(50.0)
     add_pcb_wall(53.2, 58.0, n=2)
@@ -183,33 +177,24 @@ def build_bottom_shell(filepath):
     # 3. [58° to 122°] 12 点钟 Antenna Pod 通道与隔桥
     stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(58.0), math.radians(78.0), z_floor, z_parting, n_segs=4)
     stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(102.0), math.radians(122.0), z_floor, z_parting, n_segs=4)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(78.0), math.radians(102.0), 4.2, z_parting, n_segs=6) # 走线过桥
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(78.0), math.radians(102.0), 4.2, z_parting, n_segs=6)
 
-    # 4. [122° to 167°] North-West Sector (包含 128° Snap-fit 卡扣 与 148° PWR 按键)
-    add_pcb_wall(122.0, 124.8, n=2)
-    add_snap_recess(128.0)
-    add_pcb_wall(131.2, 142.5, n=4)
-    # PWR 按键开孔 (142.5° to 153.5°, Z=2.8..5.4)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(142.5), math.radians(153.5), z_floor, 2.8, n_segs=4)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(142.5), math.radians(153.5), 5.4, z_parting, n_segs=4)
-    add_pcb_wall(153.5, 167.0, n=4)
+    # 4. [122° to 138°] North-West Corner Pillar (包含 125° Snap-fit 卡扣)
+    add_pcb_wall(122.0, 121.8, n=1)
+    add_snap_recess(125.0)
+    add_pcb_wall(128.2, 138.0, n=2)
 
-    # 5. [167° to 193°] 9 点钟 TF / MicroSD 卡槽 (West / Left side)
-    # TF 卡插槽开孔 (Z = 2.6 到 4.8)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(167.0), math.radians(193.0), z_floor, 2.6, n_segs=6)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(167.0), math.radians(193.0), 4.8, z_parting, n_segs=6)
+    # 5. [138° to 222°] 8点至10点钟方向 一体化全景大镂空窗 (覆盖 PWR、TF卡槽、BOOT键)
+    # 底部留 0.4mm 微台阶 (Z=2.0..2.4)，从 Z=2.4 到 5.8 完全贯通开放！
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(138.0), math.radians(222.0), z_floor, 2.4, n_segs=16)
 
-    # 6. [193° to 238°] South-West Sector (包含 212° BOOT 按键 与 232° Snap-fit 卡扣)
-    add_pcb_wall(193.0, 206.5, n=4)
-    # BOOT 按键开孔 (206.5° to 217.5°, Z=2.8..5.4)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(206.5), math.radians(217.5), z_floor, 2.8, n_segs=4)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(206.5), math.radians(217.5), 5.4, z_parting, n_segs=4)
-    add_pcb_wall(217.5, 228.8, n=4)
-    add_snap_recess(232.0)
-    add_pcb_wall(235.2, 238.0, n=2)
+    # 6. [222° to 240°] South-West Corner Pillar (包含 235° Snap-fit 卡扣)
+    add_pcb_wall(222.0, 231.8, n=2)
+    add_snap_recess(235.0)
+    add_pcb_wall(238.2, 240.0, n=1)
 
-    # 7. [238° to 306°] 6 点钟 底部排母保护与连续外壁
-    add_pcb_wall(238.0, 306.8, n=16)
+    # 7. [240° to 348°] 6 点钟 底部扩展排母保护与连续外壁 (包含 310° Snap-fit 卡扣 与 328° MIC2)
+    add_pcb_wall(240.0, 306.8, n=14)
     add_snap_recess(310.0)
     add_pcb_wall(313.2, 348.0, n=8)
 
@@ -230,20 +215,16 @@ def build_bottom_shell(filepath):
 
 def build_top_shell(filepath):
     """
-    Constructs Top Bezel Shell matching Official Layout:
-    - 3 o'clock Type-C upper clearance
-    - 2 o'clock & 4 o'clock ES7210 dual microphone acoustic holes
-    - 12 o'clock Antenna pod sealed RF hood
-    - 4 snap-fit tabs at 50°, 128°, 232°, 310°
+    Constructs Top Bezel Shell with matching Left-Side Unified Opening Upper Clearance.
     """
     stl = ModularSTL()
 
     case_r = 27.5
     cavity_r = 24.8       # Screen glass pocket dia 49.6 mm
-    screen_view_r = 22.1  # AMOLED active front window dia 44.2 mm (official screen frame)
+    screen_view_r = 22.1  # AMOLED active front window dia 44.2 mm
     z_parting = 5.8       # Mating line
     z_glass_pocket = 8.2  # Glass pocket depth (2.4mm)
-    z_ant_top = 9.6       # Antenna cavity ceiling (leaves 1.2mm solid roof)
+    z_ant_top = 9.6       # Antenna cavity ceiling
     z_top = 10.8          # Overall top surface
 
     ant_w = 29.2
@@ -258,8 +239,13 @@ def build_top_shell(filepath):
     # -------------------------------------------------------------
     # Type-C upper arch clearance at 3 o'clock (-12° to +12°)
     stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(12.0), math.radians(58.0), z_parting, z_glass_pocket, n_segs=16)
-    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(122.0), math.radians(348.0), z_parting, z_glass_pocket, n_segs=56)
-    # Type-C upper arch (leaves 1.2mm clearance at parting line)
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(122.0), math.radians(140.0), z_parting, z_glass_pocket, n_segs=4)
+
+    # Left-side unified opening upper clearance (140° to 220°):
+    # Leaves 1.6mm clearance (Z=5.8 to 7.4 is open) for finger access
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(140.0), math.radians(220.0), 7.4, z_glass_pocket, n_segs=16)
+
+    stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(220.0), math.radians(348.0), z_parting, z_glass_pocket, n_segs=32)
     stl.add_corner_arc(0, 0, cavity_r, case_r, math.radians(-12.0), math.radians(12.0), 7.0, z_glass_pocket, n_segs=8)
 
     # Antenna pod lower perimeter walls (Z = 5.8 to 8.2)
@@ -288,10 +274,10 @@ def build_top_shell(filepath):
     stl.add_corner_arc(ant_w/2.0 - 3.5, ant_y_end - 3.5, 0, 3.5, 0, math.pi/2.0, z_ant_top, z_top, n_segs=8)
 
     # -------------------------------------------------------------
-    # 3. 4 Snap-fit Male Cantilever Tabs (at 50°, 128°, 232°, 310°)
+    # 3. 4 Snap-fit Male Cantilever Tabs (at 50°, 125°, 235°, 310°)
     # -------------------------------------------------------------
     tab_h = 2.1
-    for cen_deg in [50, 128, 232, 310]:
+    for cen_deg in [50, 125, 235, 310]:
         rad = math.radians(cen_deg)
         cx = cavity_r * math.cos(rad)
         cy = cavity_r * math.sin(rad)
@@ -303,12 +289,10 @@ def build_top_shell(filepath):
     # -------------------------------------------------------------
     # 4. ES7210 Dual Microphone Acoustic Pinholes (2 o'clock & 4 o'clock)
     # -------------------------------------------------------------
-    # MIC1 at 32° (Y = +14.6mm)
     rad1 = math.radians(32.0)
     mx1, my1 = (case_r - 1.8) * math.cos(rad1), (case_r - 1.8) * math.sin(rad1)
     stl.add_box(mx1 - 1.0, mx1 + 1.0, my1 - 1.0, my1 + 1.0, z_glass_pocket, z_top)
 
-    # MIC2 at 328° / -32° (Y = -14.6mm)
     rad2 = math.radians(-32.0)
     mx2, my2 = (case_r - 1.8) * math.cos(rad2), (case_r - 1.8) * math.sin(rad2)
     stl.add_box(mx2 - 1.0, mx2 + 1.0, my2 - 1.0, my2 + 1.0, z_glass_pocket, z_top)
@@ -346,7 +330,7 @@ if __name__ == "__main__":
 
     print("\n=======================================================")
     print("Building ESP32-S3-Touch-AMOLED-1.75-G MagSafe Enclosure")
-    print("Updated: Official Physical Port Layout (Type-C at 3 o'clock)")
+    print("Updated: Left-Side Panoramic Unified Opening (PWR / TF / BOOT)")
     print("=======================================================")
     build_bottom_shell(f_bot)
     build_top_shell(f_top)
