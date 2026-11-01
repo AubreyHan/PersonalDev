@@ -118,14 +118,14 @@ void GnssDriver_LC76G::updateStabilityFilter() {
     }
 
     bool meetsCriteria = (_gps.location.isValid() &&
-                          _activeSats >= GnssFilterConfig::MIN_SATS_FOR_RECORDING &&
+                          _activeSats >= GnssFilterConfig::MIN_SVS_FOR_RECORDING &&
                           _hdop <= GnssFilterConfig::MAX_HDOP_FOR_RECORDING &&
                           _vdop <= GnssFilterConfig::MAX_VDOP_FOR_RECORDING);
 
     if (meetsCriteria) {
         if (_stableStartTimeMs == 0) {
             _stableStartTimeMs = now;
-        } else if (now - _stableStartTimeMs >= GnssFilterConfig::STABILITY_HOLD_TIME_MS) {
+        } else if (now - _stableStartTimeMs >= GnssFilterConfig::STABILITY_REQUIRED_TIME_MS) {
             _isStable = true;
         }
     } else {
@@ -135,7 +135,7 @@ void GnssDriver_LC76G::updateStabilityFilter() {
 
     // Zero-velocity clamping
     float rawSpeedKmh = _gps.speed.isValid() ? _gps.speed.kmph() : 0.0f;
-    if (rawSpeedKmh < GnssFilterConfig::ZERO_VELOCITY_CLAMP_KMH) {
+    if (rawSpeedKmh < GnssFilterConfig::STATIC_SPEED_THRESHOLD_KMH) {
         _isStaticLocked = true;
     } else {
         _isStaticLocked = false;
@@ -148,16 +148,15 @@ void GnssDriver_LC76G::updateStabilityFilter() {
 
     // Update global state
     auto& gnssData = SystemState::instance().getContextUnsafe().gnss;
-    gnssData.isFixValid = _gps.location.isValid();
-    gnssData.isStable = _isStable;
+    gnssData.isValid = _gps.location.isValid();
     gnssData.latitude = _gps.location.lat();
     gnssData.longitude = _gps.location.lng();
     gnssData.speedKmh = _isStaticLocked ? 0.0f : rawSpeedKmh;
-    gnssData.altitudeM = _filteredAltitude;
+    gnssData.altitudeMeters = _filteredAltitude;
     gnssData.headingDeg = _gps.course.isValid() ? (float)_gps.course.deg() : 0.0f;
     gnssData.hdop = _hdop;
     gnssData.vdop = _vdop;
-    gnssData.satellites = _activeSats;
+    gnssData.numSats = _activeSats;
 
     if (_gps.time.isValid() && _gps.date.isValid()) {
         gnssData.year   = _gps.date.year();
@@ -185,7 +184,7 @@ void GnssDriver_LC76G::updateAltitudeFilter(float rawMslAlt) {
 
     // Outlier rejection: reject physical jumps > MAX_CLIMB_RATE_M_S * dt
     float diff = rawMslAlt - _filteredAltitude;
-    float maxDelta = GnssFilterConfig::MAX_CLIMB_RATE_M_S * dt + 1.0f;
+    float maxDelta = GnssFilterConfig::MAX_CLIMB_RATE_MPS * dt + 1.0f;
     if (fabs(diff) > maxDelta && !_isStaticLocked) {
         // Dampen extreme jumps
         rawMslAlt = _filteredAltitude + (diff > 0 ? maxDelta : -maxDelta);
