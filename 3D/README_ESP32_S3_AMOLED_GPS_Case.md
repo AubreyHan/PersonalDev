@@ -35,8 +35,8 @@
 | 文件名 | 格式 | 说明 |
 | :--- | :--- | :--- |
 | [`ESP32_S3_AMOLED_GPS_Case_X1C_PETG-HF.3mf`](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/3D/ESP32_S3_AMOLED_GPS_Case_X1C_PETG-HF.3mf) | **拓竹 X1C 3MF 项目包** | **主力打印文件（最推荐）**：单盘同时排版上壳与底壳，已固化 PETG-HF/纹理 PEI 板参数并**内嵌完整切片 Gcode**（切片预估耗时 59 分钟），双击直接打印。 |
-| [`ESP32_S3_AMOLED_GPS_Case_Bottom.stl`](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/3D/ESP32_S3_AMOLED_GPS_Case_Bottom.stl) | 二进制 STL 模型 | 100% 封闭流形底壳（含 3点钟 Type-C、9点钟 TF、10/8点钟按键、12点钟天线座及 MagSafe 沉槽）。 |
-| [`ESP32_S3_AMOLED_GPS_Case_Top.stl`](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/3D/ESP32_S3_AMOLED_GPS_Case_Top.stl) | 二进制 STL 模型 | 100% 封闭流形上壳（含屏幕保护圈、天线护罩、2/4点钟双麦克风孔、卡扣公扣）。 |
+| [`ESP32_S3_AMOLED_GPS_Case_Bottom.stl`](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/3D/ESP32_S3_AMOLED_GPS_Case_Bottom.stl) | 二进制 STL 模型 | 100% 封闭流形底壳（含 9点钟 Type-C、3点钟全景大镂空窗、12点钟天线座及 MagSafe 沉槽）。 |
+| [`ESP32_S3_AMOLED_GPS_Case_Top.stl`](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/3D/ESP32_S3_AMOLED_GPS_Case_Top.stl) | 二进制 STL 模型 | 100% 封闭流形上壳（含屏幕保护圈、天线护罩、8/10点钟双麦克风孔、卡扣公扣）。 |
 | [`ESP32_S3_AMOLED_GPS_Case_Assembly.stl`](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/3D/ESP32_S3_AMOLED_GPS_Case_Assembly.stl) | 二进制 STL 模型 | 完整扣合装配态模型。 |
 | [`ESP32_S3_AMOLED_GPS_MagSafe_Case.scad`](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/3D/ESP32_S3_AMOLED_GPS_MagSafe_Case.scad) | OpenSCAD 源码 | 参数化建模源代码。 |
 | [`build_gps_magsafe_case.py`](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/3D/build_gps_magsafe_case.py) | Python 自动化脚本 | 100% 水密多面体结构 STL 生成脚本。 |
