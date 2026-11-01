@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
 ESP32-S3-Touch-AMOLED-1.75-G (GNSS/GPS Version) MagSafe Case Generator
-Features:
-- Left-side (8 to 10 o'clock) Unified Panoramic Opening (covering PWR, TF slot, and BOOT buttons for direct finger access)
-- Right-side (3 o'clock) USB Type-C Port
-- 2 & 4 o'clock ES7210 Dual Microphone Ports
-- Top (12 o'clock) 25x25mm GNSS Ceramic Antenna Pod (thin sealed RF radome)
-- Bottom Base MagSafe Recess (OD 54.2mm, ID 45.8mm, Depth 1.2mm)
+Features (Front View Perspective):
+- Left-side (9 o'clock / West): USB Type-C Port
+- Left-side (8 & 10 o'clock): ES7210 Dual Microphone Acoustic Pinholes (148° & 212°)
+- Right-side (3 o'clock / East: 320° to 40°): Unified Panoramic Opening (covering PWR, TF slot, and BOOT buttons for direct finger access)
+- Top (12 o'clock / North): 25x25mm GNSS Ceramic Antenna Pod (thin sealed RF radome)
+- Bottom Base: MagSafe Recess (OD 54.2mm, ID 45.8mm, Depth 1.2mm)
 """
 
 import math
