@@ -21,18 +21,20 @@ static uint8_t calcChecksum(const char* sentence) {
 bool GnssDriver_LC76G::init() {
     Serial.println("[LC76G] Initializing Quectel LC76G GNSS (I2C + UART)...");
 
-    // Initialize UART as backup/dual
+    // Initialize UART as primary/dual (LC76G default 9600 8N1)
     Serial1.begin(LC76G_BAUD, SERIAL_8N1, LC76G_PIN_RX, LC76G_PIN_TX);
 
-    // Test probe I2C
+    // Test probe LC76G I2C with query command
+    uint8_t queryData[] = { 0x08, 0x00, 0x51, 0xAA, 0x04, 0x00, 0x00, 0x00 };
     Wire.beginTransmission(LC76G_ADDR_W);
+    Wire.write(queryData, sizeof(queryData));
     byte err = Wire.endTransmission();
     if (err == 0) {
         _isOnline = true;
         _usingI2c = true;
-        Serial.println("[LC76G] Found LC76G on I2C (0x50/0x54)!");
+        Serial.println("[LC76G] LC76G responded on I2C (0x50/0x54)!");
     } else {
-        Serial.printf("[LC76G] I2C probe returned %d, defaulting to UART\n", err);
+        Serial.printf("[LC76G] I2C probe returned %d (LC76G may use UART or require power-on)\n", err);
         _isOnline = true;
     }
 
@@ -51,12 +53,6 @@ void GnssDriver_LC76G::sendPairCommand(const char* cmd) {
     snprintf(fullCmd, sizeof(fullCmd), "$%s*%02X\r\n", cmd, cs);
 
     Serial1.print(fullCmd);
-
-    // Also send over I2C write address
-    Wire.beginTransmission(LC76G_ADDR_W);
-    Wire.write((const uint8_t*)fullCmd, strlen(fullCmd));
-    Wire.endTransmission();
-
     Serial.printf("[LC76G TX] %s", fullCmd);
 }
 
@@ -91,6 +87,14 @@ void GnssDriver_LC76G::configureAutomotiveModel() {
 }
 
 void GnssDriver_LC76G::pollI2cStream() {
+    // Poll every 500ms (standard NMEA refresh interval)
+    static uint32_t lastPollMs = 0;
+    uint32_t now = millis();
+    if (now - lastPollMs < 500) {
+        return;
+    }
+    lastPollMs = now;
+
     // 1. Handshake / Poll: send length query to 0x50
     uint8_t queryData[] = { 0x08, 0x00, 0x51, 0xAA, 0x04, 0x00, 0x00, 0x00 };
     Wire.beginTransmission(LC76G_ADDR_W);
@@ -99,7 +103,7 @@ void GnssDriver_LC76G::pollI2cStream() {
         return;
     }
 
-    delayMicroseconds(600);
+    delay(80);
 
     // 2. Header Read: 4 bytes from 0x54 (Little-Endian Length)
     if (Wire.requestFrom((uint8_t)LC76G_ADDR_R, (size_t)4) != 4) {
@@ -120,14 +124,20 @@ void GnssDriver_LC76G::pollI2cStream() {
         return;
     }
 
-    // 3. Acknowledgment (Ack): Write the received header bytes back to 0x50!
+    // 3. Acknowledgment (Ack): Write 4-byte magic + 4-byte header back to 0x50
+    uint8_t data2[] = { 0x00, 0x20, 0x51, 0xAA };
+    uint8_t ackPayload[8];
+    memcpy(ackPayload, data2, 4);
+    memcpy(ackPayload + 4, header, 4);
+
+    delay(50);
     Wire.beginTransmission(LC76G_ADDR_W);
-    Wire.write(header, 4);
+    Wire.write(ackPayload, sizeof(ackPayload));
     if (Wire.endTransmission() != 0) {
         return;
     }
 
-    delayMicroseconds(300);
+    delay(80);
 
     // 4. Body Read: Read payload matching dataLength from 0x54
     _usingI2c = true;
