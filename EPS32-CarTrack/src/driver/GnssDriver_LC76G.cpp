@@ -1,9 +1,8 @@
 #include "GnssDriver_LC76G.h"
-#include <driver/i2c.h>
+#include <Wire.h>
 #include <Preferences.h>
 #include <cmath>
 
-#define I2C_PORT           I2C_NUM_0
 #define LC76G_ADDR_W       0x50
 #define LC76G_ADDR_R       0x54
 
@@ -20,14 +19,10 @@ bool GnssDriver_LC76G::init() {
     Serial.println("[LC76G] Initializing Quectel LC76G GNSS over I2C...");
 
     // Check if I2C bus is ready, probe LC76G
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (LC76G_ADDR_W << 1) | I2C_MASTER_WRITE, true);
-    i2c_master_stop(cmd);
-    esp_err_t ret = i2c_master_cmd_begin(I2C_PORT, cmd, pdMS_TO_TICKS(100));
-    i2c_cmd_link_delete(cmd);
+    Wire.beginTransmission(LC76G_ADDR_W);
+    byte ret = Wire.endTransmission();
 
-    if (ret == ESP_OK) {
+    if (ret == 0) {
         _isOnline = true;
         Serial.println("[LC76G] Found LC76G at 0x50/0x54");
     } else {
@@ -47,17 +42,13 @@ bool GnssDriver_LC76G::init() {
 void GnssDriver_LC76G::sendPairCommand(const char* cmd) {
     char fullCmd[96];
     uint8_t cs = calcChecksum(cmd);
-    snprintf(fullCmd, sizeof(fullCmd), "$%s*%02X\r\n", cmd, cs);
+    int len = snprintf(fullCmd, sizeof(fullCmd), "$%s*%02X\r\n", cmd, cs);
 
-    i2c_cmd_handle_t h = i2c_cmd_link_create();
-    i2c_master_start(h);
-    i2c_master_write_byte(h, (LC76G_ADDR_W << 1) | I2C_MASTER_WRITE, true);
-    i2c_master_write(h, (const uint8_t*)fullCmd, strlen(fullCmd), true);
-    i2c_master_stop(h);
-    esp_err_t err = i2c_master_cmd_begin(I2C_PORT, h, pdMS_TO_TICKS(100));
-    i2c_cmd_link_delete(h);
+    Wire.beginTransmission(LC76G_ADDR_W);
+    Wire.write((const uint8_t*)fullCmd, len);
+    byte err = Wire.endTransmission();
 
-    if (err == ESP_OK) {
+    if (err == 0) {
         Serial.printf("[LC76G TX] %s", fullCmd);
     } else {
         Serial.printf("[LC76G TX Fail] %s (err=0x%x)\n", cmd, err);
