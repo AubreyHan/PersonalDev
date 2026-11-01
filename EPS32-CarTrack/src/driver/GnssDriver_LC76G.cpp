@@ -171,8 +171,8 @@ void GnssDriver_LC76G::pollI2cStream() {
                           ((uint32_t)header[2] << 16) |
                           ((uint32_t)header[3] << 24);
 
-    Serial.printf("[LC76G I2C] Header bytes: 0x%02X 0x%02X 0x%02X 0x%02X -> len=%u\n",
-                  header[0], header[1], header[2], header[3], dataLength);
+    // Serial.printf("[LC76G I2C] Header bytes: 0x%02X 0x%02X 0x%02X 0x%02X -> len=%u\n",
+    //               header[0], header[1], header[2], header[3], dataLength);
 
     if (dataLength == 0) {
         return;
@@ -266,6 +266,15 @@ void GnssDriver_LC76G::parseNmeaStream() {
 
 void GnssDriver_LC76G::parseNmeaSentence(const char* sentence) {
     if (!sentence || *sentence != '$') return;
+
+    // Print raw NMEA for active debugging
+    static uint32_t lastRawPrint = 0;
+    if (millis() - lastRawPrint > 1000) {
+        if (strstr(sentence, "RMC") || strstr(sentence, "GSV") || strstr(sentence, "GGA")) {
+            Serial.printf("[NMEA] %s\n", sentence);
+            lastRawPrint = millis();
+        }
+    }
 
     // 1. Parse GSV (Satellites in view & SNR / C/N0)
     if (strstr(sentence, "GSV") != nullptr) {
