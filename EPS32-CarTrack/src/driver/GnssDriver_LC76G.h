@@ -19,6 +19,7 @@ public:
     }
 
     bool init();
+    void hardwareReset();
     void update();
     void configureAutomotiveModel();
     void sendPairCommand(const char* cmd);

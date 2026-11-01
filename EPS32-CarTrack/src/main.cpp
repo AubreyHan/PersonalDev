@@ -17,6 +17,7 @@
 #include "ui/UiManager_AMOLED.h"
 
 static void initI2cMaster() {
+    Wire.setBufferSize(16384);
     Wire.begin(BoardConfig::I2C_SDA, BoardConfig::I2C_SCL, BoardConfig::I2C_FREQ);
     Wire.setTimeOut(50);
 }
