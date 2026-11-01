@@ -24,7 +24,7 @@ namespace BoardConfig {
     // Shared Master I2C Bus (SDA=GPIO15, SCL=GPIO14)
     constexpr int I2C_SDA   = 15;
     constexpr int I2C_SCL   = 14;
-    constexpr uint32_t I2C_FREQ = 400000; // 400kHz Fast Mode
+    constexpr uint32_t I2C_FREQ = 100000; // 100kHz Standard Mode for LC76G & Peripherals
 
     // CST9217 Capacitive Touch Controller
     constexpr int TP_RST    = 40;
