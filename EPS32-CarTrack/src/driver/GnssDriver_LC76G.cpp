@@ -145,7 +145,7 @@ void GnssDriver_LC76G::parseNmeaStream() {
 }
 
 void GnssDriver_LC76G::updateStabilityFilter() {
-    GnssData& gnss = SystemState::instance().gnss;
+    GnssData& gnss = SystemState::instance().getContextUnsafe().gnss;
 
     // 1. Synchronize basic GPS properties
     _activeSats = _gps.satellites.isValid() ? _gps.satellites.value() : 0;

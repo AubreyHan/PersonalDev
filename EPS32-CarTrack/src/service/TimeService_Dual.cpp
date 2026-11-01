@@ -20,7 +20,7 @@ void TimeService_Dual::init() {
 }
 
 void TimeService_Dual::update() {
-    GnssData& gnss = SystemState::instance().gnss;
+    GnssData& gnss = SystemState::instance().getContextUnsafe().gnss;
 
     // 1. Priority 1: GPS Time (if available and valid)
     if (gnss.isValid && gnss.year >= 2024 && (millis() - _lastGpsSyncMs > 5000)) {

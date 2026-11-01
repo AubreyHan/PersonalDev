@@ -31,7 +31,7 @@ void CarTrackService::resetTrip() {
 
 void CarTrackService::update() {
     GnssDriver_LC76G& gnssDriver = GnssDriver_LC76G::instance();
-    GnssData& gnss = SystemState::instance().gnss;
+    GnssData& gnss = SystemState::instance().getContextUnsafe().gnss;
     uint32_t now = millis();
 
     _currentAltitude = gnssDriver.getFilteredAltitude();
