@@ -622,3 +622,8 @@ stateDiagram-v2
 - **UI 触控与 Web 局域网控制**：
   - Page 8 工具箱内专属二级页面 `SUBPAGE_TOOL_ONEDRIVE`：展示当前绑定账号邮箱、云端同步状态、待上传分卷数、即时上传进度条，提供【立即同步】、【自动同步开/关】、【解除绑定】；
   - Web 局域网管理端（`/api/onedrive/`）提供完整的 RESTful 接口与状态同步。
+- **设备休眠前临终预同步规范 (Pre-Standby Cloud Sync Before Sleep)**：
+  - 当车辆连续停止移动满 20 分钟触发休眠时，系统先执行行程流水记账（`recordTripSummary`）并安全闭合存盘所有正在写入的 GPX 文件；
+  - **网络连通性与账号绑定检查**：若 `WiFi.status() == WL_CONNECTED` 且已绑定 OneDrive，屏幕弹出专属提示框 `[Cloud Sync: Uploading to OneDrive...]`；
+  - **前置执行上传**：在休眠熄屏与 CPU 降频之前，阻塞调度一次 `syncBeforeSleep(25000)`，以最长 25 秒安全超时将刚结束的行程流水（`trips.csv`）及本次生成的轨迹文件完整上传至云端；
+  - **同步完成优雅入眠**：上传完成后（或遇无外网超时），屏幕自然熄灭并关断背光，CPU 降频至 80MHz 进入亚 20mA 低功耗待机监视态。
