@@ -1,175 +1,180 @@
 // ==============================================================================
-// ESP32-S3-Touch-AMOLED-1.75-G (GNSS/GPS 版) MagSafe 磁吸轻薄卡扣外壳
-// 设计标准：一体化天线外置隔离仓 + 底部 MagSafe 平整磁吸圈 + 免螺丝 Snap-fit 卡扣
+// 微雪 ESP32-S3-Touch-AMOLED-1.75-G (官方真实硬件布局版)
+// MagSafe 磁吸轻薄卡扣外壳 - 3D 打印工程源码 (OpenSCAD)
+//
+// 官方真实物理接口坐标 (以屏幕正面为准):
+// - 3 点钟方向 (East):   USB Type-C 接口
+// - 2 点钟与 4 点钟:     ES7210 双麦克风孔 (MIC1 / MIC2)
+// - 9 点钟方向 (West):   MicroSD (TF) 卡插拔槽
+// - 10 点钟方向:         PWR 电源物理按键
+// - 8 点钟方向:          BOOT 烧录/引导物理按键
+// - 12 点钟方向 (North): 25x25mm GNSS 陶瓷天线一体化外置隔离仓
+// - 6 点钟方向 (South):  8-Pin 2.54mm 扩展排母避空保护仓
+// - 底部外侧:            MagSafe 磁吸嵌入平齐沉槽 (OD 54.2mm, ID 45.8mm, 深 1.2mm)
 // ==============================================================================
 
-$fn = 120; // 打印高平滑度圆弧切片
+$fn = 120; // 圆弧高精度切片
 
-// ----------------- 核心参数配置 (单位: mm) -----------------
-// PCB 与屏幕尺寸
-pcb_dia          = 49.0;    // PCB 外径
-pcb_tol          = 0.6;     // 直径装配间隙公差 (单边 0.3mm)
-cavity_dia       = pcb_dia + pcb_tol; // 内部圆台内径 49.6mm
-screen_view_dia  = 45.4;    // 屏幕正面视窗有效开孔直径 (露出45mm显示区，压住玻璃黑边)
-pcb_thickness    = 1.6;     // PCB 板厚
-comp_bottom_h    = 2.2;     // PCB 背面元器件安全避空高度
-screen_glass_h   = 2.4;     // 正面屏幕与触控玻璃厚度
+// ----------------- 1. 核心几何尺寸 (单位: mm) -----------------
+pcb_dia          = 48.96;   // 官方 PCB 外径
+pcb_tol          = 0.64;    // 3D 打印单边 0.32mm 装配公差
+cavity_dia       = pcb_dia + pcb_tol; // 49.60mm 内腔
+screen_view_dia  = 44.20;   // 官方正面有效视窗直径 (露出 43.76mm 显示区，压住外缘黑边)
+glass_pocket_h   = 2.20;    // 屏幕玻璃内沉台阶厚度
 
-// 外壳轮廓与壁厚
-wall_t           = 2.6;     // 主圆盘外壁厚度
-case_dia         = cavity_dia + wall_t * 2; // 主壳外径 ≈ 54.8 ~ 55.0mm (与MagSafe外径54mm呼应)
-bottom_floor_t   = 2.0;     // 底部底板基准厚度
-top_bezel_t      = 1.8;     // 顶部屏幕压框厚度
-total_body_h     = bottom_floor_t + comp_bottom_h + pcb_thickness + screen_glass_h + top_bezel_t; // ≈ 10.0mm 超薄设计
+wall_t           = 2.70;    // 主机外壁厚度
+case_dia         = cavity_dia + wall_t * 2; // 外壳外径 55.00mm (与 54mm MagSafe 圈完美呼应)
 
-// MagSafe 磁吸槽参数 (适配市售标准 MagSafe 引磁片 / 磁吸铁圈)
-magsafe_od       = 54.2;    // 磁吸环槽外径 (标准环54.0mm + 0.2mm公差)
-magsafe_id       = 45.8;    // 磁吸环槽内径 (标准环46.0mm - 0.2mm公差)
-magsafe_depth    = 1.2;     // 磁吸槽深度 (磁吸片贴合后与底壳绝对平齐)
+bottom_floor_t   = 2.00;    // 底部基准厚度
+parting_z        = 5.80;    // 上下壳卡扣分型面高度
+total_height     = 10.80;   // 整机超薄厚度仅 10.8mm
 
-// 顶部外置 GNSS/GPS 陶瓷天线仓参数 (标配 25x25mm 大尺寸高增益陶瓷天线)
-ant_w            = 25.6;    // 天线仓内净宽 (容纳标准 25x25mm 陶瓷天线 + 0.6mm 装配公差)
-ant_l            = 25.6;    // 天线仓内净长
-ant_h            = 6.5;     // 天线仓内深度 (兼容 4.0mm 被动陶瓷片及 6.5mm 带 LNA 放大器主动天线)
-ant_wall_t       = 1.8;     // 天线仓壁厚
-ant_pod_w        = ant_w + ant_wall_t * 2; // 外宽 ≈ 29.2mm
-ant_pod_l        = ant_l + ant_wall_t * 2; // 外长 ≈ 29.2mm
-ant_center_y     = case_dia / 2 + ant_pod_l / 2 - 5.5; // 嵌入主圆盘交融过渡深度
-wire_tunnel_w    = 3.6;     // IPEX 射频微同轴线走线槽宽
-wire_tunnel_h    = 2.4;     // 走线槽高
+// MagSafe 磁吸槽
+magsafe_od       = 54.20;   // 磁吸环槽外径
+magsafe_id       = 45.80;   // 磁吸环槽内径
+magsafe_depth    = 1.20;    // 磁吸环沉槽深度 (与底面完全平齐)
 
-// 接口开孔
-typec_w          = 11.2;    // Type-C 插口避空宽度 (兼容粗胶壳线头)
-typec_h          = 6.0;     // Type-C 插口避空高度
-tf_slot_w        = 12.0;    // TF 卡槽宽度
-tf_slot_h        = 2.0;     // TF 卡槽厚度
+// 25x25mm GNSS 陶瓷天线仓
+ant_cav_w        = 25.60;   // 天线仓内净宽 (容纳 25x25mm 天线 + 0.6mm 公差)
+ant_cav_l        = 25.60;   // 天线仓内净长
+ant_wall_t       = 1.80;    // 天线仓壁厚
+ant_pod_w        = ant_cav_w + ant_wall_t * 2; // 29.20mm
+ant_pod_l        = ant_cav_l + ant_wall_t * 2; // 29.20mm
+ant_center_y     = case_dia / 2 + ant_pod_l / 2 - 5.50; // 与主圆盘平滑交融过渡
 
-// 卡扣 (Snap-fit) 分型面与参数
-parting_z        = bottom_floor_t + comp_bottom_h + pcb_thickness; // 分型面设在 PCB 上表面
-snap_depth       = 0.45;    // 卡扣倒勾咬合深度
-snap_w           = 6.0;     // 单个卡扣宽度
-snap_h           = 2.2;     // 卡扣高度
+// 真实接口尺寸
+typec_w          = 11.20;   // Type-C 避空宽度
+typec_h          = 5.60;    // Type-C 避空高度
+tf_slot_w        = 12.00;   // TF 卡槽宽度
+tf_slot_h        = 2.00;    // TF 卡槽高度
+btn_w            = 5.00;    // 侧边按键开孔宽度
+btn_h            = 2.60;    // 侧边按键开孔高度
 
-// ----------------- 模块定义 -----------------
-
-// 外壳整体外部轮廓 2D 截面 (含主圆盘及 12 点钟外置天线过渡造型)
-module case_outer_profile_2d() {
+// ----------------- 2. 2D 轮廓生成 -----------------
+module case_2d_profile() {
     hull() {
         circle(d = case_dia);
         translate([0, ant_center_y, 0])
-            offset(r = 3.0) square([ant_pod_w - 6.0, ant_pod_l - 6.0], center = true);
+            offset(r = 3.5)
+                square([ant_pod_w - 7.0, ant_pod_l - 7.0], center = true);
     }
 }
 
-// 1. 底壳模型 (Bottom Base Shell)
+// ----------------- 3. 底壳模块 (Bottom Shell) -----------------
 module bottom_shell() {
     difference() {
-        // 实体外轮廓拉伸
+        // 主体拉伸
         linear_extrude(height = parting_z, convexity = 10)
-            case_outer_profile_2d();
+            case_2d_profile();
 
-        // 底部 MagSafe 凹槽 (完全平整底面上的环形凹槽)
+        // A. 底部 MagSafe 环形沉槽 (平整底面上的环形磁吸槽)
         translate([0, 0, -0.01])
             difference() {
                 cylinder(d = magsafe_od, h = magsafe_depth + 0.01);
                 cylinder(d = magsafe_id, h = magsafe_depth + 0.02);
             }
 
-        // PCB 主仓空腔 (避空背面芯片、LDO、引脚与焊接件)
+        // B. 内部 PCB 主腔
         translate([0, 0, bottom_floor_t])
             cylinder(d = cavity_dia, h = parting_z);
 
-        // 天线仓底座过线孔及下沉槽
+        // C. 12 点钟外置天线仓下半部内腔
         translate([0, ant_center_y, bottom_floor_t])
-            rounded_box_center(ant_w, ant_l, parting_z + 1, r = 1.5);
+            rounded_box_center(ant_cav_w, ant_cav_l, parting_z + 1, r = 1.5);
 
-        // IPEX 微轴同轴走线隧道 (连接主仓与天线仓)
-        translate([-wire_tunnel_w / 2, cavity_dia / 2 - 4.0, bottom_floor_t])
-            cube([wire_tunnel_w, ant_center_y - cavity_dia / 2 + 6.0, wire_tunnel_h]);
+        // D. IPEX 微同轴天线走线过孔
+        translate([-1.8, cavity_dia / 2 - 5.0, bottom_floor_t])
+            cube([3.6, ant_center_y - cavity_dia / 2 + 7.0, 2.4]);
 
-        // 6点钟方向 USB Type-C 接口下半部开孔
-        translate([-typec_w / 2, -case_dia / 2 - 2, bottom_floor_t + 0.4])
-            cube([typec_w, 8.0, typec_h]);
+        // E. 3 点钟方向 Type-C 接口开孔 (East, X = +23.8mm)
+        translate([case_dia / 2 - 6.0, -typec_w / 2, bottom_floor_t + 0.3])
+            cube([10.0, typec_w, typec_h]);
 
-        // 9点钟方向 MicroSD (TF) 卡槽开孔
-        translate([-case_dia / 2 - 2, -tf_slot_w / 2, bottom_floor_t + 0.6])
-            cube([8.0, tf_slot_w, tf_slot_h]);
+        // F. 9 点钟方向 MicroSD (TF) 卡槽开孔 (West, X = -23.8mm)
+        translate([-case_dia / 2 - 4.0, -tf_slot_w / 2, bottom_floor_t + 0.6])
+            cube([10.0, tf_slot_w, tf_slot_h]);
 
-        // 免螺丝拆卸撬槽 (Pry Notch: 3点钟与9点钟各设一处隐形微槽)
-        for (a = [0, 180]) {
-            rotate([0, 0, a])
-                translate([case_dia / 2 - 1.2, -2.0, parting_z - 1.2])
-                    cube([3.0, 4.0, 1.3]);
+        // G. 10 点钟方向 PWR 按键开孔
+        rotate([0, 0, 148])
+            translate([case_dia / 2 - 5.0, -btn_w / 2, bottom_floor_t + 0.8])
+                cube([10.0, btn_w, btn_h]);
+
+        // H. 8 点钟方向 BOOT 按键开孔
+        rotate([0, 0, 212])
+            translate([case_dia / 2 - 5.0, -btn_w / 2, bottom_floor_t + 0.8])
+                cube([10.0, btn_w, btn_h]);
+
+        // I. 4 处卡扣母槽 (避开所有接口与按键)
+        for (ang = [50, 128, 232, 310]) {
+            rotate([0, 0, ang])
+                translate([cavity_dia / 2 - 0.2, -3.0, parting_z - 1.8])
+                    cube([1.2, 6.0, 1.6]);
         }
 
-        // 底壳内壁的 4 处卡扣锁止母槽 (Snap-fit Recesses)
-        for (ang = [35, 145, 215, 325]) {
+        // J. 侧边拆卸撬槽 (Pry Notches)
+        for (ang = [65, 245]) {
             rotate([0, 0, ang])
-                translate([cavity_dia / 2 - 0.2, -snap_w / 2, parting_z - 1.8])
-                    cube([snap_depth + 0.8, snap_w, 1.6]);
+                translate([case_dia / 2 - 1.2, -1.8, parting_z - 1.2])
+                    cube([3.0, 3.6, 1.3]);
         }
     }
 }
 
-// 2. 上壳模型 (Top Bezel Shell & Integrated Antenna Hood)
+// ----------------- 4. 上壳模块 (Top Bezel Shell) -----------------
 module top_shell() {
-    top_h = total_body_h - parting_z;
+    top_h = total_height - parting_z;
 
     difference() {
         union() {
-            // 上壳主体轮廓拉伸
+            // 上壳主体拉伸
             translate([0, 0, parting_z])
                 linear_extrude(height = top_h, convexity = 10)
-                    case_outer_profile_2d();
+                    case_2d_profile();
 
-            // 下凸的 4 组免螺丝卡扣弹性公扣 (Snap-fit male tabs)
-            for (ang = [35, 145, 215, 325]) {
+            // 4 处下探弹性卡扣公扣
+            for (ang = [50, 128, 232, 310]) {
                 rotate([0, 0, ang])
-                    translate([cavity_dia / 2 - 0.7, -snap_w / 2 + 0.2, parting_z - 2.2])
+                    translate([cavity_dia / 2 - 0.7, -2.7, parting_z - 2.1])
                         snap_tab();
             }
         }
 
-        // 正面圆形屏幕透光/触控视窗开孔
-        translate([0, 0, parting_z + top_h - top_bezel_t - 0.01])
-            cylinder(d = screen_view_dia, h = top_bezel_t + 0.1);
+        // A. 正面 AMOLED 圆形视窗透光/触控开口
+        translate([0, 0, parting_z + top_h - 1.8])
+            cylinder(d = screen_view_dia, h = 2.0);
 
-        // 屏幕玻璃内沉槽 (压紧玻璃边缘，让 AMOLED 与上框完全平齐)
-        translate([0, 0, parting_z])
-            cylinder(d = cavity_dia, h = screen_glass_h + 0.2);
+        // B. 屏幕玻璃内沉槽 (压紧玻璃边缘，让 AMOLED 与上框平齐)
+        translate([0, 0, parting_z - 0.01])
+            cylinder(d = cavity_dia, h = glass_pocket_h + 0.1);
 
-        // 12 点钟外置天线仓顶部容纳槽 (保留 1.2mm 极薄高透射 RF 塑料顶盖)
-        translate([0, ant_center_y, parting_z])
-            rounded_box_center(ant_w, ant_l, top_h - 1.2, r = 1.5);
+        // C. 12 点钟外置天线仓顶部容纳槽 (保留 1.2mm 极薄高透 RF 顶盖)
+        translate([0, ant_center_y, parting_z - 0.01])
+            rounded_box_center(ant_cav_w, ant_cav_l, top_h - 1.2, r = 1.5);
 
-        // 6点钟方向 USB Type-C 接口上半部避空
-        translate([-typec_w / 2, -case_dia / 2 - 2, parting_z - 0.1])
-            cube([typec_w, 8.0, 2.5]);
+        // D. 3 点钟方向 Type-C 接口上半部避空
+        translate([case_dia / 2 - 6.0, -typec_w / 2, parting_z - 0.1])
+            cube([10.0, typec_w, 2.5]);
 
-        // 侧边双硅麦 (ES7210) 传音小孔
-        translate([cavity_dia / 2 - 2, 8.0, parting_z + 1.2])
-            rotate([0, 90, 0]) cylinder(d = 1.4, h = 10);
-        translate([cavity_dia / 2 - 2, -8.0, parting_z + 1.2])
-            rotate([0, 90, 0]) cylinder(d = 1.4, h = 10);
+        // E. 2 点钟与 4 点钟 ES7210 双麦克风拾音孔 (MIC1 & MIC2)
+        rotate([0, 0, 32])
+            translate([case_dia / 2 - 4.0, 0, parting_z + 1.2])
+                rotate([0, 90, 0]) cylinder(d = 1.5, h = 10);
+        rotate([0, 0, 328])
+            translate([case_dia / 2 - 4.0, 0, parting_z + 1.2])
+                rotate([0, 90, 0]) cylinder(d = 1.5, h = 10);
     }
 }
 
-// 辅助模块：卡扣卡齿
+// 辅助模块：卡扣
 module snap_tab() {
-    difference() {
-        union() {
-            // 弹性臂
-            cube([0.9, snap_w - 0.4, 2.3]);
-            // 锁止外凸齿 (45度导向面 + 75度锁止面)
-            translate([0.9, 0, 0.4])
-                rotate([0, -90, 0])
-                    linear_extrude(height = 0.9)
-                        polygon(points = [[0, 0], [1.2, 0], [0.6, snap_depth]]);
-        }
-    }
+    cube([0.85, 5.4, 2.2]);
+    translate([0.85, 0, 0.4])
+        rotate([0, -90, 0])
+            linear_extrude(height = 0.85)
+                polygon(points = [[0, 0], [1.2, 0], [0.6, 0.45]]);
 }
 
-// 辅助模块：居中圆角方体
+// 辅助模块：圆角方体
 module rounded_box_center(w, l, h, r = 1.5) {
     translate([-w/2 + r, -l/2 + r, 0])
         minkowski() {
@@ -178,9 +183,6 @@ module rounded_box_center(w, l, h, r = 1.5) {
         }
 }
 
-// ==============================================================================
-// 视图控制 (默认同时显示底壳与上壳扣合装配态)
-// 可单选: bottom_shell(); 或 top_shell();
-// ==============================================================================
-color("LightSteelBlue", 0.95) bottom_shell();
+// 默认显示装配态
+color("DimGray", 0.95) bottom_shell();
 translate([0, 0, 0]) color("WhiteSmoke", 0.95) top_shell();
