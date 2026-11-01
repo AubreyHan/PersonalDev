@@ -3,8 +3,15 @@
 #include "model/SystemState.h"
 #include "driver/GnssDriver_LC76G.h"
 
+struct BreadcrumbPoint {
+    double lat;
+    double lon;
+};
+
 class CarTrackService {
 public:
+    static constexpr size_t MAX_TRAIL_POINTS = 360;
+
     static CarTrackService& instance() {
         static CarTrackService inst;
         return inst;
@@ -13,10 +20,8 @@ public:
     void init();
     void update();
 
-    // Reset current trip statistics
     void resetTrip();
 
-    // Statistics getters
     float getCurrentAltitude() const { return _currentAltitude; }
     float getMaxAltitude() const { return _maxAltitude; }
     float getMinAltitude() const { return _minAltitude; }
@@ -27,15 +32,22 @@ public:
 
     float getFusedHeading() const { return _fusedHeading; }
 
-    // History buffers (120 points each, 30s interval = 1 hour)
     const HistoryBuffer& getAltitudeHistory() const { return _altitudeHistory; }
     const HistoryBuffer& getSpeedHistory() const { return _speedHistory; }
+
+    // Breadcrumb Trail API
+    size_t getTrailPointCount() const { return _trailCount; }
+    const BreadcrumbPoint* getTrailPoints() const { return _trailPoints; }
+    void getTrailBounds(double& minLat, double& maxLat, double& minLon, double& maxLon) const {
+        minLat = _minLat; maxLat = _maxLat; minLon = _minLon; maxLon = _maxLon;
+    }
 
 private:
     CarTrackService() = default;
 
     void updateHistoryBuffers(uint32_t now);
     void updateDistance(float speedKmh, uint32_t now);
+    void recordTrailPoint(double lat, double lon);
 
     float  _currentAltitude   = 0.0f;
     float  _maxAltitude       = -9999.0f;
@@ -49,6 +61,14 @@ private:
 
     HistoryBuffer _altitudeHistory;
     HistoryBuffer _speedHistory;
+
+    // Breadcrumb Trajectory Storage
+    BreadcrumbPoint _trailPoints[MAX_TRAIL_POINTS];
+    size_t          _trailCount = 0;
+    size_t          _trailHead  = 0;
+    double          _minLat = 90.0, _maxLat = -90.0;
+    double          _minLon = 180.0, _maxLon = -180.0;
+    double          _lastRecordedLat = 0.0, _lastRecordedLon = 0.0;
 
     uint32_t _lastHistorySampleMs = 0;
     uint32_t _lastDistanceCalcMs  = 0;
