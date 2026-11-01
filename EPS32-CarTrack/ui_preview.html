@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>ESP32-S3-Touch-AMOLED-1.75 UI Mockup Preview</title>
+  <style>
+    body {
+      background-color: #0b0f14;
+      color: #e0e6ed;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 40px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h1 {
+      margin-bottom: 8px;
+      font-size: 26px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+    p.subtitle {
+      color: #78909c;
+      margin-bottom: 40px;
+      font-size: 14px;
+    }
+    .screens-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 40px;
+      justify-content: center;
+    }
+    .screen-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .watch-bezel {
+      width: 466px;
+      height: 466px;
+      border-radius: 50%;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 0 10px #1a222d, 0 0 0 12px #0a0f16;
+      overflow: hidden;
+      background: #000;
+      position: relative;
+    }
+    .screen-card h2 {
+      margin-top: 24px;
+      font-size: 18px;
+      color: #00e5ff;
+    }
+    .screen-card p {
+      font-size: 13px;
+      color: #90a4ae;
+      max-width: 420px;
+      text-align: center;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <h1>ESP32-S3-Touch-AMOLED-1.75 仪表界面设计图 (466×466 圆屏)</h1>
+  <p class="subtitle">针对 1.75 寸 AMOLED 圆屏定制的深色高对比度 UI (LVGL 控件适配)</p>
+
+  <div class="screens-container">
+    <!-- Screen 1 -->
+    <div class="screen-card">
+      <div class="watch-bezel">
+        <img src="/Users/aubreyhan/.gemini/antigravity-cli/brain/b9125c9d-8555-4df2-8934-209ae157e585/screen_altitude.svg" width="466" height="466" alt="高度界面">
+      </div>
+      <h2>页面 1：高度 (Elevation)</h2>
+      <p>顶部实时高度数值 (m)；中部近1小时渐变发光高度折线图；底部卡片呈现本次行程的最大/最小海拔。</p>
+    </div>
+
+    <!-- Screen 2 -->
+    <div class="screen-card">
+      <div class="watch-bezel">
+        <img src="/Users/aubreyhan/.gemini/antigravity-cli/brain/b9125c9d-8555-4df2-8934-209ae157e585/screen_speed.svg" width="466" height="466" alt="速度界面">
+      </div>
+      <h2>页面 2：速度 (Speed)</h2>
+      <p>顶部醒目实时车速 (km/h)；中部近1小时车速变化历史折线图；底部呈现本次行程总里程 (km) 及最高极速。</p>
+    </div>
+
+    <!-- Screen 3 -->
+    <div class="screen-card">
+      <div class="watch-bezel">
+        <img src="/Users/aubreyhan/.gemini/antigravity-cli/brain/b9125c9d-8555-4df2-8934-209ae157e585/screen_compass.svg" width="466" height="466" alt="罗盘方向界面">
+      </div>
+      <h2>页面 3：方向 (Compass)</h2>
+      <p>全屏精密罗盘表盘，外圈刻度与八向方位标识；红色北向指针指示，中央实时显示航向角（如 328° NW）。</p>
+    </div>
+  </div>
+</body>
+</html>
