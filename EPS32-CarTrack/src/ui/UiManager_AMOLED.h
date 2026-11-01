@@ -33,28 +33,29 @@ public:
 private:
     UiManager_AMOLED() = default;
 
-    void renderStatusBar();
-    void renderPageAltitude();
-    void renderPageSpeed();
-    void renderPageTrail(); // Breadcrumb Map
-    void renderPageCompass();
-    void renderPageWiFi();
+    void renderStatusBar(Arduino_GFX* g);
+    void renderPageAltitude(Arduino_GFX* g);
+    void renderPageSpeed(Arduino_GFX* g);
+    void renderPageTrail(Arduino_GFX* g); // Breadcrumb Map
+    void renderPageCompass(Arduino_GFX* g);
+    void renderPageWiFi(Arduino_GFX* g);
 
-    void drawLineChart(int16_t x, int16_t y, int16_t w, int16_t h,
+    void drawLineChart(Arduino_GFX* g, int16_t x, int16_t y, int16_t w, int16_t h,
                        const float* data, uint16_t count,
                        float minVal, float maxVal, uint16_t lineColor, uint16_t fillColor);
-    void drawQrCode(int16_t cx, int16_t cy, int16_t size, const char* text);
+    void drawQrCode(Arduino_GFX* g, int16_t cx, int16_t cy, int16_t size, const char* text);
 
     Arduino_DataBus* _bus = nullptr;
     Arduino_GFX*     _gfx = nullptr;
+    Arduino_Canvas*  _canvas = nullptr;
 
     UiPage _currentPage = PAGE_ALTITUDE;
     uint32_t _lastRenderMs = 0;
 
-    bool    _touchDown = false;
-    int16_t _touchStartX = 0;
-    int16_t _touchStartY = 0;
-    int16_t _touchLastX = 0;
-    int16_t _touchLastY = 0;
+    bool     _touchDown = false;
+    int16_t  _touchStartX = 0;
+    int16_t  _touchStartY = 0;
+    int16_t  _touchLastX = 0;
+    int16_t  _touchLastY = 0;
     uint32_t _touchStartTime = 0;
 };
