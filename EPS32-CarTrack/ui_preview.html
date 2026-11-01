@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>ESP32-S3-Touch-AMOLED-1.75 UI Mockup Preview (4 Screens with WiFi Setup)</title>
+  <title>ESP32-S3-Touch-AMOLED-1.75 UI Mockup Preview (5 Screens with Breadcrumb Trail)</title>
   <style>
     body {
       background-color: #0b0f14;
@@ -32,7 +32,7 @@
       flex-wrap: wrap;
       gap: 36px;
       justify-content: center;
-      max-width: 1100px;
+      max-width: 1400px;
     }
     .screen-card {
       display: flex;
@@ -64,8 +64,8 @@
   </style>
 </head>
 <body>
-  <h1>ESP32-S3-Touch-AMOLED-1.75 仪表与WiFi配网界面设计图 (466×466 圆屏)</h1>
-  <p class="subtitle">全套 4 页面设计：顶部全局统一显示 GPS 状态、WiFi 信号、4 点页面指示器及实时时钟</p>
+  <h1>ESP32-S3-Touch-AMOLED-1.75 仪表系统完整设计图 (466×466 圆屏)</h1>
+  <p class="subtitle">全套 5 页面设计：新增第 3 页全屏自适应面包屑轨迹图；顶部状态栏升级为 5 点指示器</p>
 
   <div class="screens-container">
     <!-- Screen 1: Altitude -->
@@ -86,21 +86,30 @@
       <p>顶部状态栏；中央实时时速 (km/h)；近1小时车速历史折线图；底部本次行驶总里程与最高极速统计卡片。</p>
     </div>
 
-    <!-- Screen 3: Compass -->
+    <!-- Screen 3: Breadcrumb Trail (NEW) -->
+    <div class="screen-card">
+      <div class="watch-bezel">
+        <img src="/Users/aubreyhan/.gemini/antigravity-cli/brain/b9125c9d-8555-4df2-8934-209ae157e585/screen_track.svg" width="466" height="466" alt="面包屑轨迹图">
+      </div>
+      <h2>页面 3：轨迹 (Trail Map)</h2>
+      <p><b>【新插入】</b>全屏动态自适应边界框投影；雷达同心测距环；绿色起点信标、当前车头航向箭头；底部轨迹点数与跨度 HUD。</p>
+    </div>
+
+    <!-- Screen 4: Compass -->
     <div class="screen-card">
       <div class="watch-bezel">
         <img src="/Users/aubreyhan/.gemini/antigravity-cli/brain/b9125c9d-8555-4df2-8934-209ae157e585/screen_compass.svg" width="466" height="466" alt="罗盘方向界面">
       </div>
-      <h2>页面 3：方向 (Compass)</h2>
+      <h2>页面 4：方向 (Compass)</h2>
       <p>全屏精密罗盘表盘与刻度圈；红白双色动态航向指针；中央大字数字航向角（328° NW）；保留顶部全局状态栏。</p>
     </div>
 
-    <!-- Screen 4: WiFi Setup -->
+    <!-- Screen 5: WiFi Setup -->
     <div class="screen-card">
       <div class="watch-bezel">
         <img src="/Users/aubreyhan/.gemini/antigravity-cli/brain/b9125c9d-8555-4df2-8934-209ae157e585/screen_wifi.svg" width="466" height="466" alt="WiFi扫码配网界面">
       </div>
-      <h2>页面 4：WiFi 配网 (WiFi Config)</h2>
+      <h2>页面 5：WiFi 配网 (WiFi Config)</h2>
       <p>中央高对比度防畸变配网二维码；手机扫码直接弹出强制配网门户（Captive Portal）；底部显示热点名称与网关地址。</p>
     </div>
   </div>
