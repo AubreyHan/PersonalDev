@@ -199,6 +199,24 @@ void PowerMonitorService::enterStandstillStandby() {
     TrackLogger::instance().closeActiveStreams();
     SystemState::instance().saveTripStatsToNvs();
 
+    // 2. Pre-Sleep Cloud Sync: If Wi-Fi is connected and OneDrive is bound, complete cloud sync before sleep
+    if (WiFi.status() == WL_CONNECTED && OneDriveSyncService::instance().isBound()) {
+        Serial.println("[POWER] Network available -> Performing pre-standby cloud sync to OneDrive...");
+        M5.Display.fillRoundRect(340, 280, 600, 150, 12, 0x10A2); // UiColors::COLOR_PANEL_BG
+        M5.Display.drawRoundRect(340, 280, 600, 150, 12, 0x07F5); // UiColors::COLOR_PRIMARY
+        M5.Display.setTextDatum(middle_center);
+        M5.Display.setTextSize(2);
+        M5.Display.setTextColor(0x07F5);
+        M5.Display.drawString("Cloud Sync: Uploading to OneDrive...", 640, 325);
+        M5.Display.setTextSize(1);
+        M5.Display.setTextColor(0xFFFF);
+        M5.Display.drawString("Syncing trips.csv & closed GPX tracks before entering sleep", 640, 365);
+        M5.Display.setTextColor(0x7BEF);
+        M5.Display.drawString("Entering sleep automatically once upload finishes", 640, 395);
+
+        OneDriveSyncService::instance().syncBeforeSleep(25000); // 25s safety timeout
+    }
+
     SystemState& state = SystemState::instance();
     state.lock();
     bool    gnssValid = state.getContextUnsafe().gnss.isValid;
