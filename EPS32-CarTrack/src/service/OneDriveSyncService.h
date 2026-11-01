@@ -27,6 +27,8 @@ public:
     // Sync Actions
     void triggerManualSync() { _manualSyncRequested = true; }
     void setAutoSync(bool enable);
+    bool syncBeforeSleep(uint32_t timeoutMs = 30000);
+    bool performSync(uint32_t maxFiles = 0, uint32_t timeoutMs = 30000);
 
     // Helpers
     uint32_t scanPendingFilesCount();
