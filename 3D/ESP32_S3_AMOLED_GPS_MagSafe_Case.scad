@@ -27,16 +27,16 @@ magsafe_od       = 54.2;    // 磁吸环槽外径 (标准环54.0mm + 0.2mm公差
 magsafe_id       = 45.8;    // 磁吸环槽内径 (标准环46.0mm - 0.2mm公差)
 magsafe_depth    = 1.2;     // 磁吸槽深度 (磁吸片贴合后与底壳绝对平齐)
 
-// 顶部外置 GNSS/GPS 陶瓷天线仓参数 (远离底部MagSafe磁铁金属干扰)
-ant_w            = 18.4;    // 天线陶瓷片宽度容差 (容纳 15x15 或 18x18 天线)
-ant_l            = 18.4;    // 天线陶瓷片长度容差
-ant_h            = 4.6;     // 天线陶瓷片厚度 (通常 4.0~4.2mm)
+// 顶部外置 GNSS/GPS 陶瓷天线仓参数 (标配 25x25mm 大尺寸高增益陶瓷天线)
+ant_w            = 25.6;    // 天线仓内净宽 (容纳标准 25x25mm 陶瓷天线 + 0.6mm 装配公差)
+ant_l            = 25.6;    // 天线仓内净长
+ant_h            = 6.5;     // 天线仓内深度 (兼容 4.0mm 被动陶瓷片及 6.5mm 带 LNA 放大器主动天线)
 ant_wall_t       = 1.8;     // 天线仓壁厚
-ant_pod_w        = ant_w + ant_wall_t * 2;
-ant_pod_l        = ant_l + ant_wall_t * 2;
-ant_center_y     = case_dia / 2 + ant_pod_l / 2 - 4.0; // 嵌入外圆过渡交融深度
-wire_tunnel_w    = 3.2;     // IPEX 射频微同轴线走线槽宽
-wire_tunnel_h    = 2.2;     // 走线槽高
+ant_pod_w        = ant_w + ant_wall_t * 2; // 外宽 ≈ 29.2mm
+ant_pod_l        = ant_l + ant_wall_t * 2; // 外长 ≈ 29.2mm
+ant_center_y     = case_dia / 2 + ant_pod_l / 2 - 5.5; // 嵌入主圆盘交融过渡深度
+wire_tunnel_w    = 3.6;     // IPEX 射频微同轴线走线槽宽
+wire_tunnel_h    = 2.4;     // 走线槽高
 
 // 接口开孔
 typec_w          = 11.2;    // Type-C 插口避空宽度 (兼容粗胶壳线头)
