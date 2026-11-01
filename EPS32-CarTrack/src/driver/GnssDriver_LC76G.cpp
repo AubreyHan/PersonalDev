@@ -99,14 +99,22 @@ void GnssDriver_LC76G::pollI2cStream() {
     uint8_t queryData[] = { 0x08, 0x00, 0x51, 0xAA, 0x04, 0x00, 0x00, 0x00 };
     Wire.beginTransmission(LC76G_ADDR_W);
     Wire.write(queryData, sizeof(queryData));
-    if (Wire.endTransmission() != 0) {
+    byte wErr = Wire.endTransmission();
+    if (wErr != 0) {
+        Serial.printf("[LC76G I2C] Query write err=%d\n", wErr);
         return;
     }
 
     delay(80);
 
     // 2. Header Read: 4 bytes from 0x54 (Little-Endian Length)
-    if (Wire.requestFrom((uint8_t)LC76G_ADDR_R, (size_t)4) != 4) {
+    size_t reqLen = Wire.requestFrom((uint8_t)LC76G_ADDR_R, (size_t)4);
+    if (reqLen != 4) {
+        static uint32_t lastWarn = 0;
+        if (millis() - lastWarn > 3000) {
+            Serial.printf("[LC76G I2C] reqFrom 0x54 returned %d (expected 4)\n", reqLen);
+            lastWarn = millis();
+        }
         return;
     }
 
@@ -119,6 +127,8 @@ void GnssDriver_LC76G::pollI2cStream() {
                           ((uint32_t)header[1] << 8) |
                           ((uint32_t)header[2] << 16) |
                           ((uint32_t)header[3] << 24);
+
+    Serial.printf("[LC76G I2C] Length: %u bytes\n", dataLength);
 
     if (dataLength == 0 || dataLength > 2048) {
         return;
