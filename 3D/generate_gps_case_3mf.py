@@ -117,13 +117,29 @@ def create_enclosure_3mf():
     proj_cfg["nozzle_temperature"] = ["245"]
     proj_cfg["nozzle_temperature_initial_layer"] = ["245"]
     proj_cfg["auxiliary_fan"] = ["0"]
+    proj_cfg["additional_cooling_fan_speed"] = ["0"]
+    proj_cfg["close_fan_the_first_x_layers"] = ["3"]
+    proj_cfg["fan_min_speed"] = ["10"]
+    proj_cfg["fan_max_speed"] = ["40"]
+    proj_cfg["overhang_fan_speed"] = ["90"]
+    proj_cfg["layer_height"] = "0.16"
+    proj_cfg["initial_layer_print_height"] = "0.20"
     proj_cfg["wall_loops"] = "4"
-    proj_cfg["top_shell_layers"] = "5"
+    proj_cfg["top_shell_layers"] = "6"
     proj_cfg["bottom_shell_layers"] = "5"
     proj_cfg["brim_type"] = "no_brim"
     proj_cfg["sparse_infill_pattern"] = "gyroid"
     proj_cfg["sparse_infill_density"] = "25%"
-    proj_cfg["process_settings_id"] = "0.20mm PETG-HF AMOLED Case @X1C"
+    proj_cfg["seam_position"] = "back"
+    proj_cfg["seam_slope_type"] = "all"
+    proj_cfg["precise_outer_wall"] = "1"
+    proj_cfg["wipe_on_loops"] = "1"
+    proj_cfg["outer_wall_speed"] = ["60", "60"]
+    proj_cfg["inner_wall_speed"] = ["120", "120"]
+    proj_cfg["top_surface_speed"] = ["60", "60"]
+    proj_cfg["initial_layer_speed"] = ["35", "35"]
+    proj_cfg["initial_layer_infill_speed"] = ["45", "45"]
+    proj_cfg["process_settings_id"] = "0.16mm High Quality PETG-HF AMOLED Case @X1C"
 
     with open(proj_cfg_path, 'w') as f:
         json.dump(proj_cfg, f, indent=4)
