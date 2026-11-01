@@ -174,7 +174,13 @@ void GnssDriver_LC76G::pollI2cStream() {
     Serial.printf("[LC76G I2C] Header bytes: 0x%02X 0x%02X 0x%02X 0x%02X -> len=%u\n",
                   header[0], header[1], header[2], header[3], dataLength);
 
-    if (dataLength == 0 || dataLength > 16384) {
+    if (dataLength == 0) {
+        return;
+    }
+
+    if (dataLength > 12000) {
+        Serial.printf("[LC76G] Buffer backlog (%u bytes), performing hardware reset via TCA9554...\n", dataLength);
+        hardwareReset();
         return;
     }
 
@@ -197,26 +203,21 @@ void GnssDriver_LC76G::pollI2cStream() {
 
     // 4. Body Read: Read payload matching dataLength from 0x54
     _usingI2c = true;
-    uint8_t* buf = (uint8_t*)malloc(dataLength);
-    if (buf) {
-        size_t received = Wire.requestFrom((uint8_t)LC76G_ADDR_R, (size_t)dataLength);
-        Serial.printf("[LC76G I2C] Read %d/%u bytes\n", received, dataLength);
-        for (size_t i = 0; i < received; i++) {
-            char c = (char)Wire.read();
-            _totalBytes++;
-            _gps.encode(c);
+    size_t received = Wire.requestFrom((uint8_t)LC76G_ADDR_R, (size_t)dataLength);
+    for (size_t i = 0; i < received; i++) {
+        char c = (char)Wire.read();
+        _totalBytes++;
+        _gps.encode(c);
 
-            if (c == '\n' || c == '\r') {
-                if (_nmeaIndex > 0) {
-                    _nmeaBuffer[_nmeaIndex] = '\0';
-                    parseNmeaSentence(_nmeaBuffer);
-                    _nmeaIndex = 0;
-                }
-            } else if (_nmeaIndex < sizeof(_nmeaBuffer) - 1) {
-                _nmeaBuffer[_nmeaIndex++] = c;
+        if (c == '\n' || c == '\r') {
+            if (_nmeaIndex > 0) {
+                _nmeaBuffer[_nmeaIndex] = '\0';
+                parseNmeaSentence(_nmeaBuffer);
+                _nmeaIndex = 0;
             }
+        } else if (_nmeaIndex < sizeof(_nmeaBuffer) - 1) {
+            _nmeaBuffer[_nmeaIndex++] = c;
         }
-        free(buf);
     }
 }
 
