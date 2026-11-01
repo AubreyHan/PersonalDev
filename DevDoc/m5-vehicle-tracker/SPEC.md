@@ -700,3 +700,35 @@ enum TripCategory : uint8_t {
 - **分卷上传策略**：
   - 小型文件（`< 4MB`，如 `trips.csv`、常规单次轨迹）：直接通过 `PUT https://graph.microsoft.com/v1.0/me/drive/root:/VehicleTracks/{path}:/content` 直传；
   - 大型分卷（`>= 4MB`，如 10MB 小记轨迹）：调用 `POST .../createUploadSession` 创建会话，按微软官方规范以 320KB 整数倍分块（`Content-Range`）断点续传。
+
+### 10.4 休眠前预同步执行时序 (Pre-Standby Cloud Sync Lifecycle)
+```text
+[连续静止 20min 判定]
+         │
+         ▼
+[Step 1: 结算与存盘]
+   ├─ TrackLogger::recordTripSummary(TRIP_SINGLE) -> 追加 /tracks/trips.csv
+   ├─ TrackLogger::closeActiveStreams() -> 闭合当次 W/C-*.gpx 轨迹流
+   └─ SystemState::saveTripStatsToNvs() -> 持久化单次里程与极值
+         │
+         ▼
+[Step 2: 网络与云端状态预判]
+   WiFi.status() == WL_CONNECTED && OneDriveSyncService.isBound() ?
+         ├─ [否 / 无网络 / 未绑定] ────> 直接跳转 Step 4 (立即入眠)
+         └─ [是 / 网络畅通且已授权]
+                   │
+                   ▼
+[Step 3: 前置预同步与屏幕提示]
+   ├─ 屏幕绘制状态弹窗: "Cloud Sync: Uploading to OneDrive..."
+   ├─ OneDriveSyncService::syncBeforeSleep(timeoutMs = 25000)
+   │     ├─ refreshAccessToken() (若 access_token 即将过期)
+   │     ├─ syncTripsCsv() -> 上传刚写入的 trips.csv
+   │     └─ 遍历上传未同步的刚闭合轨迹 (single/W-*.gpx, daily/W-Day-*.gpx 等)
+   └─ 同步结束 / 25s 超时安全跳出
+         │
+         ▼
+[Step 4: 优雅熄屏与低功耗待机]
+   ├─ M5.Display.setBrightness(0)
+   ├─ M5.Display.sleep()
+   └─ setCpuFrequencyMhz(80) 进入待机监视态 (IMU/触控/外接电源唤醒)
+```
