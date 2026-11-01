@@ -18,13 +18,56 @@ static uint8_t calcChecksum(const char* sentence) {
     return checksum;
 }
 
+void GnssDriver_LC76G::hardwareReset() {
+    Serial.println("[LC76G] Asserting hardware RESET via TCA9554 P7...");
+    // 1. TCA9554 at 0x20. Configure P7 as Output (reg 0x03)
+    Wire.beginTransmission(0x20);
+    Wire.write(0x03);
+    Wire.endTransmission(false);
+    if (Wire.requestFrom((uint8_t)0x20, (size_t)1) == 1) {
+        uint8_t cfg = Wire.read();
+        Wire.beginTransmission(0x20);
+        Wire.write(0x03);
+        Wire.write(cfg & ~0x80); // bit 7 = 0 (output)
+        Wire.endTransmission();
+    }
+
+    // 2. Read current output register (reg 0x01)
+    Wire.beginTransmission(0x20);
+    Wire.write(0x01);
+    Wire.endTransmission(false);
+    uint8_t outVal = 0xFF;
+    if (Wire.requestFrom((uint8_t)0x20, (size_t)1) == 1) {
+        outVal = Wire.read();
+    }
+
+    // Drive P7 LOW (Reset active)
+    Wire.beginTransmission(0x20);
+    Wire.write(0x01);
+    Wire.write(outVal & ~0x80);
+    Wire.endTransmission();
+    delay(100);
+
+    // Drive P7 HIGH (Reset released)
+    Wire.beginTransmission(0x20);
+    Wire.write(0x01);
+    Wire.write(outVal | 0x80);
+    Wire.endTransmission();
+    delay(200);
+
+    Serial.println("[LC76G] Hardware reset complete, module booted.");
+}
+
 bool GnssDriver_LC76G::init() {
     Serial.println("[LC76G] Initializing Quectel LC76G GNSS (I2C + UART)...");
 
-    // Initialize UART as primary/dual (LC76G default 9600 8N1)
+    // Initialize UART as backup/dual
     Serial1.begin(LC76G_BAUD, SERIAL_8N1, LC76G_PIN_RX, LC76G_PIN_TX);
 
-    // Test probe LC76G I2C with query command
+    // 1. Hardware Reset via TCA9554 P7 to clear any stuck FIFO or state machine
+    hardwareReset();
+
+    // 2. Test probe LC76G I2C with query command
     uint8_t queryData[] = { 0x08, 0x00, 0x51, 0xAA, 0x04, 0x00, 0x00, 0x00 };
     Wire.beginTransmission(LC76G_ADDR_W);
     Wire.write(queryData, sizeof(queryData));
@@ -34,7 +77,7 @@ bool GnssDriver_LC76G::init() {
         _usingI2c = true;
         Serial.println("[LC76G] LC76G responded on I2C (0x50/0x54)!");
     } else {
-        Serial.printf("[LC76G] I2C probe returned %d (LC76G may use UART or require power-on)\n", err);
+        Serial.printf("[LC76G] I2C probe returned %d (LC76G may use UART)\n", err);
         _isOnline = true;
     }
 
