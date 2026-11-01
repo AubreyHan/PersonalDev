@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>ESP32-S3-Touch-AMOLED-1.75 UI Mockup Preview (No Battery, With Clock)</title>
+  <title>ESP32-S3-Touch-AMOLED-1.75 UI Mockup Preview (4 Screens with WiFi Setup)</title>
   <style>
     body {
       background-color: #0b0f14;
@@ -19,17 +19,20 @@
       font-size: 26px;
       font-weight: 700;
       color: #ffffff;
+      text-align: center;
     }
     p.subtitle {
       color: #78909c;
       margin-bottom: 40px;
       font-size: 14px;
+      text-align: center;
     }
     .screens-container {
       display: flex;
       flex-wrap: wrap;
-      gap: 40px;
+      gap: 36px;
       justify-content: center;
+      max-width: 1100px;
     }
     .screen-card {
       display: flex;
@@ -46,8 +49,8 @@
       position: relative;
     }
     .screen-card h2 {
-      margin-top: 24px;
-      font-size: 18px;
+      margin-top: 22px;
+      font-size: 17px;
       color: #00e5ff;
     }
     .screen-card p {
@@ -56,39 +59,49 @@
       max-width: 420px;
       text-align: center;
       line-height: 1.5;
+      margin-top: 4px;
     }
   </style>
 </head>
 <body>
-  <h1>ESP32-S3-Touch-AMOLED-1.75 仪表界面设计图 (466×466 圆屏)</h1>
-  <p class="subtitle">状态栏已更新：移除电量图标，增加右上角 GPS 授时实时时钟 (14:35)</p>
+  <h1>ESP32-S3-Touch-AMOLED-1.75 仪表与WiFi配网界面设计图 (466×466 圆屏)</h1>
+  <p class="subtitle">全套 4 页面设计：顶部全局统一显示 GPS 状态、WiFi 信号、4 点页面指示器及实时时钟</p>
 
   <div class="screens-container">
-    <!-- Screen 1 -->
+    <!-- Screen 1: Altitude -->
     <div class="screen-card">
       <div class="watch-bezel">
         <img src="/Users/aubreyhan/.gemini/antigravity-cli/brain/b9125c9d-8555-4df2-8934-209ae157e585/screen_altitude.svg" width="466" height="466" alt="高度界面">
       </div>
       <h2>页面 1：高度 (Elevation)</h2>
-      <p>顶部 GPS 状态 + 实时时钟；中央当前海拔大字 (m)；近1小时渐变发光高度折线图；底部本次最高/最低海拔。</p>
+      <p>顶部状态栏（GPS+WiFi+时钟）；中央当前海拔大字 (m)；近1小时渐变发光折线图；底部本次最高/最低海拔卡片。</p>
     </div>
 
-    <!-- Screen 2 -->
+    <!-- Screen 2: Speed -->
     <div class="screen-card">
       <div class="watch-bezel">
         <img src="/Users/aubreyhan/.gemini/antigravity-cli/brain/b9125c9d-8555-4df2-8934-209ae157e585/screen_speed.svg" width="466" height="466" alt="速度界面">
       </div>
       <h2>页面 2：速度 (Speed)</h2>
-      <p>顶部 GPS 状态 + 实时时钟；中央实时时速 (km/h)；近1小时车速历史折线图；底部本次行驶总里程及极速记录。</p>
+      <p>顶部状态栏；中央实时时速 (km/h)；近1小时车速历史折线图；底部本次行驶总里程与最高极速统计卡片。</p>
     </div>
 
-    <!-- Screen 3 -->
+    <!-- Screen 3: Compass -->
     <div class="screen-card">
       <div class="watch-bezel">
         <img src="/Users/aubreyhan/.gemini/antigravity-cli/brain/b9125c9d-8555-4df2-8934-209ae157e585/screen_compass.svg" width="466" height="466" alt="罗盘方向界面">
       </div>
       <h2>页面 3：方向 (Compass)</h2>
-      <p>全屏精密罗盘表盘与刻度圈；红白双色航向指针；中央大字航向角（328° NW）；顶部保留 GPS 状态与时间。</p>
+      <p>全屏精密罗盘表盘与刻度圈；红白双色动态航向指针；中央大字数字航向角（328° NW）；保留顶部全局状态栏。</p>
+    </div>
+
+    <!-- Screen 4: WiFi Setup -->
+    <div class="screen-card">
+      <div class="watch-bezel">
+        <img src="/Users/aubreyhan/.gemini/antigravity-cli/brain/b9125c9d-8555-4df2-8934-209ae157e585/screen_wifi.svg" width="466" height="466" alt="WiFi扫码配网界面">
+      </div>
+      <h2>页面 4：WiFi 配网 (WiFi Config)</h2>
+      <p>中央高对比度防畸变配网二维码；手机扫码直接弹出强制配网门户（Captive Portal）；底部显示热点名称与网关地址。</p>
     </div>
   </div>
 </body>
