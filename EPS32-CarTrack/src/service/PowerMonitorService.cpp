@@ -1,6 +1,8 @@
 #include "service/PowerMonitorService.h"
 #include "service/TrackLogger.h"
+#include "service/OneDriveSyncService.h"
 #include "driver/I2cBusManager.h"
+#include <WiFi.h>
 #include <M5Unified.h>
 #include <Preferences.h>
 #include <math.h>
