@@ -1,4 +1,103 @@
 #include <Arduino.h>
+
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+// =============================================================================
+// Waveshare ESP32-S3-Touch-AMOLED-1.75 CarTrack Firmware
+// Dual-Core FreeRTOS Architecture (Core 0: GNSS & Network, Core 1: AMOLED UI)
+// =============================================================================
+#include <driver/i2c.h>
+#include <esp_task_wdt.h>
+#include "config_s3_amoled.h"
+#include "driver/GnssDriver_LC76G.h"
+#include "driver/RtcDriver_PCF85063.h"
+#include "service/TimeService_Dual.h"
+#include "service/CarTrackService.h"
+#include "service/NetworkManager_Setup.h"
+#include "ui/UiManager_AMOLED.h"
+
+static void initI2cMaster() {
+    i2c_config_t conf = {};
+    conf.mode = I2C_MODE_MASTER;
+    conf.sda_io_num = (gpio_num_t)BoardConfig::I2C_SDA;
+    conf.scl_io_num = (gpio_num_t)BoardConfig::I2C_SCL;
+    conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
+    conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
+    conf.master.clk_speed = BoardConfig::I2C_FREQ;
+    i2c_param_config(I2C_NUM_0, &conf);
+    i2c_driver_install(I2C_NUM_0, conf.mode, 0, 0, 0);
+}
+
+// Core 0 Task: GNSS I2C NMEA streaming, Kalman filtering, Distance & History
+static void gnssAndSensorTask(void* pvParameters) {
+    for (;;) {
+        GnssDriver_LC76G::instance().update();
+        CarTrackService::instance().update();
+        TimeService_Dual::instance().update();
+        vTaskDelay(pdMS_TO_TICKS(20)); // ~50Hz sampling
+    }
+}
+
+// Core 0 Task: WiFi Captive Portal, WebServer, NTP Sync
+static void networkTask(void* pvParameters) {
+    for (;;) {
+        NetworkManager_Setup::instance().update();
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+}
+
+// Core 1 Task: 466x466 AMOLED UI Rendering & Touch Swipe Management
+static void uiTask(void* pvParameters) {
+    for (;;) {
+        UiManager_AMOLED::instance().update();
+        vTaskDelay(pdMS_TO_TICKS(33)); // ~30 FPS
+    }
+}
+
+void setup() {
+    Serial.begin(115200);
+    delay(400);
+
+    Serial.println("\n=======================================================");
+    Serial.println("  Waveshare ESP32-S3-Touch-AMOLED-1.75 CarTrack v1.0.0");
+    Serial.println("=======================================================");
+
+    // 1. Initialize Shared Master I2C Bus (GPIO15 SDA, GPIO14 SCL)
+    initI2cMaster();
+
+    // 2. Initialize QSPI AMOLED Display (CO5300 466x466)
+    UiManager_AMOLED::instance().init();
+
+    // 3. Initialize PCF85063 Hardware RTC & Dual Time Service (GPS + NTP)
+    TimeService_Dual::instance().init();
+
+    // 4. Initialize Quectel LC76G GNSS (Quad-Constellation, 15° Mask, Hot Start)
+    GnssDriver_LC76G::instance().init();
+
+    // 5. Initialize CarTrack Engine (Kalman Altitude, Speed, Distance, 1h Buffers)
+    CarTrackService::instance().init();
+
+    // 6. Initialize WiFi SoftAP & Captive Portal Setup Page
+    NetworkManager_Setup::instance().init();
+
+    Serial.println("[System] Launching Dual-Core FreeRTOS Tasks...");
+
+    // Launch FreeRTOS Tasks
+    xTaskCreatePinnedToCore(gnssAndSensorTask, "gnssTask", 8192,  nullptr, 5, nullptr, 0);
+    xTaskCreatePinnedToCore(networkTask,       "netTask",  8192,  nullptr, 2, nullptr, 0);
+    xTaskCreatePinnedToCore(uiTask,            "uiTask",   12288, nullptr, 4, nullptr, 1);
+
+    Serial.println("[System] All systems running!");
+}
+
+void loop() {
+    // Background supervisory loop
+    vTaskDelay(pdMS_TO_TICKS(1000));
+}
+
+#else
+// =============================================================================
+// M5Stack Tab5 (ESP32-P4) Legacy Target
+// =============================================================================
 #include <M5Unified.h>
 #include <LittleFS.h>
 #include <esp_task_wdt.h>
@@ -24,7 +123,6 @@
 #include "service/OneDriveSyncService.h"
 #include "ui/UiManager.h"
 
-// Global Driver & Service Instances
 GnssDriver           g_gnssDriver;
 BaroDriver           g_baroDriver;
 CompassDriver        g_compassDriver;
@@ -41,11 +139,6 @@ PowerMonitorService  g_powerService;
 WeatherService       g_weatherService;
 UiManager            g_uiManager;
 
-// =============================================================================
-// FreeRTOS Multi-Core Tasks (ESP32-P4 Dual RISC-V 400MHz)
-// =============================================================================
-
-// Core 0, Priority 5: High-frequency GNSS UART UBX parsing, Baro & Dual-IMU DR
 void gnssTask(void* pvParameters) {
     esp_task_wdt_add(nullptr);
     for (;;) {
@@ -57,7 +150,6 @@ void gnssTask(void* pvParameters) {
     }
 }
 
-// Core 0, Priority 2: Wi-Fi 6 Multi-SSID, SoftAP QR/Captive Portal, NTP Sync, AGPS & Weather
 void netTask(void* pvParameters) {
     esp_task_wdt_add(nullptr);
     for (;;) {
@@ -70,83 +162,53 @@ void netTask(void* pvParameters) {
     }
 }
 
-// Core 1, Priority 4: 1280x720 Double-Buffered UI & Touch Gesture Engine
 void uiTask(void* pvParameters) {
     esp_task_wdt_add(nullptr);
     for (;;) {
         esp_task_wdt_reset();
+        M5.update();
         g_uiManager.update();
-        vTaskDelay(pdMS_TO_TICKS(16)); // ~60 fps target
+        vTaskDelay(pdMS_TO_TICKS(16));
     }
 }
 
-// Core 1, Priority 3: 1Hz Dual-Stream (WGS-84 / GCJ-02) GPX Track Logger
 void trackLoggerTask(void* pvParameters) {
     esp_task_wdt_add(nullptr);
     for (;;) {
         esp_task_wdt_reset();
         TrackLogger::instance().update();
-        vTaskDelay(pdMS_TO_TICKS(200));
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
-// Core 1, Priority 1: 500ms INA226 Coulomb Counter & Standstill Deep-Sleep Monitor
 void pwrTask(void* pvParameters) {
     esp_task_wdt_add(nullptr);
     for (;;) {
         esp_task_wdt_reset();
         g_powerService.update();
-        vTaskDelay(pdMS_TO_TICKS(250));
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
 
 void setup() {
-    auto cfg = M5.config();
-    cfg.internal_imu = true;
-    cfg.internal_rtc = true;
-    cfg.external_spk = true;
-    M5.begin(cfg);
-
     Serial.begin(BaudConfig::SERIAL_DEBUG_BAUD);
-    delay(100);
-    Serial.println("\n=======================================================");
-    Serial.println("  M5Track-Tab5 High-Precision Vehicle Tracker & HUD");
-    Serial.println("=======================================================");
-
-    // Enable M5-Bus 5V output for stacked Module GNSS (M135)
-    M5.Power.setExtOutput(true);
-
-    // Initialize Thread-Safe SystemState Pool
-    SystemState::instance().init();
-
-    // Mount On-Chip LittleFS (3MB partition for Tunnel DB)
-    if (!LittleFS.begin(true)) {
-        Serial.println("[FS] Warning: LittleFS mount failed.");
-    }
-
-    // Initialize 1280x720 Widescreen UI first for instant boot visual feedback
-    g_uiManager.init();
-
-    // Orthogonal I2C Bus Scan (SDA=G31, SCL=G32)
-    I2cBusManager::instance().initMutex();
+    auto cfg = M5.config();
+    M5.begin(cfg);
+    I2cBusManager::instance().init();
     I2cScanReport i2cReport = I2cBusManager::instance().scanBus();
 
-    // Initialize Hardware Drivers (Graceful non-blocking fallback if hardware unattached)
-    bool rtcOk = g_rtcDriver.init();
-    SystemState::instance().lock();
-    SystemState::instance().getContextUnsafe().rtcOnline = rtcOk || i2cReport.rx8130ceRtc0x32;
-    SystemState::instance().unlock();
+    g_ina226Driver.init();
+    g_rtcDriver.init();
+    g_imuDriver.init();
+    g_baroDriver.init();
+    g_compassDriver.init();
+    HapticDriver::instance().init();
 
-    g_compassDriver.init(); // Explicitly bypassed for MagSafe immunity
-    g_imuDriver.init();     // Dual BMI270 (0x68 Master + 0x69 Slave)
-    g_baroDriver.init();    // BMP280 (0x76)
-    g_ina226Driver.init();  // INA226 (0x40)
-    g_gnssDriver.init();    // NEO-M9N (M5-Bus UART)
     TrackLogger::instance().init();
-
-    // Initialize Core Services
+    g_gnssDriver.init();
+    g_uiManager.init();
+    g_altitudeFusion.init(&g_gnssDriver, &g_baroDriver, &g_imuDriver);
     g_tunnelService.init();
-    g_altitudeFusion.init(&g_baroDriver);
     g_drService.init(&g_imuDriver, &g_tunnelService);
     g_timeService.init(&g_rtcDriver, &g_gnssDriver);
     g_agpsService.init(&g_gnssDriver);
@@ -156,49 +218,14 @@ void setup() {
     OneDriveSyncService::instance().init();
     OneDriveSyncService::instance().startTask();
 
-    // Structured Hardware & Sensor Diagnostic Summary
-    SystemContext snap = SystemState::instance().getSnapshot();
-    Serial.println("-------------------------------------------------------");
-    Serial.println("[HW_SELF_TEST] Device & Sensor Diagnostic Summary:");
-    Serial.printf("  [MCU]   ESP32-P4 Flash: %u MB | PSRAM Free: %u KB\n",
-                  ESP.getFlashChipSize() / (1024 * 1024), ESP.getFreePsram() / 1024);
-    Serial.printf("  [IMU1]  Tab5 BMI270 Master (0x68) : %s\n", snap.imu.masterOnline ? "ONLINE (OK)" : "FAIL");
-    Serial.printf("  [IMU2]  M135 BMI270 Slave  (0x69) : %s\n", snap.imu.slaveOnline  ? "ONLINE (OK)" : "FAIL");
-    Serial.printf("  [RTC]   Tab5 RX8130CE      (0x32) : %s\n", snap.rtcOnline        ? "ONLINE (OK)" : "FAIL");
-    Serial.printf("  [PWR]   Tab5 INA226 Gauge  (0x40) : %s\n", snap.power.isAvailable ? "ONLINE (OK)" : "FAIL");
-    Serial.printf("  [BARO]  M135 BMP280        (0x76) : %s\n", snap.baro.isAvailable ? "ONLINE (OK)" : "FAIL");
-    Serial.printf("  [MAG]   M135 BMM150        (0x10) : %s (MagSafe Bypassed)\n", i2cReport.bmm150Mag0x10 ? "HW_ACK (OK)" : "OFFLINE");
-    Serial.printf("  [GNSS]  M135 NEO-M9N       (UART) : %s\n", snap.gnss.moduleOnline ? "ONLINE (OK)" : "FAIL");
-    Serial.printf("  [SD]    MicroSD Slot    (G39~G44) : %s\n", snap.storage.isMounted ? "MOUNTED (OK)" : "NO_CARD");
-    Serial.println("-------------------------------------------------------");
-
-    // Record System Boot / Startup Event into TF Card Power FIFO Log
-    esp_reset_reason_t rstReason = esp_reset_reason();
-    char bootMsg[128];
-    snprintf(bootMsg, sizeof(bootMsg), "System startup (Reset: %d, Batt: %.2fV, %u%%, Pwr: %s, TF: %s)",
-             (int)rstReason, snap.power.busVoltageV, (unsigned)snap.power.batterySocPercent,
-             snap.power.hasExternalPower ? "ExtUSB" : "Battery",
-             snap.storage.isMounted ? "Mounted" : "NoCard");
-    TrackLogger::instance().logPowerEvent("BOOT", bootMsg);
-
-    // Configure Task Watchdog Timer (TWDT) with 10-second timeout for fault recovery
-    esp_task_wdt_config_t wdt_config = {
-        .timeout_ms = 10000,
-        .idle_core_mask = (1 << 0) | (1 << 1),
-        .trigger_panic = true
-    };
-    esp_task_wdt_init(&wdt_config);
-
-    // Launch FreeRTOS Dual-Core Tasks on ESP32-P4 with generous stack headroom for 100+ hours stability
     xTaskCreatePinnedToCore(gnssTask,        "gnssTask",        12288, nullptr, 5, nullptr, 0);
     xTaskCreatePinnedToCore(netTask,         "netTask",         12288, nullptr, 2, nullptr, 0);
     xTaskCreatePinnedToCore(uiTask,          "uiTask",          16384, nullptr, 4, nullptr, 1);
     xTaskCreatePinnedToCore(trackLoggerTask, "trackLoggerTask", 12288, nullptr, 3, nullptr, 1);
     xTaskCreatePinnedToCore(pwrTask,         "pwrTask",         8192,  nullptr, 1, nullptr, 1);
-
-    Serial.println("[BOOT] All M5Track-Tab5 FreeRTOS tasks started.");
 }
 
 void loop() {
     vTaskDelay(pdMS_TO_TICKS(1000));
 }
+#endif
