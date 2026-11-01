@@ -3,12 +3,12 @@
 // MagSafe 磁吸轻薄卡扣外壳 - 3D 打印工程源码 (OpenSCAD)
 //
 // 官方真实物理接口坐标 (以屏幕正面为准):
-// - 3 点钟方向 (East):   USB Type-C 接口
-// - 2 点钟与 4 点钟:     ES7210 双麦克风孔 (MIC1 / MIC2)
-// - 8 点至 10 点钟 (West): PWR / TF卡槽 / BOOT(Reset) 左侧全景一体化大镂空窗
+// - 9 点钟方向 (West / -X): USB Type-C 接口
+// - 8 点钟与 10 点钟:     ES7210 双麦克风孔 (MIC1 / MIC2, 148° 与 212°)
+// - 3 点钟方向 (East / +X): PWR / TF卡槽 / BOOT(Reset) 右侧全景一体化大镂空窗 (320°~40°)
 //                         (手指可直接触碰微动按键，TF卡轻松拔插)
-// - 12 点钟方向 (North): 25x25mm GNSS 陶瓷天线一体化外置隔离仓 (超薄全密封透射罩)
-// - 6 点钟方向 (South):  8-Pin 2.54mm 扩展排母避空保护区
+// - 12 点钟方向 (North / +Y): 25x25mm GNSS 陶瓷天线一体化外置隔离仓 (超薄全密封透射罩)
+// - 6 点钟方向 (South / -Y):  8-Pin 2.54mm 扩展排母避空保护区
 // - 底部外侧:            MagSafe 磁吸嵌入平齐沉槽 (OD 54.2mm, ID 45.8mm, 深 1.2mm)
 // ==============================================================================
 
@@ -81,23 +81,23 @@ module bottom_shell() {
         translate([-1.8, cavity_dia / 2 - 5.0, bottom_floor_t])
             cube([3.6, ant_center_y - cavity_dia / 2 + 7.0, 2.4]);
 
-        // E. 3 点钟方向 Type-C 接口开孔 (East, X = +23.8mm)
-        translate([case_dia / 2 - 6.0, -typec_w / 2, bottom_floor_t + 0.3])
+        // E. 9 点钟方向 Type-C 接口开孔 (West, X = -23.8mm)
+        translate([-case_dia / 2 - 4.0, -typec_w / 2, bottom_floor_t + 0.3])
             cube([10.0, typec_w, typec_h]);
 
-        // F. 8 点钟至 10 点钟方向一体化全景大镂空窗 (覆盖 PWR、TF卡槽、BOOT键)
-        // 从 140° 到 220° (跨度 80°)，开放下半部
+        // F. 3 点钟方向 (East / +X) 一体化全景大镂空窗 (覆盖 PWR、TF卡槽、BOOT键)
+        // 从 -40° 到 +40° (跨度 80°)，开放下半部
         difference() {
             cylinder(d = case_dia + 2.0, h = parting_z + 0.1);
             cylinder(d = cavity_dia - 0.1, h = parting_z + 0.2);
             // 扇形遮罩
-            rotate([0, 0, 140])
+            rotate([0, 0, -40])
                 linear_extrude(height = parting_z + 1)
-                    polygon(points = [[0, 0], [40, 0], [40, -40], [-40, -40], [-40, 40], [0, 40]]);
+                    polygon(points = [[0, 0], [-40, 0], [-40, 40], [-40, -40], [0, -40], [40, -40]]);
         }
 
-        // G. 4 处卡扣母槽 (避开左侧大镂空与右侧 Type-C)
-        for (ang = [50, 125, 235, 310]) {
+        // G. 4 处卡扣母槽 (避开右侧大镂空与左侧 Type-C)
+        for (ang = [50, 130, 230, 310]) {
             rotate([0, 0, ang])
                 translate([cavity_dia / 2 - 0.2, -3.0, parting_z - 1.8])
                     cube([1.2, 6.0, 1.6]);
@@ -117,7 +117,7 @@ module top_shell() {
                     case_2d_profile();
 
             // 4 处下探弹性卡扣公扣
-            for (ang = [50, 125, 235, 310]) {
+            for (ang = [50, 130, 230, 310]) {
                 rotate([0, 0, ang])
                     translate([cavity_dia / 2 - 0.7, -2.7, parting_z - 2.1])
                         snap_tab();
@@ -136,23 +136,24 @@ module top_shell() {
         translate([0, ant_center_y, parting_z - 0.01])
             rounded_box_center(ant_cav_w, ant_cav_l, top_h - 1.2, r = 1.5);
 
-        // D. 3 点钟方向 Type-C 接口上半部避空
-        translate([case_dia / 2 - 6.0, -typec_w / 2, parting_z - 0.1])
+        // D. 9 点钟方向 Type-C 接口上半部避空 (West)
+        translate([-case_dia / 2 - 4.0, -typec_w / 2, parting_z - 0.1])
             cube([10.0, typec_w, 2.5]);
 
-        // E. 8 点钟至 10 点钟一体化大镂空窗的上半部避空
+        // E. 3 点钟方向 (East) 一体化大镂空窗的上半部避空
         // 让手指能从上侧更舒适地伸入按压开关
-        rotate([0, 0, 180])
-            translate([case_dia / 2 - 6.0, -18.0, parting_z - 0.01])
-                cube([10.0, 36.0, 1.8]);
+        translate([case_dia / 2 - 6.0, -18.0, parting_z - 0.01])
+            cube([10.0, 36.0, 1.8]);
 
-        // F. 2 点钟与 4 点钟 ES7210 双麦克风拾音孔 (MIC1 & MIC2)
-        rotate([0, 0, 32])
+        // F. 10 点钟与 8 点钟 ES7210 双麦克风拾音孔 (MIC1 & MIC2, flanking Type-C)
+        rotate([0, 0, 148])
             translate([case_dia / 2 - 4.0, 0, parting_z + 1.2])
                 rotate([0, 90, 0]) cylinder(d = 1.5, h = 10);
-        rotate([0, 0, 328])
+        rotate([0, 0, 212])
             translate([case_dia / 2 - 4.0, 0, parting_z + 1.2])
                 rotate([0, 90, 0]) cylinder(d = 1.5, h = 10);
+    }
+}
     }
 }
 
