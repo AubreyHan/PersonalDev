@@ -72,7 +72,8 @@ mod tests {
         );
         assert!(cn_url.starts_with("https://connect.garmin.cn"));
         assert!(cn_url.contains("activityType=running"));
-        assert!(cn_url.contains("startDate=2026-10-01"));
+        assert!(cn_url.contains("start=0"));
+        assert!(cn_url.contains("limit=20"));
 
         let global_gpx = GarminEndpoints::gpx_download(GarminRegion::Global, 12345);
         assert_eq!(
