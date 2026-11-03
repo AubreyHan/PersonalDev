@@ -482,4 +482,20 @@ mod tests {
         let html_normal = "<div>Welcome to Garmin</div>";
         assert!(!SsoClient::is_mfa_required(html_normal));
     }
+
+    #[test]
+    fn test_reqwest_cookie_jar() {
+        use reqwest::cookie::CookieStore;
+        let jar = reqwest::cookie::Jar::default();
+        let target_url = "https://connect.garmin.com".parse::<url::Url>().unwrap();
+        jar.add_cookie_str("JWT_WEB=abc123xyz; Domain=.garmin.com; Path=/", &target_url);
+        let header = jar.cookies(&target_url);
+        eprintln!("Header for https://connect.garmin.com: {:?}", header);
+        assert!(header.is_some());
+
+        let api_url = "https://connect.garmin.com/modern/proxy/activitylist-service/activities/search/activities".parse::<url::Url>().unwrap();
+        let api_header = jar.cookies(&api_url);
+        eprintln!("Header for api_url: {:?}", api_header);
+        assert!(api_header.is_some());
+    }
 }
