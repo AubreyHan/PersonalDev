@@ -344,11 +344,12 @@ pub async fn auth_get_current_user(
 ) -> Result<CurrentUserResponse, String> {
     let mut user = auth_manager.get_current_user().await;
 
-    // 若内存中暂无会话，尝试从钥匙串恢复已持久化的 session_cookie
+    // 若内存中暂无会话，尝试从本地安全存储恢复已持久化的 session_cookie 与 jwt_token
     if user.is_none() {
         if let Ok(Some(cookie_str)) = keychain::get_credential("session_cookie") {
             let reg = GarminRegion::Global;
-            let client = SsoClient::new(reg);
+            let jwt_opt = keychain::get_credential("jwt_token").ok().flatten();
+            let client = SsoClient::new(reg).with_tokens(jwt_opt, Some(cookie_str.clone()));
             if let Ok(url) = reg.connect_host().parse::<Url>() {
                 for part in cookie_str.split(';') {
                     let trimmed = part.trim();
@@ -383,6 +384,7 @@ pub async fn auth_logout(
             let _ = keychain::delete_credential(&acc);
         }
         let _ = keychain::delete_credential("session_cookie");
+        let _ = keychain::delete_credential("jwt_token");
     }
 
     Ok(serde_json::json!({ "success": true }))
