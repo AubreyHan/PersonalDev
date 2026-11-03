@@ -377,10 +377,12 @@ def expand_gpx_inputs(input_paths, extract_root):
 
 def main():
     parser = argparse.ArgumentParser(description="Prepare and merge GPX files (or archives) for 3D track animation")
+    default_cache = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "cache"))
     parser.add_argument("--gpx", nargs="+", required=True, help="One or more GPX files, compressed archives (.zip/.tar.gz/.gz/.7z), or folders")
     parser.add_argument("--name", default="", help="Track title displayed in overview banner")
     parser.add_argument("--mode", default="auto", help="Activity mode: 行走|骑行|自驾 or auto")
-    parser.add_argument("--work-dir", required=True, help="Working directory for track_data.json and tiles")
+    parser.add_argument("--work-dir", required=True, help="Working directory for track_data.json")
+    parser.add_argument("--cache-dir", default=default_cache, help="Persistent local cache directory for map tiles")
     parser.add_argument("--skip-tiles", action="store_true", help="Skip downloading map tiles")
     args = parser.parse_args()
 
