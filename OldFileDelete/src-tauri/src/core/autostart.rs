@@ -1,3 +1,5 @@
+#![allow(unexpected_cfgs)]
+
 #[cfg(target_os = "macos")]
 pub fn set_macos_autostart(enable: bool) -> Result<bool, String> {
     use objc::runtime::Object;
@@ -22,6 +24,8 @@ pub fn set_macos_autostart(enable: bool) -> Result<bool, String> {
 pub fn set_macos_autostart(enable: bool) -> Result<bool, String> {
     Ok(enable)
 }
+
+#![allow(unexpected_cfgs)]
 
 #[cfg(target_os = "macos")]
 pub fn get_macos_autostart_status() -> bool {
