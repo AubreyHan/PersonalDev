@@ -121,6 +121,10 @@ pub async fn auth_open_web_login(
     let is_handled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let is_handled_for_load = is_handled.clone();
 
+    let app_handle_for_nav = app.clone();
+    let auth_mgr_for_nav = (*auth_manager).clone();
+    let is_handled_for_nav = is_handled.clone();
+
     let window = WebviewWindowBuilder::new(
         &app,
         "garmin_sso_window",
@@ -131,8 +135,83 @@ pub async fn auth_open_web_login(
     .resizable(true)
     .center()
     .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36")
-    .on_navigation(|_nav_url| {
-        // 允许 WebKit 自由跳转消费 CAS 服务票据，天然继承浏览器环境与指纹
+    .initialization_script(r#"
+        (function() {
+            function checkAuth() {
+                try {
+                    for (var i = 0; i < localStorage.length; i++) {
+                        var k = localStorage.key(i);
+                        if (k && (k === 'token' || k.includes('token') || k.includes('auth'))) {
+                            var v = localStorage.getItem(k);
+                            if (v) {
+                                try {
+                                    var p = JSON.parse(v);
+                                    var act = p.access_token || p.token || (typeof p === 'string' ? p : null);
+                                    if (act && typeof act === 'string' && act.length > 20) {
+                                        var csrf = (document.querySelector('meta[name="csrf-token"]') && document.querySelector('meta[name="csrf-token"]').content) || '';
+                                        var payload = encodeURIComponent(JSON.stringify({ accessToken: act, csrfToken: csrf }));
+                                        window.location.hash = 'tauri_auth=' + payload;
+                                        return true;
+                                    }
+                                } catch(e) {}
+                            }
+                        }
+                    }
+                } catch(e) {}
+                return false;
+            }
+            setInterval(checkAuth, 500);
+        })();
+    "#)
+    .on_navigation(move |nav_url| {
+        let u = nav_url.as_str();
+        if let Some(pos) = u.find("#tauri_auth=") {
+            let encoded = &u[pos + "#tauri_auth=".len()..];
+            if let Ok(decoded) = urlencoding::decode(encoded) {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&decoded) {
+                    let access_token = parsed.get("accessToken").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let csrf_token = parsed.get("csrfToken").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+                    if let Some(token) = access_token {
+                        if !is_handled_for_nav.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                            let app_in = app_handle_for_nav.clone();
+                            let auth_in = auth_mgr_for_nav.clone();
+                            let csrf_in = csrf_token.clone();
+
+                            tauri::async_runtime::spawn(async move {
+                                let mut cookie_pairs = Vec::new();
+                                if let Some(w) = app_in.get_webview_window("garmin_sso_window") {
+                                    if let Ok(cookies) = w.cookies() {
+                                        for c in cookies {
+                                            cookie_pairs.push(format!("{}={}", c.name(), c.value()));
+                                        }
+                                    }
+                                }
+                                let full_cookie_str = cookie_pairs.join("; ");
+                                let client = SsoClient::new(reg).with_tokens(
+                                    Some(token.clone()),
+                                    Some(full_cookie_str.clone()),
+                                    csrf_in.clone(),
+                                );
+
+                                if let Ok(profile) = client.fetch_user_profile().await {
+                                    let _ = keychain::save_credential("session_cookie", &full_cookie_str);
+                                    let _ = keychain::save_credential("jwt_token", &token);
+                                    if let Some(ref c) = csrf_in {
+                                        let _ = keychain::save_credential("csrf_token", c);
+                                    }
+                                    auth_in.set_logged_in(client, profile.clone()).await;
+                                    let _ = app_in.emit("auth:login-success", profile);
+                                    if let Some(w) = app_in.get_webview_window("garmin_sso_window") {
+                                        let _ = w.close();
+                                    }
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+        }
         true
     })
     .on_page_load(move |win, payload| {
