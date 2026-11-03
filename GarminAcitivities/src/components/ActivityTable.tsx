@@ -166,7 +166,13 @@ export const ActivityTable: React.FC = () => {
         {!isLoading && items.length === 0 && (
           <div className="py-16 flex flex-col items-center justify-center space-y-3 text-center text-gray-400 text-xs">
             <p>暂无匹配的活动记录，可调整起止日期或运动分类后刷新</p>
-            <div className="flex items-center space-x-2 pt-1">
+            {syncError && (
+              <div className="flex items-center space-x-1.5 text-amber-400 bg-amber-950/40 border border-amber-800/60 px-3 py-1.5 rounded-lg max-w-lg text-xs">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{syncError}</span>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
               <button
                 onClick={() => setQuery({ startDate: "", endDate: "", activityType: "all" })}
                 className="px-3 py-1.5 rounded-md bg-gray-800 text-sky-400 hover:bg-gray-700 transition-colors border border-gray-700 font-medium"
@@ -178,6 +184,12 @@ export const ActivityTable: React.FC = () => {
                 className="px-3 py-1.5 rounded-md bg-sky-600 text-white hover:bg-sky-500 transition-colors font-medium shadow-sm"
               >
                 立即从 Garmin 云端拉取
+              </button>
+              <button
+                onClick={() => openWebLogin(user?.region || "global")}
+                className="px-3 py-1.5 rounded-md bg-sky-500/20 text-sky-300 hover:bg-sky-500/30 transition-colors border border-sky-500/40 font-medium"
+              >
+                重新连接 Garmin 账号
               </button>
             </div>
           </div>
