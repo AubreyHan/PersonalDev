@@ -1,4 +1,5 @@
 #include "service/AltitudeFusion.h"
+#include <Preferences.h>
 #include <math.h>
 
 void AltitudeFusion::init(BaroDriver* baro) {
@@ -9,6 +10,37 @@ void AltitudeFusion::init(BaroDriver* baro) {
     _initialized = false;
     _gpsCalibrated = false;
     _lastBaroAltitudeM = 0.0f;
+    _lastSavedP0 = 0.0f;
+
+    // Load persisted GPS-calibrated sea-level pressure or seed from last known GPS altitude
+    Preferences prefs;
+    if (prefs.begin("m5track", true)) {
+        float savedP0 = prefs.getFloat("sea_p0", 0.0f);
+        if (savedP0 >= 950.0f && savedP0 <= 1060.0f) {
+            _seaLevelPressureHpa = savedP0;
+            _lastSavedP0         = savedP0;
+            _gpsCalibrated       = true;
+            Serial.printf("[ALTITUDE] Restored GPS-calibrated sea-level pressure from NVS: %.2f hPa\n", _seaLevelPressureHpa);
+        } else {
+            int32_t lastAltCm = prefs.getInt("last_alt_cm", 0);
+            if (lastAltCm > 0 && lastAltCm < 900000 && baro) {
+                float hLast = lastAltCm * 0.01f;
+                // Read preliminary raw pressure if available
+                float p = baro->getPressureHpa();
+                if (p > 500.0f && p < 1100.0f) {
+                    float ratio = 1.0f - (hLast / 44330.0f);
+                    if (ratio > 0.1f) {
+                        _seaLevelPressureHpa = p * powf(ratio, -5.25486f);
+                        _lastSavedP0         = _seaLevelPressureHpa;
+                        _gpsCalibrated       = true;
+                        Serial.printf("[ALTITUDE] Seeded sea-level pressure from last GPS fix (%.1f m): %.2f hPa\n",
+                                      hLast, _seaLevelPressureHpa);
+                    }
+                }
+            }
+        }
+        prefs.end();
+    }
 }
 
 void AltitudeFusion::update() {
