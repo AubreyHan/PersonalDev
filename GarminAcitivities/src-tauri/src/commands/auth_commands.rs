@@ -139,6 +139,7 @@ pub async fn auth_open_web_login(
         (function() {
             function checkAuth() {
                 try {
+                    var token = null;
                     for (var i = 0; i < localStorage.length; i++) {
                         var k = localStorage.key(i);
                         if (k && (k === 'token' || k.includes('token') || k.includes('auth'))) {
@@ -148,71 +149,75 @@ pub async fn auth_open_web_login(
                                     var p = JSON.parse(v);
                                     var act = p.access_token || p.token || (typeof p === 'string' ? p : null);
                                     if (act && typeof act === 'string' && act.length > 20) {
-                                        var csrf = (document.querySelector('meta[name="csrf-token"]') && document.querySelector('meta[name="csrf-token"]').content) || '';
-                                        var payload = encodeURIComponent(JSON.stringify({ accessToken: act, csrfToken: csrf }));
-                                        window.location.hash = 'tauri_auth=' + payload;
-                                        return true;
+                                        token = act;
+                                        break;
                                     }
                                 } catch(e) {}
                             }
                         }
                     }
+                    if (token) {
+                        var csrf = (document.querySelector('meta[name="csrf-token"]') && document.querySelector('meta[name="csrf-token"]').content) || '';
+                        window.location.href = 'tauri-bridge://auth?token=' + encodeURIComponent(token) + '&csrf=' + encodeURIComponent(csrf);
+                        return true;
+                    }
                 } catch(e) {}
                 return false;
             }
-            setInterval(checkAuth, 500);
+            setInterval(checkAuth, 600);
         })();
     "#)
     .on_navigation(move |nav_url| {
-        let u = nav_url.as_str();
-        if let Some(pos) = u.find("#tauri_auth=") {
-            let encoded = &u[pos + "#tauri_auth=".len()..];
-            let decoded = url::form_urlencoded::parse(encoded.as_bytes())
-                .next()
-                .map(|(k, _)| k.to_string())
-                .unwrap_or_else(|| encoded.to_string());
-            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&decoded) {
-                let access_token = parsed.get("accessToken").and_then(|v| v.as_str()).map(|s| s.to_string());
-                let csrf_token = parsed.get("csrfToken").and_then(|v| v.as_str()).map(|s| s.to_string());
-
-                if let Some(token) = access_token {
-                    if !is_handled_for_nav.swap(true, std::sync::atomic::Ordering::SeqCst) {
-                        let app_in = app_handle_for_nav.clone();
-                        let auth_in = auth_mgr_for_nav.clone();
-                        let csrf_in = csrf_token.clone();
-
-                        tauri::async_runtime::spawn(async move {
-                            let mut cookie_pairs = Vec::new();
-                            if let Some(w) = app_in.get_webview_window("garmin_sso_window") {
-                                if let Ok(cookies) = w.cookies() {
-                                    for c in cookies {
-                                        cookie_pairs.push(format!("{}={}", c.name(), c.value()));
-                                    }
-                                }
-                            }
-                            let full_cookie_str = cookie_pairs.join("; ");
-                            let client = SsoClient::new(reg).with_tokens(
-                                Some(token.clone()),
-                                Some(full_cookie_str.clone()),
-                                csrf_in.clone(),
-                            );
-
-                            if let Ok(profile) = client.fetch_user_profile().await {
-                                let _ = keychain::save_credential("session_cookie", &full_cookie_str);
-                                let _ = keychain::save_credential("jwt_token", &token);
-                                if let Some(ref c) = csrf_in {
-                                    let _ = keychain::save_credential("csrf_token", c);
-                                }
-                                auth_in.set_logged_in(client, profile.clone()).await;
-                                let _ = app_in.emit("auth:login-success", profile);
-                                if let Some(w) = app_in.get_webview_window("garmin_sso_window") {
-                                    let _ = w.close();
-                                }
-                            }
-                        });
-                    }
+        if nav_url.scheme() == "tauri-bridge" {
+            let mut access_token = None;
+            let mut csrf_token = None;
+            for (k, v) in nav_url.query_pairs() {
+                if k == "token" {
+                    access_token = Some(v.to_string());
+                } else if k == "csrf" {
+                    csrf_token = Some(v.to_string());
                 }
             }
+
+            if let Some(token) = access_token {
+                if !is_handled_for_nav.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                    let app_in = app_handle_for_nav.clone();
+                    let auth_in = auth_mgr_for_nav.clone();
+                    let csrf_in = csrf_token.clone();
+
+                    tauri::async_runtime::spawn(async move {
+                        eprintln!(">>> CAPTURED REAL OAUTH ACCESS TOKEN! Token length: {}", token.len());
+                        let mut cookie_pairs = Vec::new();
+                        if let Some(w) = app_in.get_webview_window("garmin_sso_window") {
+                            if let Ok(cookies) = w.cookies() {
+                                for c in cookies {
+                                    cookie_pairs.push(format!("{}={}", c.name(), c.value()));
+                                }
+                            }
+                        }
+                        let full_cookie_str = cookie_pairs.join("; ");
+                        let client = SsoClient::new(reg).with_tokens(
+                            Some(token.clone()),
+                            Some(full_cookie_str.clone()),
+                            csrf_in.clone(),
+                        );
+
+                        if let Ok(profile) = client.fetch_user_profile().await {
+                            let _ = keychain::save_credential("session_cookie", &full_cookie_str);
+                            let _ = keychain::save_credential("jwt_token", &token);
+                            if let Some(ref c) = csrf_in {
+                                let _ = keychain::save_credential("csrf_token", c);
+                            }
+                            auth_in.set_logged_in(client, profile.clone()).await;
+                            let _ = app_in.emit("auth:login-success", profile);
+                            if let Some(w) = app_in.get_webview_window("garmin_sso_window") {
+                                let _ = w.close();
+                            }
+                        }
+                    });
+                }
+            }
+            return false;
         }
         true
     })
@@ -233,71 +238,23 @@ pub async fn auth_open_web_login(
             };
 
             if is_on_dashboard {
-                if let Ok(cookie_list) = win.cookies() {
-                    let mut has_jwt_token = false;
-                    let mut jwt_token_val: Option<String> = None;
-                    let mut cookie_pairs = Vec::new();
-                    let target_url: Url = reg.connect_host().parse().unwrap();
-                    let base_client = SsoClient::new(reg);
-
-                    for cookie in cookie_list {
-                        let name = cookie.name().to_string();
-                        let value = cookie.value().to_string();
-                        let domain = cookie.domain().unwrap_or(".garmin.com");
-                        let path = cookie.path().unwrap_or("/");
-                        eprintln!("WebKit Cookie: {} (domain: {}, path: {})", name, domain, path);
-
-                        if name == "JWT_WEB" && !value.is_empty() {
-                            jwt_token_val = Some(value.clone());
-                            has_jwt_token = true;
-                        }
-
-                        // 将 Cookie 注入到 SsoClient 的 CookieStore 中
-                        let clean_domain = domain.trim_start_matches('.');
-                        let cookie_host = format!("https://{}", clean_domain);
-                        if let Ok(cookie_url) = Url::parse(&cookie_host) {
-                            let cookie_str = format!("{}={}; Domain={}; Path={}", name, value, domain, path);
-                            base_client.cookie_store.add_cookie_str(&cookie_str, &cookie_url);
-                        }
-                        // 兜底直接关联至 Connect 域
-                        base_client.cookie_store.add_cookie_str(&format!("{}={}", name, value), &target_url);
-
-                        cookie_pairs.push(format!("{}={}", name, value));
-                    }
-
-                    let full_cookie_str = cookie_pairs.join("; ");
-                    let client = base_client.with_tokens(jwt_token_val.clone(), Some(full_cookie_str.clone()), None);
-
-                    if has_jwt_token && !is_handled_for_load.swap(true, std::sync::atomic::Ordering::SeqCst) {
-                        let app_inner = app_handle.clone();
-                        let auth_mgr_inner = auth_mgr.clone();
-                        let is_handled_reset = is_handled_for_load.clone();
-                        let jwt_for_save = jwt_token_val.clone();
-
-                        tauri::async_runtime::spawn(async move {
-                            match client.fetch_user_profile().await {
-                                Ok(profile) => {
-                                    eprintln!("Successfully fetched user profile: {}", profile.display_name);
-                                    let _ = keychain::save_credential("session_cookie", &full_cookie_str);
-                                    if let Some(jwt) = jwt_for_save {
-                                        let _ = keychain::save_credential("jwt_token", &jwt);
-                                    }
-                                    auth_mgr_inner.set_logged_in(client, profile.clone()).await;
-                                    let _ = app_inner.emit("auth:login-success", profile);
-
-                                    if let Some(w) = app_inner.get_webview_window("garmin_sso_window") {
-                                        let _ = w.close();
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!("Session not fully authenticated yet ({:?}), keeping window open...", e);
-                                    // 允许后续页面加载完成时重新检测
-                                    is_handled_reset.store(false, std::sync::atomic::Ordering::SeqCst);
+                // 主动触发 WebKit 内部 token 提取并回传 bridge
+                let eval_js = r#"
+                    (function() {
+                        try {
+                            var raw = localStorage.getItem('token');
+                            if (raw) {
+                                var p = JSON.parse(raw);
+                                var act = p.access_token || p.token;
+                                if (act && act.length > 20) {
+                                    var csrf = (document.querySelector('meta[name="csrf-token"]') && document.querySelector('meta[name="csrf-token"]').content) || '';
+                                    window.location.href = 'tauri-bridge://auth?token=' + encodeURIComponent(act) + '&csrf=' + encodeURIComponent(csrf);
                                 }
                             }
-                        });
-                    }
-                }
+                        } catch(e) {}
+                    })();
+                "#;
+                let _ = win.eval(eval_js);
             }
         }
     })
