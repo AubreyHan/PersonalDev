@@ -68,7 +68,13 @@ pub async fn activities_fetch_page(
                 }
                 Err(err) => {
                     eprintln!("Online sync warning: {:?}", err);
-                    sync_error = Some(err.to_string());
+                    sync_error = Some(match &err {
+                        crate::garmin::activities::GarminApiError::Unauthorized(msg) => msg.clone(),
+                        crate::garmin::activities::GarminApiError::RateLimited(msg) => msg.clone(),
+                        crate::garmin::activities::GarminApiError::Http(code) => format!("Garmin HTTP 错误代码: {}", code),
+                        crate::garmin::activities::GarminApiError::Json(e) => format!("数据解析异常: {}", e),
+                        crate::garmin::activities::GarminApiError::Network(e) => format!("网络连接异常: {}", e),
+                    });
                     break;
                 }
             }
