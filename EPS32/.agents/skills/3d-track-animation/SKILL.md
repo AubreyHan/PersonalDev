@@ -47,21 +47,21 @@ description: >-
 
 ## 标准执行步骤 (Step-by-Step Procedure)
 
-### 第 1 步：解析用户指令与 GPX 文件路径
+### 第 1 步：解析用户指令与 GPX / 压缩包路径
 
-1. **收集 GPX 文件**：
-   - 检查用户在当前对话中上传的 `.gpx` 附件（位于 `<appDataDir>/brain/<conversation-id>/.user_uploaded/*.gpx`）或用户在指令中指定的本地 `.gpx` 文件路径。
-   - 若有多个 `.gpx` 文件，全部作为参数传给 `--gpx`，由 [prepare_and_download.py](./scripts/prepare_and_download.py) 自动按时间戳排序合并。
+1. **收集 GPX 文件或压缩包**：
+   - 检查用户在当前对话中上传的 `.gpx` 或压缩包附件（位于 `<appDataDir>/brain/<conversation-id>/.user_uploaded/*`）或用户在指令中指定的本地文件/目录路径。
+   - 无需手动解压：直接将上传的压缩包或 `.gpx` 文件路径全部作为参数传给 `--gpx`，由 [prepare_and_download.py](./scripts/prepare_and_download.py) 的 `expand_gpx_inputs` 自动解包、递归扫描 `.gpx` 并按时间戳排序合并。
 2. **解析运动类型与轨迹名称**：
    - 从 `3D轨迹： ...` 指令中提取可选的运动方式（`行走`/`跑步` -> `行走`，`骑行`/`骑车` -> `骑行`，`自驾`/`开车` -> `自驾`；若未提供则设为 `auto`）以及 `<轨迹名称>`。
 
-### 第 2 步：运行轨迹合并与地图瓦片下载
+### 第 2 步：运行自动解包、轨迹合并与地图瓦片下载
 
-使用 [prepare_and_download.py](./scripts/prepare_and_download.py) 解析合并 GPX 文件、计算最佳缩放级别 `z` 并下载卫星与路网瓦片至 `<scratchDir>/track_work`：
+使用 [prepare_and_download.py](./scripts/prepare_and_download.py) 自动解包压缩文件、解析合并所有 GPX 文件、计算最佳缩放级别 `z` 并下载卫星与路网瓦片至 `<scratchDir>/track_work`：
 
 ```bash
 python3 /Users/aubreyhan/Tools/git_repo/PersonalDev/EPS32/.agents/skills/3d-track-animation/scripts/prepare_and_download.py \
-  --gpx <file1.gpx> [file2.gpx ...] \
+  --gpx <file_or_archive1> [file_or_archive2 ...] \
   --name "<轨迹名称>" \
   --mode "<行走|骑行|自驾|auto>" \
   --work-dir "<scratchDir>/track_work"
