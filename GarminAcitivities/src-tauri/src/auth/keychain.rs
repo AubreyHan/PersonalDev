@@ -1,44 +1,76 @@
-use keyring::Entry;
+use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
 use thiserror::Error;
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 pub const SERVICE_NAME: &str = "com.garmin.activity.exporter";
 
 #[derive(Error, Debug)]
 pub enum KeychainError {
-    #[error("Keyring entry error: {0}")]
-    EntryError(String),
-    #[error("Keyring operation error: {0}")]
-    Keyring(#[from] keyring::Error),
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Serialization error: {0}")]
+    Json(#[from] serde_json::Error),
 }
 
-/// 保存凭据至系统安全钥匙串
-pub fn save_credential(account: &str, secret: &str) -> Result<(), KeychainError> {
-    let entry = Entry::new(SERVICE_NAME, account)
-        .map_err(|e| KeychainError::EntryError(e.to_string()))?;
-    entry.set_password(secret)?;
+fn get_storage_path() -> PathBuf {
+    let base_dir = dirs::data_dir()
+        .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")))
+        .join("com.garmin.activity.exporter");
+    let _ = fs::create_dir_all(&base_dir);
+    base_dir.join("credentials.json")
+}
+
+fn read_all_credentials() -> HashMap<String, String> {
+    let path = get_storage_path();
+    if let Ok(content) = fs::read_to_string(path) {
+        serde_json::from_str(&content).unwrap_or_default()
+    } else {
+        HashMap::new()
+    }
+}
+
+fn write_all_credentials(map: &HashMap<String, String>) -> Result<(), KeychainError> {
+    let path = get_storage_path();
+    let json = serde_json::to_string_pretty(map)?;
+    fs::write(&path, json)?;
+
+    #[cfg(unix)]
+    {
+        if let Ok(metadata) = fs::metadata(&path) {
+            let mut permissions = metadata.permissions();
+            permissions.set_mode(0o600); // 严格限制仅当前用户可读写 (rw-------)
+            let _ = fs::set_permissions(&path, permissions);
+        }
+    }
+
     Ok(())
 }
 
-/// 从系统钥匙串读取凭据
-pub fn get_credential(account: &str) -> Result<Option<String>, KeychainError> {
-    let entry = Entry::new(SERVICE_NAME, account)
-        .map_err(|e| KeychainError::EntryError(e.to_string()))?;
-    match entry.get_password() {
-        Ok(password) => Ok(Some(password)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(err) => Err(KeychainError::Keyring(err)),
-    }
+/// 保存凭据至本地隔离受保护存储中（避免 macOS Keychain 频繁触发未签名可执行文件的系统授权弹窗）
+pub fn save_credential(account: &str, secret: &str) -> Result<(), KeychainError> {
+    let mut map = read_all_credentials();
+    map.insert(account.to_string(), secret.to_string());
+    write_all_credentials(&map)
 }
 
-/// 从系统钥匙串删除凭据
+/// 从本地受保护存储读取凭据
+pub fn get_credential(account: &str) -> Result<Option<String>, KeychainError> {
+    let map = read_all_credentials();
+    Ok(map.get(account).cloned())
+}
+
+/// 从本地受保护存储删除凭据
 pub fn delete_credential(account: &str) -> Result<bool, KeychainError> {
-    let entry = Entry::new(SERVICE_NAME, account)
-        .map_err(|e| KeychainError::EntryError(e.to_string()))?;
-    match entry.delete_credential() {
-        Ok(_) => Ok(true),
-        Err(keyring::Error::NoEntry) => Ok(false),
-        Err(err) => Err(KeychainError::Keyring(err)),
+    let mut map = read_all_credentials();
+    let removed = map.remove(account).is_some();
+    if removed {
+        write_all_credentials(&map)?;
     }
+    Ok(removed)
 }
 
 #[cfg(test)]
