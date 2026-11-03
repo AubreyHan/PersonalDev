@@ -5,6 +5,8 @@ import { ActivityListItem, ActivityQuery } from "../types";
 interface ActivityState {
   items: ActivityListItem[];
   totalCount: number;
+  availableTypes: string[];
+  syncError: string | null;
   isLoading: boolean;
   fromCache: boolean;
   selectedIds: Set<number>;
@@ -21,6 +23,8 @@ interface ActivityState {
 export const useActivityStore = create<ActivityState>((set, get) => ({
   items: [],
   totalCount: 0,
+  availableTypes: [],
+  syncError: null,
   isLoading: false,
   fromCache: false,
   selectedIds: new Set<number>(),
@@ -40,19 +44,29 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
   },
 
   fetchActivities: async () => {
-    set({ isLoading: true });
+    set({ isLoading: true, syncError: null });
     try {
       const q = get().query;
       const res = await api.fetchActivitiesPage(q);
-      set({
+
+      // 如果当前选中的活动类型已不在新日期范围的可用列表中，重置为 all
+      let nextType = q.activityType || "all";
+      if (nextType !== "all" && res.availableTypes && !res.availableTypes.includes(nextType)) {
+        nextType = "all";
+      }
+
+      set((state) => ({
         items: res.items,
         totalCount: res.totalCount,
+        availableTypes: res.availableTypes || [],
+        syncError: res.syncError || null,
         fromCache: res.fromCache,
         isLoading: false,
-      });
-    } catch (err) {
+        query: { ...state.query, activityType: nextType },
+      }));
+    } catch (err: any) {
       console.error("Failed to fetch activities:", err);
-      set({ isLoading: false });
+      set({ isLoading: false, syncError: err?.toString() || "拉取活动异常" });
     }
   },
 

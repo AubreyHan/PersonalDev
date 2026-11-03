@@ -1,75 +1,82 @@
-# FilePurger (深度规则驱动的智能文件清理与自动化管理工具)
+# FilePurger (macOS 纯菜单栏旧文件自动清理助手)
 
+[![Platform](https://img.shields.io/badge/Platform-macOS%2012+-black.svg)](https://apple.com/macos)
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-blue.svg)](https://tauri.app/)
 [![Rust](https://img.shields.io/badge/Rust-1.75+-orange.svg)](https://www.rust-lang.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb.svg)](https://react.dev/)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v3-38bdf8.svg)](https://tailwindcss.com/)
 
-> **FilePurger** 是一款基于 **Tauri 2.x (Rust) + React 18 + Tailwind CSS** 构建的轻量级跨平台系统托盘应用。
-> 专为追求极致秩序与磁盘自由的重度用户、开发者设计，定位为**“深度自定义通用文件清理与自动化管理引擎”**。
+> **FilePurger** 是一款专为 **macOS** 深度定制的轻量级纯菜单栏（Status Bar）旧文件自动清理工具。
+> 致力于解决 Mac 用户日常“下载 (Downloads)”目录爆满、时效性临时文件堆积、系统废纸篓缺乏自动容量管理的核心痛点。
 >
-> 告别死板的单次全盘扫描，FilePurger 引入**多目录独立策略体系 (Policy-Driven)**、**高级复合匹配引擎 (Regex + Glob + 多维条件)**、**多样化处置动作 (回收站/动态归档/Zip压缩/永久粉碎)** 与 **全能混合调度 (定时 Cron + 实时文件变动 Watcher + 托盘一键即时触发)**，以不足 40MB 的托盘常驻内存，守护工作区与磁盘的绝对整洁。
+> 秉承极简纯粹的设计哲学：**纯菜单栏常驻（Dock 栏不驻留）、左键直出控制菜单、多目录独立瀑布式规则、FSEvents 内核级零压力监听（CPU 0.0%）、置顶白名单免死保护与废纸篓容量 FIFO 自动清倒**，让 Mac 磁盘始终保持极致清爽。
 
 ---
 
-## 核心架构特色 (Key Architectural Highlights)
+## 核心设计与特性亮点 (Core Highlights)
 
-1. **多目录独立策略架构 (Multi-Directory Policy-Driven)**:
-   - 每个目标文件夹可挂载一条或多条独立策略（如 `Downloads 自动化周清`、`开发构建缓存即时粉碎`、`设计工程素材按月 Zip 归档`）。
-   - 策略间互不干扰，支持独立启用/停用、单独调试与一键手动跑批。
+1. **macOS 纯菜单栏形态 (Pure Status Bar App)**:
+   - 配置 `LSUIElement = true`，Dock（程序坞）栏**完全不显示图标**。
+   - 启动后自动静默最小化到顶部菜单栏；左键单击图标直接弹出原生下拉菜单：【打开主界面】、【✓ 开机自启动】、【彻底卸载本应用】、【退出应用】。
+   - 默认开启开机自启；支持一键干净彻底卸载（Clean Uninstall），注销登录项并擦除全部本地配置，0 残留。
 
-2. **高级复合匹配引擎 (Advanced Multi-Tier Matching Engine)**:
-   - **模式匹配**: 支持 **正则表达式 (Regex)** 与 **Glob 通配符**，内置即时正则语法测试器与命中沙盒预览。
-   - **时间与元数据**: 支持针对 `修改时间 (mtime)`、`访问时间 (atime)`、`创建时间 (btime/ctime)` 设定精确天/小时级阈值。
-   - **尺寸区间与属性**: 最小/最大字节区间，支持排除隐藏文件、排除系统点文件与多层级白名单防线。
+2. **双栏界面与严密的目录层级防线**:
+   - **左侧顶部常驻回收站**: 不可删除、不可移出。
+   - **智能预置**: 首次启动默认预置 macOS 用户 `~/Downloads` 目录。
+   - **父子目录排他拦截**: 若尝试添加现有目录的父文件夹或子文件夹，系统即刻弹出明确警告并**坚决拒绝添加**，从源头杜绝嵌套冲突；同时严禁添加 macOS 系统核心目录。
+   - **安全移除**: 随时从监控列表中删除文件夹，物理磁盘文件不受任何影响，无弹窗打扰。
 
-3. **多样化处置动作流 (Flexible Action Handlers)**:
-   - **安全入回收站 (Trash)**: 默认调用 macOS / Windows 原生废纸篓 API，误删一键无损放回。
-   - **智能动态归档 (Archive Move)**: 移动到归档目录，支持按日期动态变量命名（如 `/Archives/{YYYY}/{MM}/`）。
-   - **Zip 压缩归档 (Compress & Archive)**: 批量命中文件就地打包为 `.zip` 压缩归档并清除源文件，释放 80%+ 磁盘空间。
-   - **永久物理擦除 (Hard Delete)**: 针对临时构建垃圾或安全缓存，跳过废纸篓直接擦除（附带严格安全保护拦截与二次防误触确认）。
+3. **系统废纸篓双轮管家 (Trash Controller)**:
+   - 规则 1：超龄天数自动清除（填 0 不执行，默认 0）。
+   - 规则 2：废纸篓容量上限 (GB) 自动控制（填 0 不执行，默认 0）。超出容量时按 **FIFO（以文件移入废纸篓的时间戳）** 逐个彻底物理删除，直至容量回落达标。
 
-4. **全能混合调度机制 (Hybrid Scheduling Engine)**:
-   - **实时变动监听 (Realtime File Watcher)**: 基于 Rust `notify` crate 监听目标目录文件创建与变动，配合智能防抖 (Debounce)，文件落地达标即刻触发处理。
-   - **定时周期调度 (Cron Scheduler)**: 支持灵活 Cron 表达式与预设快捷调度（如每日午夜、每周五 18:00）。
-   - **托盘菜单即时触发 (Tray Quick Actions)**: 驻留 macOS 状态栏 / Windows 系统托盘，右键一键触发特定策略或全量检查。
+4. **瀑布式优先规则引擎 (Waterfall Rule Engine)**:
+   - **置顶保留规则（白名单最高优先级）**: 每个文件夹常驻置顶，不可调整顺序、不可删除。只要填入通配符即生效，匹配的项及其内部子文件永久免死保留。
+   - **普通规则优先匹配 (First-Match 短路机制)**: 从上到下依次比对，一旦命中首条规则即刻执行并终止匹配。支持自由拖拽调整顺序，每条规则支持独立启用/停用 Toggle。
+   - **规则核心维度**:
+     - `Date Added`: 基于 macOS 原生 `kMDItemDateAdded`（添加到该文件夹的时间），支持分/小时/天，选 Any 或填 0 为不限时间。
+     - `Pattern`: 组合路径通配符语法（大小写严格敏感）。支持 `**` 递归、`*/` 单层、`*a` 主干结尾、`a*.j*` 以及逗号分隔多模式（OR 关系）。
+   - **四大处置动作**:
+     1. **列出 (List Matches)**: 仅在下方清单中列出展示，不做任何删除；
+     2. **保留 (Keep)**: 命中后锁定保留，停止后续规则；
+     3. **直接删除 (Directly Move to Trash)**: 直接移入系统废纸篓；
+     4. **询问后删除 (Ask before Trashing)**: 应用内弹出确认卡片，对满足条件的文件**严格逐一手动确认**。
 
-5. **硬核安全与审计追溯 (Hardened Safety & Audit Trail)**:
-   - **系统核心路径绝对隔离 (PathGuard)**: 硬编码拦截系统保护目录（如 `/System`, `/Library`, `C:\Windows` 等），禁止任何违规策略挂载。
-   - **审计日志流水**: 本地记录每次触发时间、策略名、处理文件清单、释放容量与执行结果，支持操作溯源。
+5. **全局安全与零压力内核监听**:
+   - 默认免疫所有以 `.` 开头的隐藏文件与系统保留文件；若整份子文件夹触发删除，允许连带清除其内部隐藏文件。
+   - 基于 macOS 内核级 **`FSEvents`** 实时监听变动，配合 3 秒智能防抖（Debounce），无变动时 CPU 占用率为 **0.0%**，常驻内存低于 **30MB**；辅以 1 小时一次的轻量心跳巡检自然超龄。
 
 ---
 
 ## 规格文档导航 (Documentation Index)
 
-本项目为规范化 Vibe Coding 研发体系，所有规格文档已全面重构并归档：
+本项目为规范化 Vibe Coding 研发体系，所有规格文档已全面归档：
 
 | 文档名称 | 核心内容说明 | 直接阅读入口 |
 | :--- | :--- | :--- |
-| **产品需求文档 (PRD)** | 全新产品定位、用户画像、核心功能规格 (FR-1 ~ FR-7)、非功能指标、明确不做的边界与详细验收标准 | [PRD.md](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/file-purger/PRD.md) |
-| **技术架构设计 (ARCHITECTURE)** | 托盘与后台常驻架构图、Rust 后端各核心引擎划分 (Scanner/Watcher/Engine/Purger)、IPC 事件流与安全防护模型 | [ARCHITECTURE.md](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/file-purger/ARCHITECTURE.md) |
-| **详细规格说明 (SPEC)** | 策略模型 (Policy/Rule/Action)、Tauri 2.x IPC 接口与 Event 通道、状态机、通配符/正则语法规范与异常矩阵 | [SPEC.md](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/file-purger/SPEC.md) |
-| **实施路线图 (IMPLEMENTATION PLAN)** | 面向 AI 的分阶段原子级开发任务清单、阶段验收指令与端到端验证步骤 | [IMPLEMENTATION_PLAN.md](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/file-purger/IMPLEMENTATION_PLAN.md) |
+| **产品需求文档 (PRD)** | 纯菜单栏定位、用户用例、FR-1 ~ FR-7 详细需求、非功能指标、明确不做的边界与详细验收标准 | [PRD.md](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/file-purger/PRD.md) |
+| **技术架构设计 (ARCHITECTURE)** | macOS 深度集成机制 (`LSUIElement`, `FSEvents`, `kMDItemDateAdded`)、分层架构图、瀑布流与防抖时序图 | [ARCHITECTURE.md](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/file-purger/ARCHITECTURE.md) |
+| **详细规格说明 (SPEC)** | 契约模型 (Folder/Rule/Trash/AskQueue)、Tauri 2.x IPC 接口协议、通配符语法标准与 10 大边界异常矩阵 | [SPEC.md](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/file-purger/SPEC.md) |
+| **实施路线图 (IMPLEMENTATION PLAN)** | 面向 AI 的 6 大阶段原子级任务清单（含详细步骤、验证指令与全链路走查标准） | [IMPLEMENTATION_PLAN.md](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/file-purger/IMPLEMENTATION_PLAN.md) |
 
 ---
 
 ## 快速上手与技术栈概览 (Tech Stack)
 
 ### 架构栈一览
-- **宿主底座**: Tauri 2.x (跨平台桌面托盘与窗口通信框架)
+- **宿主底座**: Tauri 2.x (macOS Native Menu Bar 模式)
 - **后端引擎 (Rust Native)**:
-  - `notify`: 跨平台高效文件系统变动监听 (macOS FSEvents / Windows ReadDirectoryChangesW)
-  - `regex` & `globset`: 高性能正则表达式与通配符预编译匹配
-  - `trash`: 跨平台原生废纸篓安全集成 (支持外置硬盘)
-  - `zip`: 原生多流 Zip 压缩引擎
-  - `tokio`: 异步事件循环、定时调度器与防抖去重队列
-  - `serde` / `serde_json`: 策略与审计数据持久化
-- **前端控制台 (React 18 + TypeScript)**:
+  - `notify`: macOS 原生 FSEvents 内核变动监听
+  - `globset`: 大小写敏感通配符预编译匹配
+  - `trash`: 跨平台原生废纸篓集成
+  - `cocoa` & `objc`: macOS 原生 `kMDItemDateAdded` 元数据读取与 `SMAppService` 登录项调用
+  - `tokio`: 异步防抖队列与小时级心跳定时器
+- **前端控制台 (React 18 + Tailwind CSS)**:
   - 核心框架: React 18 + Vite + TypeScript
-  - 样式设计: Tailwind CSS + Lucide React 图标体系
-  - 状态管理: Zustand (极简策略与流式日志状态)
-  - 高性能列表: TanStack Virtual (虚拟滚动承载万级匹配文件预览)
-  - 交互反馈: Sonner Toast + Framer Motion 微动效
+  - 样式设计: Tailwind CSS (macOS 系统原生风格)
+  - 状态管理: Zustand
+  - 拖拽排序: `@hello-pangea/dnd`
+  - 交互提示: Sonner Toast
 
 ---
 
