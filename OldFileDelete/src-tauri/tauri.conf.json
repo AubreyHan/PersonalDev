@@ -26,9 +26,6 @@
     ],
     "security": {
       "csp": null
-    },
-    "macOS": {
-      "frameworks": ["CoreServices"]
     }
   },
   "bundle": {
