@@ -108,9 +108,12 @@ pub async fn auth_open_web_login(
     let signin_url = reg.portal_signin_url();
     let parsed_url: Url = signin_url.parse().map_err(|e: url::ParseError| e.to_string())?;
 
-    // 如果之前已有残留登录窗口，先关闭
-    if let Some(win) = app.get_webview_window("garmin_sso_window") {
-        let _ = win.close();
+    // 如果之前已有残留登录窗口，直接重新导航并置顶显示
+    if let Some(existing) = app.get_webview_window("garmin_sso_window") {
+        let _ = existing.navigate(parsed_url);
+        let _ = existing.show();
+        let _ = existing.set_focus();
+        return Ok(());
     }
 
     let app_handle = app.clone();
@@ -127,6 +130,7 @@ pub async fn auth_open_web_login(
     .inner_size(480.0, 720.0)
     .resizable(true)
     .center()
+    .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36")
     .on_navigation(|_nav_url| {
         // 允许 WebKit 自由跳转消费 CAS 服务票据，天然继承浏览器环境与指纹
         true
@@ -134,26 +138,28 @@ pub async fn auth_open_web_login(
     .on_page_load(move |win, payload| {
         if payload.event() == tauri::webview::PageLoadEvent::Finished {
             let u = payload.url().as_str();
-            // 当 WebKit 成功跳转至现代网关（/modern 或 /app），且不再处于登录表单页时
-            if (u.contains("/modern") || u.contains("/app")) && !u.contains("/signin") && !u.contains("/sso") {
-                if let Ok(cookie_list) = win.cookies() {
-                    let mut has_jwt = false;
-                    let mut cookie_pairs = Vec::new();
-                    let target_url: Url = reg.connect_host().parse().unwrap();
-                    let client = SsoClient::new(reg);
+            eprintln!("SSO Window Page: Finished loading {}", u);
 
-                    for cookie in cookie_list {
-                        let name = cookie.name().to_string();
-                        let value = cookie.value().to_string();
-                        if name == "JWT_WEB" || name == "SESSIONID" || name == "GARMIN-SSO-GUID" {
-                            has_jwt = true;
-                        }
-                        let cookie_str = format!("{}={}", name, value);
-                        client.cookie_store.add_cookie_str(&cookie_str, &target_url);
-                        cookie_pairs.push(cookie_str);
+            if let Ok(cookie_list) = win.cookies() {
+                let mut has_jwt = false;
+                let mut cookie_pairs = Vec::new();
+                let target_url: Url = reg.connect_host().parse().unwrap();
+                let client = SsoClient::new(reg);
+
+                for cookie in cookie_list {
+                    let name = cookie.name().to_string();
+                    let value = cookie.value().to_string();
+                    if name == "JWT_WEB" || name == "SESSIONID" || name == "GARMIN-SSO-GUID" {
+                        has_jwt = true;
                     }
+                    let cookie_str = format!("{}={}", name, value);
+                    client.cookie_store.add_cookie_str(&cookie_str, &target_url);
+                    cookie_pairs.push(cookie_str);
+                }
 
-                    if has_jwt && !is_handled_for_load.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                // 只要页面进入了 /modern 或 /app，或者任何包含 ticket 验证成功的页面，且具备核心认证 Cookie
+                if has_jwt && (u.contains("/modern") || u.contains("/app") || u.contains("ticket=ST-")) {
+                    if !is_handled_for_load.swap(true, std::sync::atomic::Ordering::SeqCst) {
                         let app_inner = app_handle.clone();
                         let auth_mgr_inner = auth_mgr.clone();
                         let full_cookie_str = cookie_pairs.join("; ");
