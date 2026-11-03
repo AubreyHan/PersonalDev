@@ -2,6 +2,10 @@
 #include "service/NetworkManager.h"
 
 void PageWifiConfig::render(M5Canvas& canvas, const SystemContext& ctx) {
+    if (!ctx.wifi.apSetupActive) {
+        AppNetworkManager::instance().startSetupPortal();
+    }
+
     beginViewport(canvas, true); // Full 1280x720 QR Provisioning View
 
     canvas.fillRect(0, 0, 1280, 64, UiColors::COLOR_PANEL_BG);
@@ -30,7 +34,7 @@ void PageWifiConfig::render(M5Canvas& canvas, const SystemContext& ctx) {
 
     // Draw QR Code 1: Standard WIFI auto-join URI
     canvas.fillRect(180, 190, 300, 300, UiColors::COLOR_WHITE);
-    canvas.qrcode("WIFI:T:nopass;S:M5Track-Setup;;", 195, 205, 270, 6);
+    canvas.qrcode("WIFI:T:nopass;S:M5Track-Setup;;", 195, 205, 270, 2);
 
     canvas.setTextColor(UiColors::COLOR_SECONDARY);
     canvas.setTextSize(2);
@@ -52,17 +56,27 @@ void PageWifiConfig::render(M5Canvas& canvas, const SystemContext& ctx) {
 
     // Draw QR Code 2: Direct URL QR
     canvas.fillRect(800, 190, 300, 300, UiColors::COLOR_WHITE);
-    canvas.qrcode("http://192.168.4.1/setup", 815, 205, 270, 6);
+    canvas.qrcode("http://192.168.4.1/setup", 815, 205, 270, 2);
 
     canvas.setTextSize(2);
-    canvas.setTextColor(ctx.wifi.isConnected ? UiColors::COLOR_PRIMARY : UiColors::COLOR_WARN);
-    char stBuf[64];
     if (ctx.wifi.isConnected) {
+        canvas.setTextColor(UiColors::COLOR_PRIMARY);
+        char stBuf[64];
         snprintf(stBuf, sizeof(stBuf), "Connected: %s (%s)", ctx.wifi.ssid, ctx.wifi.ipAddr);
+        canvas.drawString(stBuf, 950, 530);
+    } else if (ctx.wifi.apSetupActive) {
+        canvas.setTextColor(UiColors::COLOR_PRIMARY);
+        canvas.drawString("AP Active: M5Track-Setup (192.168.4.1)", 950, 520);
+        canvas.setTextSize(1);
+        canvas.setTextColor(UiColors::COLOR_WHITE);
+        canvas.drawString("Connect phone to 'M5Track-Setup' to configure", 950, 550);
     } else {
-        snprintf(stBuf, sizeof(stBuf), "Waiting for phone configuration...");
+        canvas.setTextColor(UiColors::COLOR_WARN);
+        canvas.drawString("Starting SoftAP Portal...", 950, 520);
+        canvas.setTextSize(1);
+        canvas.setTextColor(UiColors::COLOR_MUTED);
+        canvas.drawString("Initializing ESP32-C6 Wi-Fi radio...", 950, 550);
     }
-    canvas.drawString(stBuf, 950, 530);
 
     endViewport(canvas);
 }

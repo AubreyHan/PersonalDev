@@ -50,7 +50,7 @@ private:
                           uint16_t y, uint8_t m, uint8_t d, uint8_t hh, uint8_t mm, uint8_t ss);
     void healUnclosedGpxFiles();
     void enforceStorageQuota50Percent();
-    void refreshStorageStats();
+    void refreshStorageStats(bool fullScan = true);
     void prunePowerLogFifo(size_t incomingLen);
     void getFormattedGpsTimezoneTimestamp(char* outBuf, size_t maxLen);
 

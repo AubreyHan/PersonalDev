@@ -157,27 +157,33 @@ void PageInit::render(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.setTextDatum(middle_center);
     canvas.setTextSize(2);
     canvas.setTextColor(UiColors::COLOR_MUTED);
-    canvas.drawString("Drive to open sky for auto 3D Fix, or tap [Enter Dashboard >>] for indoor preview", 640, 675);
+    canvas.drawString("Drive to open sky for auto 3D Fix, or tap anywhere to [Enter Dashboard >>]", 640, 675);
+
+    // Auto-enter Dashboard after 2.5 seconds
+    static uint32_t s_bootInitMs = 0;
+    if (s_bootInitMs == 0) s_bootInitMs = millis();
+    if (millis() - s_bootInitMs > 2500) {
+        SystemState::instance().lock();
+        SystemState::instance().getContextUnsafe().currentPage = PAGE_1_DASHBOARD;
+        SystemState::instance().unlock();
+    }
 
     endViewport(canvas);
 }
 
 bool PageInit::onTouchTap(int16_t x, int16_t y, SystemContext& ctx) {
-    // 1. Hot-Restart GNSS Lock button (X: 44..390, Y: 465..523)
-    if (x >= 44 && x <= 390 && y >= 465 && y <= 523) {
-        g_gnssDriver.triggerHotStartReacquisition();
-        return true;
-    }
-    // 2. Enter Dashboard button (X: 44..390, Y: 540..598)
-    if (x >= 44 && x <= 390 && y >= 540 && y <= 598) {
-        ctx.currentPage = PAGE_1_DASHBOARD;
-        return true;
-    }
-    // 3. Wi-Fi QR Code Setup button (X: 890..1236, Y: 465..535)
-    if (x >= 890 && x <= 1236 && y >= 465 && y <= 535) {
+    // 3. Wi-Fi QR Code Setup button (X: 850..1280, Y: 450..600)
+    if (x >= 850 && y >= 450) {
         AppNetworkManager::instance().startSetupPortal();
         ctx.currentPage = PAGE_WIFI_CONFIG;
         return true;
     }
-    return false;
+    // 1. Hot-Restart GNSS Lock button (X: 44..390, Y: 465..525)
+    if (x >= 44 && x <= 390 && y >= 465 && y <= 525) {
+        g_gnssDriver.triggerHotStartReacquisition();
+        return true;
+    }
+    // Any tap anywhere on PageInit -> immediately enter Dashboard!
+    ctx.currentPage = PAGE_1_DASHBOARD;
+    return true;
 }

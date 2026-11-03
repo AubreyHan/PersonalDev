@@ -24,15 +24,35 @@ void ToolGnss::render(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.setTextSize(2);
     canvas.setTextColor(UiColors::COLOR_PRIMARY);
     char l1[96], l2[96], l3[96], l4[96], l5[96];
-    snprintf(l1, sizeof(l1), "Fix Status   : %s | Total Sats: %u (BDS:%u GPS:%u GLO:%u GAL:%u)",
-             ctx.gnss.isValid ? "3D FIX LOCKED" : "SEARCHING (Stage-1 Open C/N0>=14)",
+    snprintf(l1, sizeof(l1), "Fix Status   : %s | Sats: %u (BDS:%u GPS:%u GLO:%u GAL:%u)",
+             ctx.gnss.isValid ? "3D FIX LOCKED" : "SEARCHING SATELLITES",
              ctx.gnss.numSats, ctx.gnss.numBdsSats, ctx.gnss.numGpsSats, ctx.gnss.numGloSats, ctx.gnss.numGalSats);
     snprintf(l2, sizeof(l2), "Coordinates  : Lat %.7f  |  Lon %.7f", ctx.gnss.latitude, ctx.gnss.longitude);
     snprintf(l3, sizeof(l3), "DOP Metrics  : HDOP %.2f  |  VDOP %.2f  |  PDOP %.2f", ctx.gnss.hdop, ctx.gnss.vdop, ctx.gnss.pdop);
     snprintf(l4, sizeof(l4), "RF Telemetry : Antenna [%u]  |  Jamming [%u]  |  Noise %u",
              ctx.gnss.antennaStatus, ctx.gnss.jammingState, ctx.gnss.rfNoiseLevel);
-    snprintf(l5, sizeof(l5), "UTC Clock    : %04u-%02u-%02u %02u:%02u:%02u.%03u UTC",
-             ctx.gnss.year, ctx.gnss.month, ctx.gnss.day, ctx.gnss.hour, ctx.gnss.minute, ctx.gnss.second, ctx.gnss.millisecond);
+    const char* timeSrc = ctx.gnss.isValid ? "GNSS 3D" : "DEVICE RTC/NTP";
+    uint16_t yr = ctx.gnss.year;
+    uint8_t mo  = ctx.gnss.month;
+    uint8_t dy  = ctx.gnss.day;
+    uint8_t hh  = ctx.gnss.hour;
+    uint8_t mm  = ctx.gnss.minute;
+    uint8_t ss  = ctx.gnss.second;
+    if (yr < 2024) {
+        time_t curSec = time(nullptr);
+        struct tm utcTm;
+        gmtime_r(&curSec, &utcTm);
+        if (utcTm.tm_year + 1900 >= 2024) {
+            yr = utcTm.tm_year + 1900;
+            mo = utcTm.tm_mon + 1;
+            dy = utcTm.tm_mday;
+            hh = utcTm.tm_hour;
+            mm = utcTm.tm_min;
+            ss = utcTm.tm_sec;
+        }
+    }
+    snprintf(l5, sizeof(l5), "UTC Clock    : %04u-%02u-%02u %02u:%02u:%02u UTC [%s]",
+             yr, mo, dy, hh, mm, ss, timeSrc);
 
     canvas.drawString(l1, 215, 140);
     canvas.setTextColor(UiColors::COLOR_WHITE);

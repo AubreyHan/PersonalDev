@@ -38,6 +38,6 @@ public:
     }
 
 private:
-    uint32_t _lastActiveMs = 0;
-    bool     _visible      = true;
+    volatile uint32_t _lastActiveMs = 0;
+    volatile bool     _visible      = true;
 };

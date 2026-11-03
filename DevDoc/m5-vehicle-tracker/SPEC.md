@@ -732,3 +732,34 @@ enum TripCategory : uint8_t {
    ├─ M5.Display.sleep()
    └─ setCpuFrequencyMhz(80) 进入待机监视态 (IMU/触控/外接电源唤醒)
 ```
+
+### 10.5 M5Stack Tab5 (ESP32-P4) 硬件与底层驱动专项规范 (Hardware & SDIO Host Configuration)
+- **ESP-Hosted SDIO Wi-Fi 6 引脚映射**：
+  ESP32-P4 片上无 Wi-Fi 射频，Tab5 搭载板载 ESP32-C6 协处理器作为从机，通过 SDIO 4-bit 接口通讯。ESP-IDF 默认引脚（CLK=18, CMD=19, D0=14~D3=17）与 Tab5 物理走线不匹配，必须通过编译宏与 `hostedSetPins` 弱符号重定向到专用引脚：
+  - `CONFIG_ESP_SDIO_PIN_CLK` = 12
+  - `CONFIG_ESP_SDIO_PIN_CMD` = 13
+  - `CONFIG_ESP_SDIO_PIN_D0`  = 11
+  - `CONFIG_ESP_SDIO_PIN_D1`  = 10
+  - `CONFIG_ESP_SDIO_PIN_D2`  = 9
+  - `CONFIG_ESP_SDIO_PIN_D3`  = 8
+  - 复位引脚 `pin_rst` = 15
+- **Task Watchdog Timer (TWDT) 调度准则**：
+  ESP-IDF 5.x / Arduino-esp32 3.x 已在核心层维护 TWDT，应用层避免强制覆盖 `idle_core_mask` 以防 Core 1 渲染突发耗时触发意外看门狗重启。
+- **USB-Serial/JTAG 烧录与启动规范**：
+  - 编译选项必须启用 `-DARDUINO_USB_CDC_ON_BOOT=1 -DARDUINO_USB_MODE=1`，以保证打印日志直接定向到原生 USB-Serial/JTAG 虚拟串口；
+  - 烧录后若因驱动锁存保持在 Download 模式，向寄存器 `0x50110008` (RTC_CNTL_OPTION1_REG) 写入 `0` 清除 `RTC_CNTL_FORCE_DOWNLOAD_BOOT` 标志以正常引导 SPI Flash。
+
+### 10.6 硬件时间、GNSS 星历注入与高程融合规范 (Time, GNSS & Elevation Architecture)
+- **RX8130CE RTC 星期寄存器 (0x13) 校验陷阱**：
+  M5Unified 库中 `RX8130_Class.inl` 对读出的星期数据有严格的一热码 (1-hot) 校验：`if (wd == 0 || (wd & (wd - 1)) != 0) return false;`。若寄存器 0x13 写入 0 或全 0 默认值，`M5.Rtc.getDateTime` 将永久拒绝返回时间。底层直写驱动必须按照 `(1u << (wday % 7))` 格式写入 0x13，并在开机探测地址 0x32 时探测 0x10 (秒寄存器) 而非空寄存器 0x00。
+- **UBX-MGA-INI-TIME_UTC 辅助星历时间注入协议规范**：
+  - u-blox NEO-M9N 协议中，`UBX-MGA-INI-TIME_UTC` 负载的 `tAccS` (秒精度) 位于偏移 16..17 (uint16_t)，`tAccNs` (纳秒精度) 位于偏移 20..23 (uint32_t)；
+  - 严禁向偏移 16 写入 32 位纳秒数值，否则高 16 位会溢出污染 `tAccS` 达数万秒（导致高达十余小时的时间不确定度，严重拖慢 TTFF 冷启动）；
+  - 开机自动从系统 RTC/NVS 获取 UTC 时间注入，同时严禁将大于 2 小时的陈旧地理坐标以高置信度（如 500m）注入，防止多普勒频移窗口被带偏至错误搜索区间。
+- **海平面基准气压 ($P_0$) 动态校准与高程互补滤波**：
+  - 传统固定 $1013.25\text{ hPa}$ 假定会导致海拔偏差达数百米；
+  - 首次捕获有效 GNSS 3D 定位（且 $HDOP < 2.5$）瞬间，通过气压计实测值与 GPS 大地高瞬时反演当前微气候的海平面气压：
+    $$P_0 = P \times \left(1 - \frac{h_{\text{GPS}}}{44330}\right)^{-5.25486}$$
+  - 运行期间采用互补滤波融合高频气压微气压差分与低频 GPS 绝对高度针脚（75% 气压差分积分 + 25% GPS 绝对高度锚定），既平滑抑制了 GPS 的多径垂直跳变，又消除了气压计的天气气压漂移。
+
+

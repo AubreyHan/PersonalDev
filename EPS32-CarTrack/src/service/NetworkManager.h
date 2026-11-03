@@ -10,6 +10,13 @@ struct SavedWifiCredential {
     char password[68];
 };
 
+enum WifiPortalState {
+    PORTAL_STATE_IDLE,
+    PORTAL_STATE_CONNECTING,
+    PORTAL_STATE_SUCCESS,
+    PORTAL_STATE_FAILED
+};
+
 class AppNetworkManager {
 public:
     static AppNetworkManager& instance() {
@@ -30,6 +37,10 @@ public:
     bool deleteNetworkCredential(const char* ssid);
     uint8_t getSavedNetworks(SavedWifiCredential* outArr, uint8_t maxCount);
 
+    WifiPortalState getPortalState() const { return _portalConnectState; }
+    const char* getTargetSsid() const { return _portalTargetSsid; }
+    const char* getPortalErrMsg() const { return _portalErrMsg; }
+
 private:
     AppNetworkManager() : _server(80) {
         _netMutex = xSemaphoreCreateRecursiveMutex();
@@ -43,16 +54,28 @@ private:
     void tryAutoConnectMultiSsid();
     void setupHttpRoutes();
     void handleRootPage();
+    void handleWifiSetupPage();
+    void handleWifiSave();
+    void handleStatusPage();
     void handleShareTracksPage();
+    void handleCaptiveRedirect();
 
-    volatile uint8_t    _pendingPortalCmd = 0;
-    SemaphoreHandle_t   _netMutex         = nullptr;
+    volatile uint8_t    _pendingPortalCmd     = 0;
+    SemaphoreHandle_t   _netMutex             = nullptr;
     WebServer           _server;
     DNSServer           _dnsServer;
     SavedWifiCredential _saved[5];
-    uint8_t             _savedCount       = 0;
-    uint8_t             _connectAttemptIdx= 0;
-    uint32_t            _lastReconnectMs  = 0;
-    bool                _portalRunning    = false;
-    bool                _isShareMode      = false;
+    uint8_t             _savedCount           = 0;
+    uint8_t             _connectAttemptIdx    = 0;
+    uint32_t            _lastReconnectMs      = 0;
+    bool                _portalRunning        = false;
+    bool                _isShareMode          = false;
+
+    // WiFiManager Captive Portal Connection State Machine
+    WifiPortalState     _portalConnectState   = PORTAL_STATE_IDLE;
+    uint32_t            _portalConnectStartMs = 0;
+    uint32_t            _portalSuccessMs      = 0;
+    char                _portalTargetSsid[36] = {0};
+    char                _portalErrMsg[64]     = {0};
+    uint32_t            _portalStartTimeMs    = 0;
 };

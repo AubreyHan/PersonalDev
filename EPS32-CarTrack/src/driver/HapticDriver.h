@@ -11,23 +11,17 @@ public:
     }
 
     void triggerShortPulse(uint32_t durationMs = TripResetConfig::VIBRATION_FEEDBACK_MS) {
-        M5.Power.setVibration(200);
-        if (M5.Speaker.isEnabled()) {
-            M5.Speaker.tone(1800, durationMs);
-        }
+        // Tab5 has no vibration motor on PMIC and M5.Speaker.tone deadlocks the FreeRTOS uiTask on ESP32-P4.
+        // Keep this method completely non-blocking and safe from buffer overflows.
         _pulseActive = true;
         _pulseEndMs  = millis() + durationMs;
     }
 
     void triggerAlertBeep() {
-        if (M5.Speaker.isEnabled()) {
-            M5.Speaker.tone(2400, 120);
-        }
     }
 
     void update() {
         if (_pulseActive && millis() >= _pulseEndMs) {
-            M5.Power.setVibration(0);
             _pulseActive = false;
         }
     }

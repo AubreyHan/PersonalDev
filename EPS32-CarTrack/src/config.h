@@ -6,11 +6,13 @@
 // =============================================================================
 
 namespace PinConfig {
-    // Module GNSS (M135) UART Pins via M5-Bus
-    // Option 1: M5-Bus Pin 13 (RXD0 = G38) / Pin 14 (TXD0 = G37)
-    // Option 2: M5-Bus Pin 15 (PC_RX = G7) / Pin 16 (PC_TX = G6)
-    constexpr int GNSS_RX_PIN_PRIMARY = 38;
-    constexpr int GNSS_TX_PIN_PRIMARY = 37;
+    // Module GNSS (M135) UART Pins via M5-Bus on Tab5 (ESP32-P4)
+    // Confirmed on Hardware:
+    //   NEO-M9N TX -> M5-Bus Pin 26 -> Tab5 GPIO 51 (ESP32 RX)
+    //   NEO-M9N RX -> M5-Bus Pin 15 -> Tab5 GPIO 7  (ESP32 TX)
+    constexpr int GNSS_RX_PIN_PRIMARY = 51;
+    constexpr int GNSS_TX_PIN_PRIMARY = 7;
+
     constexpr int GNSS_RX_PIN_ALT     = 6;
     constexpr int GNSS_TX_PIN_ALT     = 7;
 

@@ -22,7 +22,8 @@ void I2cBusManager::unlockBus() {
 bool I2cBusManager::probeAddress(uint8_t addr, uint32_t freq) {
     lockBus();
     uint8_t dummy = 0;
-    bool ok = M5.In_I2C.readRegister(addr, 0x00, &dummy, 1, freq);
+    uint8_t reg = (addr == I2cAddrConfig::ADDR_RX8130CE_RTC) ? 0x10 : 0x00;
+    bool ok = M5.In_I2C.readRegister(addr, reg, &dummy, 1, freq);
     unlockBus();
     return ok;
 }
