@@ -518,8 +518,23 @@ def main():
     final_name = args.name.strip() if args.name and args.name.strip() else default_name
     eles = [p['ele'] for p in sampled]
 
-    sat_dir = os.path.join(args.work_dir, f"tiles_sat_z{z}")
-    road_dir = os.path.join(args.work_dir, f"tiles_road_z{z}")
+    os.makedirs(args.cache_dir, exist_ok=True)
+    sat_dir = os.path.join(args.cache_dir, f"tiles_sat_z{z}")
+    road_dir = os.path.join(args.cache_dir, f"tiles_road_z{z}")
+    os.makedirs(sat_dir, exist_ok=True)
+    if use_road_overlay:
+        os.makedirs(road_dir, exist_ok=True)
+
+    # Migrate any tiles that may already exist in work_dir into the persistent local cache
+    for sub_name, target_cache_dir in [(f"tiles_sat_z{z}", sat_dir), (f"tiles_road_z{z}", road_dir)]:
+        legacy_dir = os.path.join(args.work_dir, sub_name)
+        if os.path.abspath(legacy_dir) != os.path.abspath(target_cache_dir) and os.path.isdir(legacy_dir):
+            os.makedirs(target_cache_dir, exist_ok=True)
+            for fname in os.listdir(legacy_dir):
+                src_f = os.path.join(legacy_dir, fname)
+                dst_f = os.path.join(target_cache_dir, fname)
+                if os.path.isfile(src_f) and os.path.getsize(src_f) > 100 and not os.path.exists(dst_f):
+                    shutil.copy2(src_f, dst_f)
 
     track_data = {
         'name': final_name,
