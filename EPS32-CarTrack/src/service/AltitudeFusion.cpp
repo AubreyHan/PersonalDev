@@ -24,12 +24,14 @@ void AltitudeFusion::update() {
     ctx.baro.isAvailable = baroOk;
 
     // Check if GPS 3D fix altitude is valid and reliable
+    float dop = (ctx.gnss.pdop > 0.0f) ? ctx.gnss.pdop : ctx.gnss.hdop;
+    bool dopValid = (dop <= 0.0f || dop < 8.0f); // Allow reasonable DOP or unpopulated DOP
     bool gpsAltValid = (ctx.gnss.isValid && 
                         ctx.gnss.fixType >= FIX_3D && 
                         ctx.gnss.numSats >= 4 &&
                         ctx.gnss.altitudeMeters > -400.0f && 
                         ctx.gnss.altitudeMeters < 9000.0f &&
-                        (ctx.gnss.pdop > 0.0f && ctx.gnss.pdop < 5.0f));
+                        dopValid);
 
     if (baroOk) {
         float P = _baro->getPressureHpa();
@@ -45,9 +47,12 @@ void AltitudeFusion::update() {
                 float p0Target = P * powf(ratio, -5.25486f);
 
                 if (!_gpsCalibrated) {
-                    // First calibration: immediately snap P0 to target
+                    // First calibration: immediately snap P0 to target and re-anchor fused altitude
                     _seaLevelPressureHpa = p0Target;
                     _gpsCalibrated = true;
+                    _fusedAltitudeM = hGnss;
+                    _lastAltitudeM = hGnss;
+                    _lastBaroAltitudeM = hGnss;
                     Serial.printf("[ALTITUDE] GPS 3D Calibrated Sea-Level Pressure: %.2f hPa (GPS Alt=%.1f m, Baro P=%.2f hPa)\n",
                                   _seaLevelPressureHpa, hGnss, P);
                 } else {
