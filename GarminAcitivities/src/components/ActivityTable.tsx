@@ -6,7 +6,16 @@ import { CheckCircle2, Download, FolderOpen, Layers } from "lucide-react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 export const ActivityTable: React.FC = () => {
-  const { items, selectedIds, toggleSelect, selectAll, clearSelection, isLoading } = useActivityStore();
+  const {
+    items,
+    selectedIds,
+    toggleSelect,
+    selectAll,
+    clearSelection,
+    isLoading,
+    setQuery,
+    fetchActivities,
+  } = useActivityStore();
   const { openDrawer } = useExportStore();
 
   const [isMerging, setIsMerging] = useState(false);
