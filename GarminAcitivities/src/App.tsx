@@ -10,7 +10,7 @@ import { ExportDrawer } from "./components/ExportDrawer";
 import { SettingsDialog } from "./components/SettingsDialog";
 
 export default function App() {
-  const { user, isLoggedIn, checkAuth, logout } = useAuthStore();
+  const { user, isLoggedIn, checkAuth, logout, initAuthListener } = useAuthStore();
   const { fetchActivities } = useActivityStore();
   const { isDrawerOpen, toggleDrawer, openSettings, initEventListeners, fetchSettings, summary } =
     useExportStore();
@@ -19,6 +19,16 @@ export default function App() {
     checkAuth();
     fetchSettings();
   }, [checkAuth, fetchSettings]);
+
+  useEffect(() => {
+    let unlistenAuth: (() => void) | undefined;
+    initAuthListener().then((fn) => {
+      unlistenAuth = fn;
+    });
+    return () => {
+      if (unlistenAuth) unlistenAuth();
+    };
+  }, [initAuthListener]);
 
   useEffect(() => {
     if (isLoggedIn) {
