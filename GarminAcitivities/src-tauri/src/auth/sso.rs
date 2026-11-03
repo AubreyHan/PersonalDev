@@ -94,6 +94,7 @@ pub struct SsoClient {
     pub cookie_store: Arc<reqwest::cookie::Jar>,
     pub jwt_token: Option<String>,
     pub cookie_header: Option<String>,
+    pub csrf_token: Option<String>,
 }
 
 impl SsoClient {
@@ -124,12 +125,19 @@ impl SsoClient {
             cookie_store,
             jwt_token: None,
             cookie_header: None,
+            csrf_token: None,
         }
     }
 
-    pub fn with_tokens(mut self, jwt: Option<String>, cookie_header: Option<String>) -> Self {
+    pub fn with_tokens(
+        mut self,
+        jwt: Option<String>,
+        cookie_header: Option<String>,
+        csrf_token: Option<String>,
+    ) -> Self {
         self.jwt_token = jwt;
         self.cookie_header = cookie_header;
+        self.csrf_token = csrf_token;
         self
     }
 
