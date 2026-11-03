@@ -128,6 +128,56 @@ pub async fn auth_open_web_login(
     .center()
     .on_navigation(move |nav_url| {
         let url_str = nav_url.as_str();
+
+        // 1. 拦截从 Webview 回传的 session cookie 与 profile
+        if url_str.contains("tauri-auth-callback") {
+            let app_inner = app_handle.clone();
+            let auth_mgr_inner = auth_mgr.clone();
+            let url_clone = nav_url.clone();
+
+            tauri::async_runtime::spawn(async move {
+                let mut cookie_val = String::new();
+                let mut name_val = "GarminUser".to_string();
+
+                for (k, v) in url_clone.query_pairs() {
+                    if k == "cookie" {
+                        cookie_val = v.to_string();
+                    } else if k == "name" {
+                        name_val = v.to_string();
+                    }
+                }
+
+                if !cookie_val.is_empty() {
+                    let client = SsoClient::new(reg);
+                    if let Ok(target_url) = reg.connect_host().parse::<Url>() {
+                        for part in cookie_val.split(';') {
+                            let trimmed = part.trim();
+                            if !trimmed.is_empty() {
+                                client.cookie_store.add_cookie_str(trimmed, &target_url);
+                            }
+                        }
+                    }
+
+                    let user = UserProfile {
+                        display_name: name_val,
+                        full_name: None,
+                        profile_image_url: None,
+                        region: reg,
+                    };
+
+                    let _ = keychain::save_credential("session_cookie", &cookie_val);
+                    auth_mgr_inner.set_logged_in(client, user.clone()).await;
+                    let _ = app_inner.emit("auth:login-success", user);
+
+                    if let Some(win) = app_inner.get_webview_window("garmin_sso_window") {
+                        let _ = win.close();
+                    }
+                }
+            });
+            return false;
+        }
+
+        // 2. 拦截 ticket=ST-，利用后端 reqwest 立即消费服务凭据
         if url_str.contains("ticket=ST-") {
             let re = Regex::new(r"ticket=(ST-[a-zA-Z0-9_\-]+)").unwrap();
             if let Some(caps) = re.captures(url_str) {
@@ -137,23 +187,48 @@ pub async fn auth_open_web_login(
 
                 tauri::async_runtime::spawn(async move {
                     let client = SsoClient::new(reg);
-                    let _ = client.consume_service_ticket(&ticket).await;
-                    let user = UserProfile {
-                        display_name: "GarminUser".to_string(),
-                        full_name: None,
-                        profile_image_url: None,
-                        region: reg,
-                    };
-                    auth_mgr_inner.set_logged_in(client, user.clone()).await;
-                    let _ = app_inner.emit("auth:login-success", user);
-                    if let Some(win) = app_inner.get_webview_window("garmin_sso_window") {
-                        let _ = win.close();
+                    if let Ok(_) = client.consume_service_ticket(&ticket).await {
+                        let profile = client.fetch_user_profile().await.unwrap_or_else(|_| UserProfile {
+                            display_name: "GarminUser".to_string(),
+                            full_name: None,
+                            profile_image_url: None,
+                            region: reg,
+                        });
+                        auth_mgr_inner.set_logged_in(client, profile.clone()).await;
+                        let _ = app_inner.emit("auth:login-success", profile);
+                        if let Some(win) = app_inner.get_webview_window("garmin_sso_window") {
+                            let _ = win.close();
+                        }
                     }
                 });
-                return false; // 拦截向外部页面的再次重定向
             }
         }
         true
+    })
+    .on_page_load(move |win, payload| {
+        if payload.event() == tauri::webview::PageLoadEvent::Finished {
+            let u = payload.url().as_str();
+            if (u.contains("/modern") || u.contains("/app")) && !u.contains("/signin") && !u.contains("/sso") {
+                let _ = win.eval(r#"
+                    (function() {
+                        try {
+                            const cookies = document.cookie || '';
+                            if (cookies.includes('JWT_WEB') || cookies.includes('SESSIONID')) {
+                                fetch('/modern/proxy/userprofile-service/userprofile/personal-information')
+                                    .then(r => r.json())
+                                    .then(d => {
+                                        const name = d.displayName || d.userName || 'GarminUser';
+                                        window.location.replace('https://connect.garmin.com/tauri-auth-callback?cookie=' + encodeURIComponent(cookies) + '&name=' + encodeURIComponent(name));
+                                    })
+                                    .catch(() => {
+                                        window.location.replace('https://connect.garmin.com/tauri-auth-callback?cookie=' + encodeURIComponent(cookies) + '&name=GarminUser');
+                                    });
+                            }
+                        } catch (e) {}
+                    })();
+                "#);
+            }
+        }
     })
     .build()
     .map_err(|e| e.to_string())?;
