@@ -1,6 +1,6 @@
 import React from "react";
 import { useExportStore } from "../store/exportStore";
-import { CheckCircle2, FolderOpen, Pause, Play, RotateCcw, X, XCircle } from "lucide-react";
+import { CheckCircle2, FolderOpen, Pause, Play, X, XCircle } from "lucide-react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 export const ExportDrawer: React.FC = () => {

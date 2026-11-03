@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useExportStore } from "../store/exportStore";
-import { Folder, HelpCircle, Save, Settings, X } from "lucide-react";
+import { Save, Settings, X } from "lucide-react";
 import { AppSettings } from "../types";
 
 export const SettingsDialog: React.FC = () => {

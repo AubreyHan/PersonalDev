@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useActivityStore } from "../store/activityStore";
 import { useExportStore } from "../store/exportStore";
 import { api } from "../api/client";
-import { Check, CheckCircle2, Download, FolderOpen, Layers, Sparkles } from "lucide-react";
+import { CheckCircle2, Download, FolderOpen, Layers } from "lucide-react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 export const ActivityTable: React.FC = () => {

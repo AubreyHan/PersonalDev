@@ -2,212 +2,266 @@
 
 ---
 
-## 1. 核心数据模型 (Core Data Models)
+## 1. 核心数据契约模型 (Core Data Models)
 
-为了保持前端 React (TypeScript) 与后端 Rust 结构的一致性与高序列化性能，所有模型通过 Serde 在 IPC 通信中透明编解码。
+所有数据结构在前端 React (TypeScript) 与后端 Rust 中保持强类型对应，采用 `camelCase` 风格在 Tauri IPC 中透明序列化。
 
-### 1.1 文件元数据模型 (`FileItem`)
+### 1.1 策略与规则模型 (`Policy`, `RuleSet`, `RuleCondition`)
 
-#### TypeScript 定义 (`src/types/index.ts`)
+#### TypeScript 类型定义 (`src/types/index.ts`)
 ```typescript
-export interface FileItem {
-  id: string;                     // 唯一标识 (通常采用 SHA-256 或路径哈希)
-  path: string;                   // 文件的绝对路径，如 /Users/username/Downloads/installer.dmg
-  filename: string;               // 文件名，如 installer.dmg
-  extension: string;              // 扩展名 (无点小写)，如 dmg
-  sizeBytes: number;              // 文件大小 (字节)
-  sizeFormatted: string;          // 友好可读格式，如 "1.84 GB"
-  modifiedAt: number;             // 最后修改时间戳 (毫秒)
-  accessedAt: number;             // 最后访问时间戳 (毫秒)
-  daysSinceModified: number;      // 距今天数 (向下取整)
-  selected: boolean;              // 前端是否勾选待清理
+export type ConditionLogic = 'AND' | 'OR';
+
+export type ConditionType = 
+  | 'glob'             // Glob 通配符 (如 *.dmg, **/*.tmp)
+  | 'regex'            // 正则表达式 (如 ^backup_\d{4}\.tar$)
+  | 'time'             // 时间条件 (修改/访问/创建时间)
+  | 'size'             // 文件体积大小
+  | 'exclude_hidden';  // 排除隐藏文件
+
+export type TimeField = 'mtime' | 'atime' | 'ctime';
+export type TimeUnit = 'minutes' | 'hours' | 'days' | 'months';
+export type TimeOperator = 'older_than' | 'newer_than' | 'between';
+
+export interface TimeConditionData {
+  field: TimeField;
+  operator: TimeOperator;
+  value: number;
+  unit: TimeUnit;
+  maxValue?: number;   // 针对 between 操作符
+}
+
+export interface SizeConditionData {
+  operator: 'greater_than' | 'less_than' | 'between';
+  minBytes: number;
+  maxBytes?: number;
+}
+
+export interface RuleCondition {
+  id: string;
+  type: ConditionType;
+  enabled: boolean;
+  invertMatch: boolean; // 是否取反 (NOT)
+  // 具体子条件载荷
+  globPattern?: string;
+  regexPattern?: string;
+  timeData?: TimeConditionData;
+  sizeData?: SizeConditionData;
+}
+
+export interface RuleSet {
+  logic: ConditionLogic;      // AND (全部满足) 或 OR (任一满足)
+  conditions: RuleCondition[];
+  maxScanDepth?: number;      // 最大扫描目录递归深度 (可选，未指定为无限制)
+  followSymlinks: boolean;    // 是否追踪软链接 (默认 false)
 }
 ```
 
-#### Rust 定义 (`src-tauri/src/models/file_item.rs`)
+---
+
+### 1.2 处置动作模型 (`ActionConfig`)
+
+```typescript
+export type ActionType = 
+  | 'trash'          // 移入系统废纸篓 (默认安全)
+  | 'archive'        // 移动归档至指定目录
+  | 'zip'            // 压缩为 Zip 归档并清理源文件
+  | 'hard_delete';   // 永久物理粉碎 (高危)
+
+export interface ActionConfig {
+  type: ActionType;
+  // archive / zip 专用字段
+  targetDirectory?: string;         // 归档目标根目录
+  pathTemplate?: string;            // 归档子路径模板，支持 {YYYY}/{MM}/{DD}/{EXT}
+  conflictStrategy?: 'rename' | 'overwrite' | 'skip'; // 重名处理策略 (默认 rename: 自动加序号)
+  // zip 专用字段
+  zipFileNameTemplate?: string;     // zip 包命名模板，如 "archive_{YYYY}{MM}{DD}_{POLICY}.zip"
+  zipCompressionLevel?: number;     // 1~9，默认 6
+  // hard_delete 专用字段
+  safetyConfirmed?: boolean;        // 用户是否已在前端明确确认高危动作
+}
+```
+
+---
+
+### 1.3 调度模式模型 (`ScheduleConfig`)
+
+```typescript
+export type ScheduleType = 'manual' | 'cron' | 'watcher' | 'hybrid';
+
+export interface ScheduleConfig {
+  type: ScheduleType;
+  // Cron 定时参数
+  cronExpression?: string;          // 5位或6位 Cron 表达式，如 "0 18 * * 5"
+  // Watcher 文件监听参数
+  watcherEnabled: boolean;          // 是否启用变动监听
+  debounceSeconds: number;          // 防抖延迟窗口 (秒，默认 5，范围 1~60)
+  // 运行约束
+  runOnStartup: boolean;            // 应用启动/托盘拉起时是否立即执行一次
+}
+```
+
+---
+
+### 1.4 完整策略模型 (`Policy`)
+
+```typescript
+export interface Policy {
+  id: string;                       // 策略唯一 UUID
+  name: string;                     // 策略友好名称，如 "下载目录双周保洁"
+  description?: string;             // 策略说明
+  enabled: boolean;                 // 是否全局启用该策略
+  targetDirectories: string[];      // 目标监听/扫描目录集合 (绝对路径)
+  ruleSet: RuleSet;                 // 复合规则集合
+  action: ActionConfig;             // 处置动作配置
+  schedule: ScheduleConfig;         // 调度方式配置
+  createdAt: number;                // 创建毫秒时间戳
+  updatedAt: number;                // 最后修改时间戳
+  lastExecutedAt?: number;          // 最后一次触发时间
+  lastExecuteResult?: {
+    success: boolean;
+    filesCount: number;
+    bytesProcessed: number;
+    message?: string;
+  };
+}
+```
+
+---
+
+### 1.5 审计流水模型 (`AuditRecord`)
+
+```typescript
+export interface AuditRecord {
+  id: string;                       // 审计记录 UUID
+  timestamp: number;                // 执行时间戳
+  policyId: string;                 // 关联策略 ID
+  policyName: string;               // 策略名称
+  triggerType: 'manual' | 'cron' | 'watcher'; // 触发源
+  actionType: ActionType;           // 执行动作
+  totalFilesProcessed: number;      // 成功处理的文件数
+  totalBytesFreed: number;          // 释放/归档的总字节数
+  durationMs: number;               // 耗时毫秒
+  status: 'success' | 'partial_error' | 'failed';
+  errorMessage?: string;
+  processedItems: {
+    originalPath: string;
+    newPath?: string;               // 归档目标路径 (若有)
+    sizeBytes: number;
+    status: 'ok' | 'skipped_locked' | 'permission_denied';
+  }[];
+}
+```
+
+---
+
+### 1.6 Rust 数据结构映射 (`src-tauri/src/models/mod.rs`)
+
 ```rust
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FileItem {
+pub struct Policy {
     pub id: String,
-    pub path: String,
-    pub filename: String,
-    pub extension: String,
-    pub size_bytes: u64,
-    pub size_formatted: String,
-    pub modified_at: i64,
-    pub accessed_at: i64,
-    pub days_since_modified: u32,
-    pub selected: bool,
+    pub name: String,
+    pub description: Option<String>,
+    pub enabled: bool,
+    pub target_directories: Vec<String>,
+    pub rule_set: RuleSet,
+    pub action: ActionConfig,
+    pub schedule: ScheduleConfig,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub last_executed_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuleSet {
+    pub logic: String, // "AND" | "OR"
+    pub conditions: Vec<RuleCondition>,
+    pub max_scan_depth: Option<usize>,
+    pub follow_symlinks: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionConfig {
+    pub r#type: String, // "trash" | "archive" | "zip" | "hard_delete"
+    pub target_directory: Option<String>,
+    pub path_template: Option<String>,
+    pub conflict_strategy: Option<String>,
+    pub zip_file_name_template: Option<String>,
+    pub zip_compression_level: Option<u32>,
+    pub safety_confirmed: Option<bool>,
 }
 ```
 
 ---
 
-### 1.2 复合清理规则模型 (`PurgeRule` & `PurgePreset`)
+## 2. Tauri IPC 通信协议接口 (Commands & Events)
 
-#### TypeScript 定义
-```typescript
-export type TimeUnit = 'days' | 'months' | 'years';
-export type TimeFilterField = 'modified' | 'accessed';
-
-export interface PurgeRule {
-  // 时间维度
-  timeFilterEnabled: boolean;
-  timeFilterField: TimeFilterField; // 'modified' (推荐) 或 'accessed'
-  olderThanValue: number;           // 阈值数值，如 30, 90
-  olderThanUnit: TimeUnit;          // 单位，默认 'days'
-
-  // 大小维度
-  sizeFilterEnabled: boolean;
-  minSizeBytes: number;             // 最小文件大小 (字节，如 50 * 1024 * 1024 代表 50MB)
-
-  // 扩展名/类型维度
-  extensionFilterEnabled: boolean;
-  targetExtensions: string[];       // 目标扩展名列表，如 ["dmg", "pkg", "zip", "iso"]
-  isExtensionExcludeMode: boolean;  // false 为仅匹配列表；true 为排除列表
-
-  // 路径与黑名单维度
-  excludeHiddenFiles: boolean;      // 是否排除隐藏文件/点开头文件 (默认 true)
-  excludeSystemDirs: boolean;       // 是否自动排除 .git, node_modules 等 (默认 true)
-  customExcludePatterns: string[];  // 自定义忽略通配符列表，如 ["*.keep", "archive/*"]
-}
-
-export interface PurgePreset {
-  id: string;
-  name: string;                     // 预设名称，如 "下载目录大瘦身"
-  description: string;              // 预设描述
-  targetDirectories: string[];      // 关联的默认扫描目录
-  rule: PurgeRule;                  // 关联的具体规则
-  isBuiltin: boolean;               // 是否为系统内置只读预设
-}
-```
-
----
-
-### 1.3 审计与历史记录模型 (`HistoryRecord`)
-
-#### TypeScript 定义
-```typescript
-export interface HistoryRecord {
-  id: string;                       // 批次 UUID
-  timestamp: number;                // 清理时间戳 (毫秒)
-  targetDirectories: string[];      // 扫描来源目录
-  totalItemsPurged: number;         // 成功移入废纸篓文件数
-  totalBytesFreed: number;          // 释放总字节数
-  freedFormatted: string;           // 友好可读格式，如 "14.2 GB"
-  durationMs: number;               // 耗时 (毫秒)
-  purgedItems: PurgedItemSummary[]; // 清理文件摘要列表 (前 100 项，防止过大)
-}
-
-export interface PurgedItemSummary {
-  path: string;
-  filename: string;
-  sizeBytes: number;
-  sizeFormatted: string;
-}
-```
-
----
-
-## 2. Tauri IPC 通信协议接口 (IPC Commands & Events)
-
-### 2.1 双向指令接口 (Commands: `invoke`)
+### 2.1 双向指令接口 (Tauri Commands)
 
 | 指令名称 | 输入参数 (Payload) | 返回值 (Result) | 说明 |
 | :--- | :--- | :--- | :--- |
-| `start_scan` | `{ targetDirs: string[], rules: PurgeRule }` | `Result<string, string>` | 发起异步多线程扫描任务，成功返回 session_id |
-| `cancel_scan` | `{ sessionId?: string }` | `Result<boolean, string>` | 取消正在执行的扫描任务 |
-| `purge_files` | `{ filePaths: string[] }` | `Result<PurgeResultSummary, string>` | 批量将指定文件移动至系统原生废纸篓 |
-| `reveal_in_folder` | `{ filePath: string }` | `Result<boolean, string>` | 在操作系统文件管理器 (Finder/Explorer) 中高亮定位指定文件 |
-| `get_system_paths` | `None` | `Result<SystemPathRecommendation, string>` | 获取用户当前操作系统的常用目录（下载、桌面、缓存等） |
-| `load_presets` | `None` | `Result<PurgePreset[], string>` | 获取所有预设规则（包含内置推荐与用户自定义） |
-| `save_preset` | `{ preset: PurgePreset }` | `Result<boolean, string>` | 新增或保存用户自定义规则预设 |
-| `delete_preset` | `{ presetId: string }` | `Result<boolean, string>` | 删除指定用户自定义预设（内置预设不可删） |
-| `get_history` | `None` | `Result<HistoryRecord[], string>` | 获取历史清理审计日志列表 |
-| `clear_history` | `None` | `Result<boolean, string>` | 清空本地历史审计记录 |
+| `list_policies` | `None` | `Result<Vec<Policy>, String>` | 获取当前所有已配置的策略列表 |
+| `save_policy` | `{ policy: Policy }` | `Result<Policy, String>` | 新增或更新策略（触发后端 Watcher/Cron 动态重载） |
+| `delete_policy` | `{ policyId: String }` | `Result<bool, String>` | 删除指定策略，销毁关联的监听器与定时器 |
+| `toggle_policy` | `{ policyId: String, enabled: bool }` | `Result<bool, String>` | 启用或停用单个策略 |
+| `dry_run_policy` | `{ policy: Policy }` | `Result<DryRunResult, String>` | **真实目录预演**: 仅扫描比对，返回命中清单与体积，不执行真实改动 |
+| `test_regex_sandbox` | `{ pattern: String, testStrings: Vec<String> }` | `Result<Vec<RegexMatchResult>, String>` | **沙盒测试**: 验证正则表达式合法性与命中详情 |
+| `execute_policy_now` | `{ policyId: String, targetPaths?: Vec<String> }` | `Result<AuditRecord, String>` | 立即手动触发执行指定策略（支持仅执行部分勾选文件） |
+| `pause_all_schedulers` | `None` | `Result<bool, String>` | 托盘快捷操作：全局暂停所有后台 Watcher 和 Cron |
+| `resume_all_schedulers` | `None` | `Result<bool, String>` | 恢复所有后台调度 |
+| `get_audit_history` | `{ limit: usize, offset: usize }` | `Result<Vec<AuditRecord>, String>` | 分页获取审计历史日志流水 |
+| `clear_audit_history` | `None` | `Result<bool, String>` | 清空审计日志 |
+| `export_config` | `None` | `Result<String, String>` | 导出全部策略配置为 JSON 字符串 |
+| `import_config` | `{ jsonContent: String }` | `Result<bool, String>` | 导入并校验策略配置文件 |
 
 ---
 
-### 2.2 流式事件接口 (Event Channels: `listen`)
+### 2.2 流式事件接口 (Event Channels)
 
-后端扫描与清理属于高频长时间任务，通过 Tauri Event 机制进行流式分批派发，防止单次数据过大导致 IPC 序列化卡顿：
-
-#### 1. `scan:batch`
-- **触发时机**: 扫描引擎累积匹配到 50 个文件或每隔 100ms 派发一次。
-- **Payload**:
-  ```json
-  {
-    "sessionId": "sess_1730000000",
-    "batchItems": [ ...FileItem ],
-    "scannedCount": 35200,
-    "hitCount": 142,
-    "hitSizeBytes": 4580210000,
-    "currentScanningDir": "/Users/aubreyhan/Downloads/Software"
-  }
-  ```
-
-#### 2. `scan:completed`
-- **触发时机**: 全量遍历完成。
-- **Payload**:
-  ```json
-  {
-    "sessionId": "sess_1730000000",
-    "totalScannedFiles": 84210,
-    "totalHitFiles": 328,
-    "totalHitSizeBytes": 15420000000,
-    "durationMs": 1480
-  }
-  ```
-
-#### 3. `purge:progress`
-- **触发时机**: 正在批量移动至废纸篓时，每处理 1 个文件派发。
-- **Payload**:
-  ```json
-  {
-    "total": 50,
-    "current": 23,
-    "percentage": 46.0,
-    "currentPath": "/Users/aubreyhan/Downloads/large_video.mov"
-  }
-  ```
+- `app:tray_status_change`: 广播后台常驻状态（空闲 / 正在执行 / 暂停）。
+- `policy:triggered`: 某条策略被 Cron 或 Watcher 触发执行，携带策略 ID 与简要概况。
+- `policy:progress`: 策略批量处理中派发百分比进度条（如归档/压缩中）。
+- `policy:completed`: 策略处理完成，携带本次生成的一条 `AuditRecord`。
+- `policy:error`: 处理过程捕获异常（如权限拒绝、目录被移除）。
 
 ---
 
-## 3. 前端状态机模型 (Frontend State Machine)
+## 3. 模板变量与路径规范 (Path Templating Specification)
 
-```mermaid
-stateDiagram-v2
-    [*] --> Idle: 启动就绪
+当策略动作选用 `archive`（移动归档）或 `zip`（压缩归档）时，支持在路径中内嵌动态变量。后端负责在运行时原子解析：
 
-    Idle --> Scanning: 用户点击「开始扫描」
-    Scanning --> Scanning: 接收 scan:batch 流式更新
-    Scanning --> ScanCompleted: 扫描完成 (scan:completed)
-    Scanning --> Idle: 用户主动取消 (cancel_scan)
+| 模板变量 | 说明 | 解析示例 (当前时间 2026-11-03 20:30) |
+| :--- | :--- | :--- |
+| `{YYYY}` | 4 位当前年份 | `2026` |
+| `{MM}` | 2 位当前月份 (补零) | `11` |
+| `{DD}` | 2 位当前日期 (补零) | `03` |
+| `{POLICY}` | 当前策略名称的 Slug 形式 | `downloads-cleaner` |
+| `{EXT}` | 原始文件的小写扩展名 (无点) | `dmg`, `zip`, `log` |
+| `{FILE_MTIME_YYYY}` | 目标文件本身的最后修改年份 | `2024` |
+| `{FILE_MTIME_MM}` | 目标文件本身的最后修改月份 | `08` |
 
-    ScanCompleted --> Reviewing: 用户勾选/反选文件、排序、按类型过滤
-    Reviewing --> Purging: 点击「移至废纸篓」并确认
-    Reviewing --> Idle: 清空重置或重新选择目录
-
-    Purging --> Purging: 接收 purge:progress 更新进度条
-    Purging --> PurgeSuccess: 全部或大部分文件移入废纸篓成功
-    Purging --> PurgePartialError: 部分受保护或占用文件跳过
-
-    PurgeSuccess --> Idle: 弹窗查看释放成果后点击完成
-    PurgePartialError --> Idle: 审阅跳过明细后点击完成
-```
+**示例应用**:
+- 配置归档路径模板: `/Volumes/Storage/Archives/{YYYY}/{MM}/{EXT}/`
+- 输入文件: `app_installer.dmg`
+- 实际落地路径: `/Volumes/Storage/Archives/2026/11/dmg/app_installer.dmg`
 
 ---
 
-## 4. 边界条件与异常处理矩阵 (Edge Cases & Fault Tolerance)
+## 4. 边界条件与异常处理矩阵 (Edge Cases Matrix)
 
-| 场景序号 | 边界/异常场景 | 发生原因 | 系统的处理与防御机制 |
+| 场景编号 | 边界/异常情形 | 发生原因 | 系统处理机制与防御策略 |
 | :--- | :--- | :--- | :--- |
-| **EC-01** | 用户选择根目录或系统核心路径 | 误操作添加 `/` 或 `C:\Windows` | `PathGuard` 在前端提交与后端接收两端均强制拦截，提示“该目录属于受保护系统区域，为保障系统安全禁止扫描”。 |
-| **EC-02** | 符号链接 (Symlinks) 循环引用 | 目录中存在指向父目录的软链 | 扫描器默认**禁用追随软链 (Follow Symlinks = false)**，仅将软链本身当作普通文件评估，绝不陷入无限递归。 |
-| **EC-03** | 文件正被其他应用独占打开 (In-Use) | 用户正在播放视频或写入文件 | `trash::delete` 会返回 OS 拒绝错误。系统捕获错误后将其记录为 `Skipped (File Locked)`，进度条继续推进，不打断整体批次。 |
-| **EC-04** | 文件在扫描后被外部删除 (Stale Path) | 用户在扫描完成后手动在访达中删除了该文件 | 清理执行前调用 `std::path::Path::exists()` 验证，若已不存在直接优雅跳过，统计为“无需处理”。 |
-| **EC-05** | 单个目录扫描出超 50 万个匹配文件 | 目标目录极其庞大 | 前端集成虚拟列表滚动 (`@tanstack/react-virtual`)，仅渲染当前可视区域的 30 个 DOM 节点，避免 DOM 节点过多导致浏览器崩溃。 |
-| **EC-06** | 跨卷移动至废纸篓 (External Drives) | 待删除文件位于挂载的外置移动硬盘或 U 盘 | Rust `trash` crate 原生适配外置卷，将文件安全移动到外置盘的 `.Trashes` 隐藏回收区，保证外置盘可安全移入。 |
+| **EC-01** | 用户配置目标包含核心系统目录 | 误选 `/System` 或 `C:\Windows` | `PathGuard` 在前端与后端拦截，直接拒绝创建/保存该策略，返回 `403 Forbidden Directory`。 |
+| **EC-02** | 软链接形成死循环 (Symlink Loops) | 目录内包含软链接指向自己或上级 | 扫描器默认 `follow_symlinks = false`，将软链接视为普通孤立条目，绝不递归深入。 |
+| **EC-03** | 文件正被外部进程写入 (大文件下载未完成) | 浏览器正在向 Downloads 写入 `.crdownload` | Watcher 具备 5~30 秒防抖窗口；动作执行时检测文件独占锁，若报错优雅跳过并在下周期重试。 |
+| **EC-04** | 正则表达式语法错误或 ReDoS 攻击 | 用户输入了非法或极端复杂正则 | 后端使用 Rust `regex` crate，在线性时间保证下解析；解析失败返回具体语法错误行，前端标红提示。 |
+| **EC-05** | 归档目标目录所在外置硬盘被拔出 | 外置磁盘意外离线 | 捕获 I/O 错误，策略执行失败并写入审计异常日志，系统推送桌面错误通知，不造成程序崩溃。 |
+| **EC-06** | 移动归档时发生文件名冲突 | 目标路径已存在同名文件 | 依据配置策略处理：默认 `rename`（自动追加 `(1)`, `(2)` 序列后缀）；或 `skip`（跳过当前文件）。 |
+| **EC-07** | 用户在托盘一键关闭全部调度 | 用户进入专注模式不希望有后台磁盘操作 | `pause_all_schedulers` 暂时挂起 Tokio Watcher 接收器与 Cron 计时器，托盘图标变灰展示“暂停中”。 |
+| **EC-08** | 高危直接粉碎误触防范 | 用户选择了 `hard_delete` | UI 强制要求输入大写确认文本（如 `DELETE PERMANENTLY`），后端检查 `safety_confirmed` 标记，否则拒绝擦除。 |

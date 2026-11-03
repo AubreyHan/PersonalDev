@@ -27,7 +27,7 @@ DevDoc/
 
 ## 已收录项目 (Projects)
 
-- [file-purger](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/file-purger/README.md)：基于 Tauri 2.x (Rust) + React 的现代化桌面端智能旧文件安全清理工具，支持多维复合规则、极速磁盘扫描与零风险移入系统废纸篓。
+- [file-purger](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/file-purger/README.md)：基于 Tauri 2.x (Rust) + React 的轻量级系统托盘应用，定位为深度自定义通用文件清理与自动化管理引擎，支持多目录独立策略、正则/Glob 高级匹配、多样化处置动作（废纸篓/动态归档/Zip压缩/粉碎）与全能混合调度（定时 + 实时变动监听）。
 - [m5-vehicle-tracker](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/m5-vehicle-tracker/README.md)：基于 M5Stack Core2 + u-blox NEO-M9N 的车载高精度轨迹记录仪与多功能数字仪表系统。
 - [github-auto-sync](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/github-auto-sync/README.md)：基于 Tauri 2.0 (Rust) + React 的轻量级桌面系统托盘应用，支持多目录 Git 仓库自动递归发现、动态监听与 4 种模式策略化自动同步。
 - [qnap-photosphere](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/qnap-photosphere/README.md)：基于 Go + QPKG 原生打包的威联通 NAS 全能相册与资产清洗中枢，集成 Immich 协议兼容与 CPU 友好型 AI 整理。

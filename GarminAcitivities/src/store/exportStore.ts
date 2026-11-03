@@ -25,7 +25,7 @@ interface ExportState {
   cancelQueue: () => Promise<void>;
 }
 
-export const useExportStore = create<ExportState>((set, get) => ({
+export const useExportStore = create<ExportState>((set) => ({
   tasks: {},
   summary: null,
   isDrawerOpen: false,
