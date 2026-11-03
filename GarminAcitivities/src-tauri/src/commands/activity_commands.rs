@@ -11,6 +11,8 @@ pub struct ActivitiesPageResponse {
     pub total_count: i64,
     pub items: Vec<ActivityListItem>,
     pub from_cache: bool,
+    pub available_types: Vec<String>,
+    pub sync_error: Option<String>,
 }
 
 #[tauri::command]
@@ -27,6 +29,7 @@ pub async fn activities_fetch_page(
 
     // 1. 若有活动会话，先进行异步网络请求（不占持有数据库锁）
     let mut online_synced = false;
+    let mut sync_error = None;
     if let (Some(client), Some(user)) = (client_opt, user_opt) {
         let fetch_limit = 100;
         let mut fetch_start = 0;
@@ -38,7 +41,7 @@ pub async fn activities_fetch_page(
                 &user.display_name,
                 fetch_start,
                 fetch_limit,
-                query.activity_type.as_deref(),
+                None, // 拉取全部类型记录，交由本地 SQLite 做动态类型聚合与过滤
                 None,
                 None,
             )
@@ -65,14 +68,24 @@ pub async fn activities_fetch_page(
                 }
                 Err(err) => {
                     eprintln!("Online sync warning: {:?}", err);
+                    sync_error = Some(err.to_string());
                     break;
                 }
             }
         }
+    } else {
+        sync_error = Some("当前未连接 Garmin 账号或会话已过期，请重新登录".to_string());
     }
 
-    // 2. 从本地 SQLite 数据库中提取分页数据（含本地导出标记与文件绝对路径）
+    // 2. 从本地 SQLite 数据库中提取当前日期范围内的实际运动类型及分页数据
     let conn = db_manager.conn.lock().map_err(|e| e.to_string())?;
+    let available_types = HistoryRepo::query_activity_types_in_range(
+        &conn,
+        query.start_date.as_deref(),
+        query.end_date.as_deref(),
+    )
+    .map_err(|e| e.to_string())?;
+
     let (total_count, items) = HistoryRepo::query_activities_page(&conn, &query)
         .map_err(|e| e.to_string())?;
 
@@ -80,5 +93,7 @@ pub async fn activities_fetch_page(
         total_count,
         items,
         from_cache: !online_synced,
+        available_types,
+        sync_error,
     })
 }
