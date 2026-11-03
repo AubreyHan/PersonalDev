@@ -21,6 +21,7 @@ private:
     float       _lastSlopeAltM        = 0.0f;
     uint32_t    _lastVerticalSampleMs = 0;
     uint32_t    _lastHistoryPushMs    = 0;
+    float       _lastSavedP0          = 0.0f;
     bool        _initialized          = false;
     bool        _gpsCalibrated        = false;
 };
