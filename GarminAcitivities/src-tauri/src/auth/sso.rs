@@ -112,7 +112,7 @@ impl SsoClient {
         let http_client = reqwest::Client::builder()
             .cookie_provider(Arc::clone(&cookie_store))
             .default_headers(headers)
-            .redirect(reqwest::redirect::Policy::none()) // 手动跟踪重定向以截获 ticket
+            .redirect(reqwest::redirect::Policy::limited(10)) // 自动跟踪重定向以交换 ticket 并捕获后续 session cookies
             .build()
             .expect("Failed to initialize reqwest client");
 
