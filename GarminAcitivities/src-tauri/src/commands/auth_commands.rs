@@ -117,9 +117,9 @@ pub async fn auth_open_web_login(
     }
 
     let is_handled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let app_handle_for_nav = app.clone();
-    let auth_mgr_for_nav = (*auth_manager).clone();
-    let is_handled_for_nav = is_handled.clone();
+    let app_handle_for_load = app.clone();
+    let auth_mgr_for_load = (*auth_manager).clone();
+    let is_handled_for_load = is_handled.clone();
 
     let window = WebviewWindowBuilder::new(
         &app,
@@ -131,102 +131,9 @@ pub async fn auth_open_web_login(
     .resizable(true)
     .center()
     .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36")
-    .initialization_script(r#"
-        (function() {
-            function reportToken(token) {
-                if (token && typeof token === 'string' && token.length > 20) {
-                    window.location.href = 'https://connect.garmin.com/app?tauri_token=' + encodeURIComponent(token);
-                }
-            }
-
-            // 1. Hook window.fetch
-            var origFetch = window.fetch;
-            window.fetch = async function() {
-                try {
-                    var args = arguments;
-                    var opts = args[1] || {};
-                    var headers = opts.headers || {};
-                    var auth = null;
-                    if (headers instanceof Headers) {
-                        auth = headers.get('authorization') || headers.get('Authorization');
-                    } else if (typeof headers === 'object') {
-                        auth = headers['authorization'] || headers['Authorization'];
-                    }
-                    if (auth && auth.indexOf('Bearer ') === 0) {
-                        reportToken(auth.slice(7));
-                    }
-                } catch(e) {}
-                return origFetch.apply(this, arguments);
-            };
-
-            // 2. Hook XMLHttpRequest
-            var origSetHeader = XMLHttpRequest.prototype.setRequestHeader;
-            XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
-                try {
-                    if (header && header.toLowerCase() === 'authorization' && value && value.indexOf('Bearer ') === 0) {
-                        reportToken(value.slice(7));
-                    }
-                } catch(e) {}
-                return origSetHeader.apply(this, arguments);
-            };
-        })();
-    "#)
     .on_navigation(move |nav_url| {
         let u = nav_url.as_str();
         eprintln!("SSO Window Navigating: {}", u);
-
-        if let Some(pos) = u.find("tauri_debug=") {
-            let encoded = &u[pos + "tauri_debug=".len()..];
-            let decoded = url::form_urlencoded::parse(encoded.as_bytes())
-                .next()
-                .map(|(k, _)| k.to_string())
-                .unwrap_or_else(|| encoded.to_string());
-            eprintln!(">>> LOCALSTORAGE DEBUG: {}", decoded);
-            return false;
-        }
-
-        if let Some(pos) = u.find("tauri_token=") {
-            let encoded = &u[pos + "tauri_token=".len()..];
-            let decoded = url::form_urlencoded::parse(encoded.as_bytes())
-                .next()
-                .map(|(k, _)| k.to_string())
-                .unwrap_or_else(|| encoded.to_string());
-
-            if !decoded.is_empty() && !is_handled_for_nav.swap(true, std::sync::atomic::Ordering::SeqCst) {
-                let token = decoded.clone();
-                eprintln!(">>> CAPTURED REAL OAUTH TOKEN via HTTPS: length {}", token.len());
-                let app_in = app_handle_for_nav.clone();
-                let auth_in = auth_mgr_for_nav.clone();
-
-                tauri::async_runtime::spawn(async move {
-                    let mut cookie_pairs = Vec::new();
-                    if let Some(w) = app_in.get_webview_window("garmin_sso_window") {
-                        if let Ok(cookies) = w.cookies() {
-                            for c in cookies {
-                                cookie_pairs.push(format!("{}={}", c.name(), c.value()));
-                            }
-                        }
-                    }
-                    let full_cookie_str = cookie_pairs.join("; ");
-                    let client = SsoClient::new(reg).with_tokens(
-                        Some(token.clone()),
-                        Some(full_cookie_str.clone()),
-                        None,
-                    );
-
-                    if let Ok(profile) = client.fetch_user_profile().await {
-                        let _ = keychain::save_credential("session_cookie", &full_cookie_str);
-                        let _ = keychain::save_credential("jwt_token", &token);
-                        auth_in.set_logged_in(client, profile.clone()).await;
-                        let _ = app_in.emit("auth:login-success", profile);
-                        if let Some(w) = app_in.get_webview_window("garmin_sso_window") {
-                            let _ = w.close();
-                        }
-                    }
-                });
-            }
-            return false;
-        }
         true
     })
     .on_page_load(move |win, payload| {
@@ -244,41 +151,67 @@ pub async fn auth_open_web_login(
                 false
             };
 
-            if is_on_dashboard {
-                // 探测 localStorage 中的所有内容并通过 HTTPS query 回传
-                let eval_js = r#"
-                    (function() {
-                        try {
-                            var token = null;
-                            for (var i = 0; i < localStorage.length; i++) {
-                                var k = localStorage.key(i);
-                                if (k && (k === 'token' || k.includes('token') || k.includes('auth'))) {
-                                    try {
-                                        var p = JSON.parse(localStorage.getItem(k));
-                                        var act = p.access_token || p.token || (typeof p === 'string' ? p : null);
-                                        if (act && typeof act === 'string' && act.length > 20) {
-                                            token = act;
-                                            break;
-                                        }
-                                    } catch(e) {}
-                                }
+            if is_on_dashboard && !is_handled_for_load.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                let app_in = app_handle_for_load.clone();
+                let auth_in = auth_mgr_for_load.clone();
+                let win_clone = win.clone();
+                let is_handled_reset = is_handled_for_load.clone();
+
+                tauri::async_runtime::spawn(async move {
+                    // 等待 800ms 确保重定向 Cookie 全部写入 WebKit CookieJar
+                    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+
+                    let mut cookie_pairs = Vec::new();
+                    let mut jwt_token = None;
+                    if let Ok(cookies) = win_clone.cookies() {
+                        for c in cookies {
+                            cookie_pairs.push(format!("{}={}", c.name(), c.value()));
+                            if c.name() == "JWT_WEB" {
+                                jwt_token = Some(c.value().to_string());
                             }
-                            if (token) {
-                                window.location.href = 'https://connect.garmin.com/app?tauri_token=' + encodeURIComponent(token);
-                            } else {
-                                var sample = {};
-                                for (var j = 0; j < localStorage.length; j++) {
-                                    var key = localStorage.key(j);
-                                    sample[key] = (localStorage.getItem(key) || '').slice(0, 80);
-                                }
-                                window.location.href = 'https://connect.garmin.com/app?tauri_debug=' + encodeURIComponent(JSON.stringify(sample));
-                            }
-                        } catch(err) {
-                            window.location.href = 'https://connect.garmin.com/app?tauri_debug=' + encodeURIComponent(JSON.stringify({ error: err.toString() }));
                         }
-                    })();
-                "#;
-                let _ = win.eval(eval_js);
+                    }
+
+                    let full_cookie_str = cookie_pairs.join("; ");
+                    eprintln!(">>> Webview cookies captured: count={}, len={}", cookie_pairs.len(), full_cookie_str.len());
+
+                    if !cookie_pairs.is_empty() {
+                        let client = SsoClient::new(reg).with_tokens(
+                            jwt_token.clone(),
+                            Some(full_cookie_str.clone()),
+                            None,
+                        );
+
+                        if let Ok(target_url) = reg.connect_host().parse::<Url>() {
+                            for pair in &cookie_pairs {
+                                client.cookie_store.add_cookie_str(pair, &target_url);
+                            }
+                        }
+
+                        let profile = client.fetch_user_profile().await.unwrap_or_else(|e| {
+                            eprintln!("Warning: fetch_user_profile error: {}, using fallback", e);
+                            UserProfile {
+                                display_name: "GarminUser".to_string(),
+                                full_name: None,
+                                profile_image_url: None,
+                                region: reg,
+                            }
+                        });
+
+                        let _ = keychain::save_credential("session_cookie", &full_cookie_str);
+                        if let Some(ref jwt) = jwt_token {
+                            let _ = keychain::save_credential("jwt_token", jwt);
+                        }
+                        let _ = keychain::save_credential("region", if reg == GarminRegion::Cn { "cn" } else { "global" });
+
+                        auth_in.set_logged_in(client, profile.clone()).await;
+                        let _ = app_in.emit("auth:login-success", profile);
+                        let _ = win_clone.close();
+                        eprintln!(">>> LOGIN SUCCEEDED & SSO Window Closed!");
+                    } else {
+                        is_handled_reset.store(false, std::sync::atomic::Ordering::SeqCst);
+                    }
+                });
             }
         }
     })
