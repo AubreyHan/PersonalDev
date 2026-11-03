@@ -306,7 +306,7 @@ impl SsoClient {
 
         // 尝试端点 1: personal-information
         let profile_url = format!(
-            "{}/modern/proxy/userprofile-service/userprofile/personal-information",
+            "{}/proxy/userprofile-service/userprofile/personal-information",
             self.region.connect_host()
         );
         let resp = make_request(&profile_url).send().await?;
@@ -340,7 +340,7 @@ impl SsoClient {
 
         // 尝试端点 2: socialProfile
         let social_url = format!(
-            "{}/modern/proxy/userprofile-service/socialProfile",
+            "{}/proxy/userprofile-service/socialProfile",
             self.region.connect_host()
         );
         let social_resp = make_request(&social_url).send().await?;
@@ -363,7 +363,7 @@ impl SsoClient {
 
         // 尝试端点 3: 验证 activitylist 是否可访问（只要能返回活动列表 JSON 说明凭据已有效）
         let activity_check_url = format!(
-            "{}/modern/proxy/activitylist-service/activities/search/activities?start=0&limit=1",
+            "{}/proxy/activitylist-service/activities/search/activities?start=0&limit=1",
             self.region.connect_host()
         );
         let act_resp = make_request(&activity_check_url).send().await?;
