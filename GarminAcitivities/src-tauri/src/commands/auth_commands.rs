@@ -140,26 +140,37 @@ pub async fn auth_open_web_login(
             let u = payload.url().as_str();
             eprintln!("SSO Window Page: Finished loading {}", u);
 
-            if let Ok(cookie_list) = win.cookies() {
-                let mut has_jwt = false;
-                let mut cookie_pairs = Vec::new();
-                let target_url: Url = reg.connect_host().parse().unwrap();
-                let client = SsoClient::new(reg);
+            // 1. 严格校验当前 URL 路径是否已真正进入用户控制台（必须不是登录页，且不是带有 service 参数的跳转入口）
+            let is_on_dashboard = if let Ok(parsed) = Url::parse(u) {
+                let path = parsed.path();
+                (path.starts_with("/modern") || path.starts_with("/app"))
+                    && !path.contains("signin")
+                    && !path.contains("sso")
+                    && !u.contains("service=")
+            } else {
+                false
+            };
 
-                for cookie in cookie_list {
-                    let name = cookie.name().to_string();
-                    let value = cookie.value().to_string();
-                    if name == "JWT_WEB" || name == "SESSIONID" || name == "GARMIN-SSO-GUID" {
-                        has_jwt = true;
+            if is_on_dashboard {
+                if let Ok(cookie_list) = win.cookies() {
+                    let mut has_jwt_token = false;
+                    let mut cookie_pairs = Vec::new();
+                    let target_url: Url = reg.connect_host().parse().unwrap();
+                    let client = SsoClient::new(reg);
+
+                    for cookie in cookie_list {
+                        let name = cookie.name().to_string();
+                        let value = cookie.value().to_string();
+                        // 必须是登录成功后由 SSO 网关发放的核心认证凭据
+                        if name == "JWT_WEB" || (name == "CASTGC" && !value.is_empty()) {
+                            has_jwt_token = true;
+                        }
+                        let cookie_str = format!("{}={}", name, value);
+                        client.cookie_store.add_cookie_str(&cookie_str, &target_url);
+                        cookie_pairs.push(cookie_str);
                     }
-                    let cookie_str = format!("{}={}", name, value);
-                    client.cookie_store.add_cookie_str(&cookie_str, &target_url);
-                    cookie_pairs.push(cookie_str);
-                }
 
-                // 只要页面进入了 /modern 或 /app，或者任何包含 ticket 验证成功的页面，且具备核心认证 Cookie
-                if has_jwt && (u.contains("/modern") || u.contains("/app") || u.contains("ticket=ST-")) {
-                    if !is_handled_for_load.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                    if has_jwt_token && !is_handled_for_load.swap(true, std::sync::atomic::Ordering::SeqCst) {
                         let app_inner = app_handle.clone();
                         let auth_mgr_inner = auth_mgr.clone();
                         let full_cookie_str = cookie_pairs.join("; ");
