@@ -92,6 +92,8 @@ pub struct SsoClient {
     pub region: GarminRegion,
     pub http_client: reqwest::Client,
     pub cookie_store: Arc<reqwest::cookie::Jar>,
+    pub jwt_token: Option<String>,
+    pub cookie_header: Option<String>,
 }
 
 impl SsoClient {
@@ -120,7 +122,15 @@ impl SsoClient {
             region,
             http_client,
             cookie_store,
+            jwt_token: None,
+            cookie_header: None,
         }
+    }
+
+    pub fn with_tokens(mut self, jwt: Option<String>, cookie_header: Option<String>) -> Self {
+        self.jwt_token = jwt;
+        self.cookie_header = cookie_header;
+        self
     }
 
     /// 第一阶段：GET /sso/signin，抓取 CSRF Token 与初始 Session Cookie
