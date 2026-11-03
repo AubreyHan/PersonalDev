@@ -4,267 +4,268 @@
 
 ## 1. 架构总览 (System Architecture Overview)
 
-FilePurger 采用 **Tauri 2.x** 跨平台体系架构，以 **Rust** 构建常驻后台核心服务，以 **React 18 + Tailwind CSS** 构建现代化的管理控制台与规则沙盒。
+FilePurger 是深度针对 **macOS** 平台优化的轻量级系统菜单栏应用。整体基于 **Tauri 2.x** 构建，后端采用 **Rust (edition 2021)** 提供内存安全、低资源占用与系统底层 API 调用，前端采用 **React 18 + Tailwind CSS** 呈现精致的原生风格双栏界面。
 
-### 1.1 分层架构与核心模块拓扑图 (Architecture Diagram)
+### 1.1 系统分层拓扑图 (System Layer Diagram)
 
 ```mermaid
 flowchart TB
-    subgraph Client_Layer["交互展现层 (UI & System Tray)"]
-        Tray["系统托盘模块 (macOS MenuBar / Win Taskbar)"]
-        Dashboard["独立控制台 (React 18 + Tailwind CSS)"]
-        subgraph UI_Modules["控制台子模块"]
-            PolicyView["多目录策略卡片管理"]
-            RuleEditor["可视化规则构建器"]
-            RegexSandbox["正则表达式即时测试沙盒"]
-            DryRunPreview["Dry-Run 真实目录预演对比"]
-            AuditView["审计日志与执行历史"]
-        end
-        UIStore["全局状态流 (Zustand: Policies / Logs / Config)"]
+    subgraph macOS_Desktop["macOS 桌面生态 (macOS Native Integration)"]
+        MenuBar["macOS 顶部状态栏 (Status Bar / TrayIcon)"]
+        MenuPopup["左键原生 NSMenu (打开主界面 / 自启动 / 彻底卸载 / 退出)"]
+        DockApp["Dock 栏图标 (LSUIElement = true, 绝对静默不显示)"]
+        SMApp["macOS 登录项管理 (SMAppService.mainApp)"]
+        FSEventsCore["macOS 内核文件事件流 (FSEvents API)"]
+        MDItemCore["macOS 聚焦元数据 (kMDItemDateAdded)"]
+        SysTrash["macOS 废纸篓 (~/.Trash & .Trashes)"]
     end
 
-    subgraph IPC_Layer["Tauri 2.x 桥梁 (IPC Commands & Events)"]
-        Cmds["Tauri RPC Commands (策略增删改查, 手动执行, 导出导入, 沙盒预演)"]
-        Events["Tauri Event Stream (实时日志流, 调度触发通知, 托盘状态广播)"]
+    subgraph FrontEnd["前端控制台 (React 18 + Tailwind CSS)"]
+        subgraph LeftCol["左侧：文件夹管理栏"]
+            TrashPinned["顶部常驻：系统废纸篓 (不可移出)"]
+            FolderList["监控文件夹列表 (默认 ~/Downloads)"]
+            AddFolderBtn["添加文件夹 (防父子重叠拦截)"]
+        end
+        subgraph RightCol["右侧：规则与结果工作区"]
+            TopWhitelist["置顶保留规则 (不可删/不可调顺序/最高优)"]
+            WaterfallRules["普通规则瀑布列表 (拖拽排序/启用Toggle/编辑)"]
+            MatchListTable["匹配结果清单 (专门承载'列出'动作结果)"]
+        end
+        AskModal["逐一询问确认卡片 (Ask-Before-Trashing 模态窗)"]
     end
 
-    subgraph Native_Core["Rust 原生常驻后台引擎 (Native Core)"]
-        subgraph Scheduler_Engine["混合调度核心 (Hybrid Scheduler)"]
-            CronManager["Cron 定时计划调度器 (tokio-cron-scheduler)"]
-            WatcherManager["实时变动监听器 (notify: FSEvents / ReadDirectoryChangesW)"]
-            DebounceQueue["智能聚合与防抖队列 (Debounce Window: 3~30s)"]
-        end
-
-        Guard["系统安全守卫 (PathGuard: 硬编码保护目录绝对阻断)"]
-
-        subgraph Matcher_Engine["高级复合匹配引擎 (Matcher)"]
-            GlobMatcher["Glob 通配符预编译匹配 (globset)"]
-            RegexMatcher["正则表达式预编译引擎 (regex)"]
-            MetaEvaluator["文件元数据条件评估 (mtime / atime / 大小 / 属性)"]
-        end
-
-        subgraph Action_Engine["多样化处置动作流 (Action Handlers)"]
-            TrashHandler["系统原生废纸篓 (trash API)"]
-            ArchiveHandler["动态路径移动归档 (Path Templating)"]
-            ZipHandler["流式 Zip 打包归档 (zip-rs)"]
-            HardDeleteHandler["永久物理擦除 (fs::remove_file + 安全锁)"]
-        end
-
-        StorageEngine["本地持久化存储 (JSON / SQLite: 策略配置 & 审计日志)"]
+    subgraph Tauri_Bridge["Tauri 2.x IPC 通信层"]
+        Commands["双向 RPC: 文件夹管理, 规则CRUD, 顺序调整, 立即扫描, 卸载自清理"]
+        Events["单向流: fsevents_triggered, ask_file_queue, match_list_updated"]
     end
 
-    subgraph OS_Layer["操作系统底层 (OS Integration)"]
-        FS_Events["OS 文件事件通知 (FSEvents / inotify)"]
-        File_System["本地/外置文件系统 (APFS / NTFS / ext4)"]
-        OS_Trash["系统废纸篓 (macOS Trash / Windows Recycle Bin)"]
-        Desktop_Notify["系统原生通知中心 (Tauri Notification)"]
+    subgraph Rust_Core["Rust 原生后端核心引擎"]
+        Guard["目录层级排他防护守卫 (PathHierarchyGuard: 防父子嵌套 & 防系统核心目录)"]
+        DateAddedReader["macOS DateAdded 读取器 (基于 CoreServices/MDItem)"]
+        Matcher["组合通配符匹配引擎 (GlobSet + 大小写敏感比对)"]
+        TrashManager["废纸篓生命周期管理器 (天数超龄清理 + FIFO 容量控顶物理清空)"]
+        Watcher["内核变动监听器 (notify FSEvents + 3秒智能防抖队列)"]
+        HourlyHeartbeat["小时级自然超龄心跳定时器 (tokio sleep loop)"]
+        Uninstaller["彻底干净卸载器 (CleanUninstaller)"]
+        Store["持久化存储层 (JSON: ~/Library/Application Support/FilePurger/)"]
     end
 
-    Dashboard --> UI_Modules
-    UI_Modules --> UIStore
-    UIStore <--> Cmds
-    Events --> UIStore
-    Tray <--> Cmds
+    MenuBar --> MenuPopup
+    MenuPopup --> FrontEnd
+    FrontEnd <--> Commands
+    Events --> FrontEnd
 
-    Cmds <--> Guard
-    Guard --> Matcher_Engine
-    
-    FS_Events --> WatcherManager
-    WatcherManager --> DebounceQueue
-    DebounceQueue --> Matcher_Engine
-    CronManager --> Matcher_Engine
+    Commands --> Guard
+    Guard --> Store
+    Store --> Watcher
+    FSEventsCore --> Watcher
+    Watcher --> Matcher
+    HourlyHeartbeat --> Matcher
+    Matcher --> DateAddedReader
+    DateAddedReader --> MDItemCore
 
-    Matcher_Engine --> Action_Engine
-    Action_Engine --> OS_Trash
-    Action_Engine --> File_System
-    Action_Engine --> StorageEngine
-    Action_Engine -.->|完成广播| Desktop_Notify
-    Action_Engine -.->|流式日志| Events
+    Matcher --> TrashManager
+    TrashManager --> SysTrash
+
+    Commands --> Uninstaller
+    Uninstaller --> SMApp
+    Uninstaller --> Store
 ```
 
 ---
 
 ## 2. 模块职责与工程目录结构 (Module Responsibilities & Layout)
 
-推荐的标准 Tauri 2.x 独立工程目录组织规范如下：
+推荐的标准 Tauri 2.x macOS 独立工程目录组织规范如下：
 
 ```text
 file-purger/
-├── src-tauri/                         # Rust 后端原生工程
-│   ├── Cargo.toml                     # Rust 依赖清单
-│   ├── tauri.conf.json                # Tauri 2.x 窗口、托盘、权限与插件声明
+├── src-tauri/                         # Rust 原生后端工程
+│   ├── Cargo.toml                     # Rust 依赖声明
+│   ├── tauri.conf.json                # 配置 LSUIElement=true、菜单栏与权限
+│   ├── Info.plist                     # macOS 属性列表 (LSUIElement, NSHighResolutionCapable)
 │   ├── src/
-│   │   ├── main.rs                    # 托盘创建、后台常驻初始化与生命周期
+│   │   ├── main.rs                    # 菜单栏创建、左键菜单绑定与应用生命周期
 │   │   ├── commands/                  # 暴露给前端的 Tauri Command 集合
 │   │   │   ├── mod.rs
-│   │   │   ├── policy.rs              # 策略 CRUD 指令
-│   │   │   ├── execution.rs           # 手动触发策略、单策略跑批
-│   │   │   ├── preview.rs             # 规则匹配 Dry-Run 预演指令
-│   │   │   ├── sandbox.rs             # 正则与 Glob 沙盒测试
-│   │   │   └── history.rs             # 审计日志读写与导出
-│   │   ├── core/                      # 原生核心引擎层
+│   │   │   ├── folder.rs              # 文件夹添加(防重叠检查)、删除、读取
+│   │   │   ├── rule.rs                # 规则增删改查、优先级重新排序
+│   │   │   ├── trash_rule.rs          # 回收站超龄与容量配置
+│   │   │   ├── execution.rs           # 立即扫描、询问项决策回复
+│   │   │   └── system.rs              # 开机自启动切换、一键彻底卸载
+│   │   ├── core/                      # 核心业务实现
 │   │   │   ├── mod.rs
-│   │   │   ├── path_guard.rs          # 系统保护路径绝对阻断器
-│   │   │   ├── matcher/               # 高级复合匹配引擎
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── glob_engine.rs     # Glob 通配符预编译与匹配
-│   │   │   │   ├── regex_engine.rs    # 正则表达式验证与匹配
-│   │   │   │   └── rule_evaluator.rs  # 时间/大小/属性综合评估
-│   │   │   ├── scheduler/             # 调度与事件监听
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── cron_manager.rs    # 定时调度任务注册与管理
-│   │   │   │   ├── watcher_manager.rs # notify 文件目录监听器
-│   │   │   │   └── debounce_queue.rs  # 变动事件防抖与去重队列
-│   │   │   └── actions/               # 处置动作执行器
-│   │   │       ├── mod.rs
-│   │   │       ├── trash.rs           # 移入原生废纸篓
-│   │   │       ├── archive.rs         # 动态模板移动归档
-│   │   │       ├── zip.rs             # 打包为 Zip 归档并清理
-│   │   │       └── hard_delete.rs     # 物理擦除与安全锁保护
-│   │   ├── models/                    # 数据契约模型 (Rust Structs)
-│   │   │   ├── policy.rs              # 策略与规则模型
-│   │   │   ├── action.rs              # 处置动作枚举与参数
-│   │   │   ├── schedule.rs            # 调度模式配置
-│   │   │   └── audit.rs               # 审计流水模型
-│   │   └── storage/                   # 持久化存储驱动
-│   │       └── store.rs               # 策略与日志 JSON 本地存储
-├── src/                               # React 18 前端控制台工程
-│   ├── index.html                     # 控制台主模板
-│   ├── package.json                   # 前端依赖配置
-│   ├── vite.config.ts                 # Vite 构建配置
-│   ├── tailwind.config.js             # Tailwind CSS 样式配置
+│   │   │   ├── path_hierarchy_guard.rs# 文件夹父子包含关系检测与系统目录拦截
+│   │   │   ├── date_added.rs          # 提取 macOS 原生 kMDItemDateAdded 时间戳
+│   │   │   ├── pattern_matcher.rs     # 大小写敏感路径通配符匹配器 (GlobSet)
+│   │   │   ├── waterfall_engine.rs    # 瀑布式优先匹配短路流转引擎
+│   │   │   ├── trash_controller.rs    # 系统废纸篓大小统计与 FIFO 淘汰擦除
+│   │   │   ├── fsevents_watcher.rs    # macOS FSEvents 变动监听器
+│   │   │   ├── debounce_queue.rs      # 3 秒防抖聚合队列
+│   │   │   ├── autostart.rs           # SMAppService 原生开机自启动集成
+│   │   │   └── uninstaller.rs         # 彻底擦除自身配置与移入废纸篓
+│   │   ├── models/                    # 数据契约结构体
+│   │   │   ├── folder.rs              # 文件夹实体模型
+│   │   │   ├── rule.rs                # 规则实体模型 (通配符, 时间, Action)
+│   │   │   ├── trash_config.rs        # 回收站规则模型 (天数, 容量GB)
+│   │   │   └── match_result.rs        # 匹配文件明细与询问项
+│   │   └── storage/                   # 持久化驱动
+│   │       └── config_store.rs        # Application Support 下配置文件读写
+├── src/                               # 前端 React 18 工程
+│   ├── index.html
+│   ├── package.json
+│   ├── vite.config.ts
+│   ├── tailwind.config.js
 │   └── src/
 │       ├── main.tsx                   # 前端入口
-│       ├── App.tsx                    # 控制台根布局与主路由
-│       ├── api/                       # Tauri IPC 强类型封装
-│       │   ├── policy.ts              # 策略调用 API
-│       │   ├── preview.ts             # 预览与沙盒 API
-│       │   └── history.ts             # 审计日志 API
-│       ├── store/                     # Zustand 状态切片
-│       │   ├── usePolicyStore.ts      # 策略列表状态
-│       │   ├── useAuditStore.ts       # 实时审计流与历史记录
-│       │   └── useAppStore.ts         # 控制台外观与全局配置
-│       ├── components/                # 业务组件
-│       │   ├── PolicyCard.tsx         # 策略卡片 (展示状态/路径/动作/调度)
-│       │   ├── PolicyEditorModal.tsx  # 策略编辑弹窗 (全配置项)
-│       │   ├── RuleBuilder.tsx        # 可视化规则构建器 (条件行增删)
-│       │   ├── RegexSandboxModal.tsx  # 正则测试沙盒 (实时命中调试)
-│       │   ├── DryRunModal.tsx        # 真实目录 Dry-Run 预演清单表格
-│       │   ├── ActionConfigurator.tsx # 处置动作配置组件 (Trash/Archive/Zip/Hard)
-│       │   ├── SchedulePicker.tsx     # 调度选择器 (Cron / Watcher / Manual)
-│       │   ├── AuditTable.tsx         # 审计历史虚拟滚动表格
-│       │   └── HeaderBar.tsx          # 顶栏快捷操作 (全局运行/暂停/添加策略)
-│       ├── types/                     # 共享类型定义 (与 Rust 模型对齐)
-│       │   └── index.ts
-│       └── utils/                     # 辅助工具函数
-│           ├── format.ts              # 字节换算与相对时间格式化
-│           └── path_template.ts       # 归档路径模板预解析
+│       ├── App.tsx                    # 主窗口双栏布局与全局事件监听
+│       ├── api/                       # Tauri IPC 封装
+│       │   ├── folderApi.ts
+│       │   ├── ruleApi.ts
+│       │   └── systemApi.ts
+│       ├── store/                     # Zustand 状态流
+│       │   ├── useFolderStore.ts      # 文件夹列表与选中态
+│       │   ├── useRuleStore.ts        # 当前选中项的置顶规则与普通规则
+│       │   ├── useMatchListStore.ts   # “列出”动作的结果集
+│       │   └── useAskQueueStore.ts    # 待逐一询问的文件队列
+│       ├── components/                # UI 界面组件
+│       │   ├── Sidebar/               # 左侧栏组件
+│       │   │   ├── TrashItem.tsx      # 常驻废纸篓卡片
+│       │   │   ├── FolderItem.tsx     # 监控文件夹卡片 (带删除按钮)
+│       │   │   └── AddFolderModal.tsx # 添加文件夹对话框 (带防重叠警告)
+│       │   ├── Rules/                 # 右侧规则组件
+│       │   │   ├── TrashRuleView.tsx  # 回收站双规则配置视图
+│       │   │   ├── TopWhitelistBar.tsx# 置顶保留规则输入栏
+│       │   │   ├── RuleCard.tsx       # 单条普通规则卡片 (拖拽把手, Toggle, 动作徽章)
+│       │   │   ├── CreateRuleModal.tsx# 规则创建/修改弹窗 (对应图片设计)
+│       │   │   └── MatchListTable.tsx # 下方“列出”结果清单表格
+│       │   └── Modals/                # 弹窗组件
+│       │       ├── AskConfirmModal.tsx# 逐一询问后删除的确认卡片
+│       │       └── UninstallModal.tsx # 彻底卸载二次确认警告
+│       └── types/                     # TypeScript 类型定义
+│           └── index.ts
 ```
 
 ---
 
-## 3. 技术选型与选型理由 (Tech Stack & Rationale)
+## 3. macOS 核心原生能力集成方案 (macOS Native Integration)
 
-| 技术模块 | 选型组件 | 核心选型考量与优势 |
-| :--- | :--- | :--- |
-| **桌面托盘与跨平台底座** | **Tauri 2.x** | 原生托盘能力（`tray-icon` 插件）；相比 Electron，内存常驻仅 ~30MB，启动极速，开机自启无卡顿。 |
-| **原生后台语言** | **Rust (1.75+)** | 内存安全、零成本抽象，完美胜任 7x24 小时后台稳定运行，杜绝内存泄漏。 |
-| **文件变动监听** | **notify (v6.x)** | Rust 工业级文件监听库，深度集成 macOS FSEvents、Windows ReadDirectoryChangesW 和 Linux inotify，支持异步流式处理。 |
-| **正则与通配符** | **regex + globset** | `regex` crate 具备无回溯线性时间复杂度保障，彻底防范正则表达式 ReDoS 拒绝服务攻击；`globset` 支持将多条通配符预编译为 DFA 单次匹配。 |
-| **原生废纸篓集成** | **trash (v5.x)** | 跨平台原生 API 支持（macOS `NSFileManager` / Windows `IFileOperation`），且能自动适配外置 USB 驱动器上的回收区。 |
-| **流式 Zip 归档** | **zip (v2.x)** | 原生 Rust 编写，支持 Deflate 压缩与流式文件打包写入，无需依赖外部系统命令。 |
-| **定时调度引擎** | **tokio-cron-scheduler** | 配合 Tokio 异步事件循环的轻量 Cron 调度器，支持秒/分级精度，资源开销趋近于零。 |
-| **前端交互体系** | **React 18 + Vite + Tailwind** | 组件化开发效率高，Tailwind 提供极客感精致暗色/亮色外观；Zustand 极简单向数据流。 |
-| **超大列表虚拟滚动** | **TanStack Virtual v3** | 用于 Dry-Run 预演和审计日志，支持万级文件 60fps 流畅滚动渲染。 |
+### 3.1 纯菜单栏与 Dock 隐藏 (`LSUIElement`)
+- 在 `src-tauri/Info.plist` 中声明：
+  ```xml
+  <key>LSUIElement</key>
+  <true/>
+  ```
+- 效果：应用程序在启动时不会在 Dock（程序坞）占位，仅在 macOS 菜单栏展示托盘图标。
+- 点击菜单栏图标调用 Tauri `tray-icon`，左键直接拉出原生菜单。
+
+### 3.2 获取精确的“添加到文件夹日期”(`kMDItemDateAdded`)
+- 在 macOS 中，文件被下载或拖入文件夹的时间由 macOS Metadata 维护，属于属性键 `kMDItemDateAdded`。
+- Rust 后端通过 Objective-C / CoreFoundation 绑定读取：
+  ```rust
+  // 伪代码逻辑
+  let url = CFURL::from_path(file_path);
+  let md_item = MDItemCreateWithURL(kCFAllocatorDefault, url);
+  let date_added = MDItemCopyAttribute(md_item, CFSTR("kMDItemDateAdded"));
+  ```
+- 容错处理：若该属性因文件系统限制不可读，平滑降级使用文件的 `btime`（创建时间）或 `mtime`（修改时间）。
+
+### 3.3 目录父子重叠检测算法 (`PathHierarchyGuard`)
+为彻底避免不同规则在父子目录嵌套中发生冲突，在添加目录时进行双向判定：
+- 设待添加路径为 $P_{new}$，已有路径集合为 $\{P_1, P_2, \dots, P_n\}$；
+- 先调用 `std::fs::canonicalize` 解析真实物理路径（消除软链和 `.`、`..`）；
+- 循环判定：
+  1. **父级检测**: 若存在某个已添加路径 $P_i$ 满足 $P_i.starts\_with(P_{new})$ 且 $P_i \ne P_{new}$，则 $P_{new}$ 为现有目录的父级，**直接拒绝**；
+  2. **子级检测**: 若 $P_{new}.starts\_with(P_i)$ 且 $P_{new} \ne P_i$，则 $P_{new}$ 为现有目录的子级，**直接拒绝**；
+  3. **系统目录检测**: 若 $P_{new}$ 命中 `/System`, `/Library`, `/Applications`, `/usr`, `/bin` 等核心路径，**直接拒绝**。
 
 ---
 
-## 4. 核心工作流与时序设计 (Core Sequence Diagrams)
+## 4. 核心工作流时序图 (Core Sequence Diagrams)
 
-### 4.1 实时变动监听与智能防抖处理流 (Watcher & Debounce Flow)
+### 4.1 瀑布式优先匹配短路流转 (Waterfall Rule Execution)
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor OS as 文件系统 / 用户行为
-    participant Watcher as Rust Watcher (notify)
-    participant Debounce as 防抖队列 (DebounceQueue)
-    participant Matcher as 复合匹配引擎 (Matcher)
-    participant Guard as 安全守卫 (PathGuard)
-    participant Action as 处置执行器 (ActionEngine)
-    participant Audit as 审计与持久化 (Storage)
-    participant UI as 托盘与控制台 (IPC Event)
+    actor Engine as 规则评估引擎 (Scanner)
+    participant Whitelist as 置顶保留规则 (Top Whitelist)
+    participant RuleList as 自定义普通规则列表 (Priority Ordered)
+    participant ActionTrash as 直接删除 (MoveToTrash)
+    participant ActionAsk as 询问后删除 (AskQueue)
+    participant ActionList as 列出展示 (MatchList)
 
-    OS->>Watcher: 产生文件新建/修改事件 (如下载了大文件)
-    Watcher->>Debounce: 压入待处理事件 (Path, PolicyId, Timestamp)
-    Note over Debounce: 启动/重置 5 秒防抖计时窗口
-    Debounce->>Debounce: 等待写入完毕，去重聚合
-    Debounce->>Matcher: 触发该策略规则评估 (Evaluate Target File)
-    
-    Matcher->>Matcher: 正则/Glob 匹配 + 修改时间/大小比对
-    alt 未命中规则
-        Matcher-->>Debounce: 忽略该文件
-    else 命中规则
-        Matcher->>Guard: 校验文件路径是否合法 (非系统保护路径)
-        Guard-->>Matcher: 验证通过 (Safe)
-        Matcher->>Action: 执行绑定的处置动作 (Trash / Archive / Zip / Delete)
-        Action->>OS: 执行系统文件操作
-        Action->>Audit: 记录本次自动化处理日志流水
-        Action->>UI: 发送通知与流式事件 (emit: "policy_triggered")
+    Engine->>Engine: 读取文件元数据 (kMDItemDateAdded & Path)
+    alt 文件属于以 . 开头的隐藏文件
+        Engine->>Engine: 跳过忽略 (Ignore Hidden)
+    else 正常文件
+        Engine->>Whitelist: 比对置顶保留通配符
+        alt 命中置顶保留规则
+            Whitelist-->>Engine: 永久保留 (Keep) -> 彻底终止后续所有匹配
+        else 未命中置顶保留
+            loop 按优先级从上到下遍历启用的普通规则
+                Engine->>RuleList: 检查当前规则 (DateAdded 是否超限 AND 通配符是否命中)
+                alt 命中当前规则
+                    alt 动作 = 保留 (Keep)
+                        RuleList-->>Engine: 保持原样 -> 终止后续规则
+                    else 动作 = 直接删除 (Directly Move to Trash)
+                        RuleList->>ActionTrash: 调用系统 API 移入废纸篓
+                    else 动作 = 询问后删除 (Ask before Trashing)
+                        RuleList->>ActionAsk: 压入待询问队列，唤起前端逐一询问弹窗
+                    else 动作 = 列出 (List Matches)
+                        RuleList->>ActionList: 收集至匹配结果清单，前端呈现
+                    end
+                    Note over Engine: 触发 First-Match 短路，立即跳出循环！
+                end
+            end
+        end
     end
 ```
 
-### 4.2 策略 Dry-Run 预演与手动执行流 (Dry-Run & Manual Execution Flow)
+### 4.2 FSEvents 内核变动监听与 3 秒防抖聚合流 (FSEvents & Debounce Flow)
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as 用户
-    participant UI as 前端控制台 (React)
-    participant IPC as Tauri IPC Command
-    participant Scanner as 目录遍历器 (jwalk)
-    participant Matcher as 复合匹配器 (Matcher)
-    participant Guard as 安全守卫 (PathGuard)
-    participant Action as 处置动作器 (ActionHandler)
+    actor FS as macOS 文件系统 (FSEvents)
+    participant Watcher as Rust Watcher (notify)
+    participant Debounce as 防抖队列 (DebounceQueue)
+    participant Engine as 瀑布规则评估引擎
+    participant UI as 前端控制台
 
-    User->>UI: 编辑策略，点击「Dry-Run 真实预演」
-    UI->>IPC: invoke("dry_run_policy", { policy })
-    IPC->>Guard: 预检目标目录
-    Guard-->>IPC: 检查通过
-    IPC->>Scanner: 启动多线程遍历目标目录
-    Scanner->>Matcher: 逐个文件比对规则 (Glob / Regex / 尺寸 / 时间)
-    Matcher-->>IPC: 收集命中文件列表与预计释放体积 (不作任何改动)
-    IPC-->>UI: 返回命中项数组 (FileItem[])
-    UI->>User: 弹出预演看板，展示预计处理项并支持单项勾选
-
-    User->>UI: 确认无误，点击「立即执行」
-    UI->>IPC: invoke("execute_policy_now", { policy_id, selected_paths })
-    IPC->>Action: 批次执行动作 (移入废纸篓/归档/Zip/粉碎)
-    Action-->>UI: 流式回报执行进度 (10%..50%..100%)
-    Action-->>UI: 完成并刷新审计记录
+    FS->>Watcher: 派发文件创建/写入事件 (如浏览器完成下载)
+    Watcher->>Debounce: 压入事件 (Path, Timestamp)
+    Note over Debounce: 启动 3 秒倒计时防抖窗口
+    FS-->>Watcher: 若 3 秒内有持续文件写入，重置 3 秒倒计时
+    Note over Debounce: 3 秒倒计时结束，聚合本批次变动文件
+    Debounce->>Engine: 触发瀑布规则计算 (Evaluate Changed Files)
+    Engine->>Engine: 执行置顶保留与优先规则匹配
+    Engine-->>UI: 若有"列出"项或"询问"项，通过 IPC 派发事件更新 UI
 ```
 
----
-
-## 5. 安全防御架构 (PathGuard & Defense-in-Depth)
-
-作为一款具备“自动文件操作与粉碎”能力的强大工具，系统构建 4 重纵深安全防护盾：
+### 4.3 废纸篓容量超限 FIFO 淘汰流程 (Trash FIFO Eviction Flow)
 
 ```mermaid
-flowchart TD
-    Config["配置/触发策略 (Manual/Cron/Watcher)"] --> Level1["第 1 防线：目标根路径白名单 & 黑名单检查"]
-    Level1 -->|"阻断 /System, /Library, C:\\Windows, /bin, /usr 等"| Level2["第 2 防线：符号链接逃逸防护 (Symlink Canonicalization)"]
-    Level2 -->|"路径规范化 (canonicalize)，防止 ../ 跳入系统目录"| Level3["第 3 防线：操作动作分级安全锁 (Safety Lock)"]
-    Level3 -->|"普通废纸篓: 默认开放\n物理粉碎: 强制要求输入危险确认文字"| Level4["第 4 防线：文件占用与权限异常优雅隔离 (Fault Tolerance)"]
-    Level4 -->|"正被外部打开或只读: 捕获 OS 错误，优雅标记 Skipped，绝不硬删"| AuditDone["操作落地并记录全量审计日志"]
-```
+sequenceDiagram
+    autonumber
+    participant Scheduler as 巡检触发器 (变动或小时定时)
+    participant TrashCtrl as 废纸篓管理器 (TrashController)
+    participant OS as macOS 废纸篓 (~/.Trash)
 
-1. **绝对禁飞区 (Restricted Root Blacklist)**:
-   - 系统级核心根路径严禁作为策略监控目录或归档目标。
-   - 包含：macOS（`/`, `/System`, `/Library`, `/Applications`, `/usr`, `/bin`, `/private`, `~/.Trash`）；Windows（`C:\`, `C:\Windows`, `C:\Program Files`, `C:\Program Files (x86)`, `C:\ProgramData`）；Linux（`/`, `/bin`, `/boot`, `/etc`, `/lib`, `/usr`, `/var`）。
-2. **规范化防穿透 (Canonicalize Path)**:
-   - 任何相对路径、包含 `..` 的路径均被解析为物理绝对路径后再进行黑名单碰撞，防止路径穿越攻击。
-   - 默认禁止追踪符号链接软链（`follow_symlinks = false`），杜绝指向系统目录的软链被误操作。
-3. **物理粉碎动作安全隔离**:
-   - 若策略动作选择“永久物理粉碎 (Hard Delete)”，前端弹窗给出高对比度告警标识，必须由用户手动输入特定确认词汇方可保存策略。
-   - Rust 后端对永久删除动作执行二次 PathGuard 校验，双重把关。
+    Scheduler->>TrashCtrl: 触发废纸篓规则评估
+    TrashCtrl->>OS: 读取 ~/.Trash 下所有条目的大小与移入时间 (Trash Time)
+    
+    opt 规则 1 开启 (超龄天数 > 0)
+        TrashCtrl->>OS: 永久抹除移入时间超过设定天数的所有文件
+    end
+
+    opt 规则 2 开启 (容量上限 GB > 0)
+        TrashCtrl->>TrashCtrl: 计算当前废纸篓总字节数
+        loop 当总容量 > 设定上限容量 (GB)
+            TrashCtrl->>TrashCtrl: 按照移入废纸篓时间正序排序 (最先移入的排最前)
+            TrashCtrl->>OS: 物理彻底删除队列首部文件 (永久擦除)
+            TrashCtrl->>TrashCtrl: 减去已删文件体积，重新核对总容量
+        end
+    end
+    TrashCtrl-->>Scheduler: 废纸篓清理完毕，容量平稳达标
+```
