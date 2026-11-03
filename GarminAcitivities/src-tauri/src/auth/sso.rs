@@ -309,6 +309,11 @@ impl SsoClient {
             if let Some(ref cookies) = self.cookie_header {
                 req = req.header("Cookie", cookies);
             }
+            if let Some(ref csrf) = self.csrf_token {
+                if !csrf.is_empty() {
+                    req = req.header("connect-csrf-token", csrf);
+                }
+            }
             req
         };
 
