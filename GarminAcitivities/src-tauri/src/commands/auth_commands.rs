@@ -165,36 +165,46 @@ pub async fn auth_open_web_login(
                         let path = cookie.path().unwrap_or("/");
                         eprintln!("WebKit Cookie: {} (domain: {}, path: {})", name, domain, path);
 
-                        if name == "JWT_WEB" || (name == "CASTGC" && !value.is_empty()) {
+                        if name == "JWT_WEB" && !value.is_empty() {
                             has_jwt_token = true;
                         }
-                        let cookie_str = format!("{}={}; Domain={}; Path={}", name, value, domain, path);
-                        client.cookie_store.add_cookie_str(&cookie_str, &target_url);
+
+                        // 将 Cookie 注入到 SsoClient 的 CookieStore 中
+                        let clean_domain = domain.trim_start_matches('.');
+                        let cookie_host = format!("https://{}", clean_domain);
+                        if let Ok(cookie_url) = Url::parse(&cookie_host) {
+                            let cookie_str = format!("{}={}; Domain={}; Path={}", name, value, domain, path);
+                            client.cookie_store.add_cookie_str(&cookie_str, &cookie_url);
+                        }
+                        // 兜底直接关联至 Connect 域
+                        client.cookie_store.add_cookie_str(&format!("{}={}", name, value), &target_url);
+
                         cookie_pairs.push(format!("{}={}", name, value));
                     }
 
                     if has_jwt_token && !is_handled_for_load.swap(true, std::sync::atomic::Ordering::SeqCst) {
                         let app_inner = app_handle.clone();
                         let auth_mgr_inner = auth_mgr.clone();
+                        let is_handled_reset = is_handled_for_load.clone();
                         let full_cookie_str = cookie_pairs.join("; ");
 
                         tauri::async_runtime::spawn(async move {
-                            let profile = client.fetch_user_profile().await.unwrap_or_else(|e| {
-                                eprintln!("Failed to fetch profile: {:?}, using fallback", e);
-                                UserProfile {
-                                    display_name: "GarminUser".to_string(),
-                                    full_name: None,
-                                    profile_image_url: None,
-                                    region: reg,
+                            match client.fetch_user_profile().await {
+                                Ok(profile) => {
+                                    eprintln!("Successfully fetched user profile: {}", profile.display_name);
+                                    let _ = keychain::save_credential("session_cookie", &full_cookie_str);
+                                    auth_mgr_inner.set_logged_in(client, profile.clone()).await;
+                                    let _ = app_inner.emit("auth:login-success", profile);
+
+                                    if let Some(w) = app_inner.get_webview_window("garmin_sso_window") {
+                                        let _ = w.close();
+                                    }
                                 }
-                            });
-
-                            let _ = keychain::save_credential("session_cookie", &full_cookie_str);
-                            auth_mgr_inner.set_logged_in(client, profile.clone()).await;
-                            let _ = app_inner.emit("auth:login-success", profile);
-
-                            if let Some(w) = app_inner.get_webview_window("garmin_sso_window") {
-                                let _ = w.close();
+                                Err(e) => {
+                                    eprintln!("Session not fully authenticated yet ({:?}), keeping window open...", e);
+                                    // 允许后续页面加载完成时重新检测
+                                    is_handled_reset.store(false, std::sync::atomic::Ordering::SeqCst);
+                                }
                             }
                         });
                     }
