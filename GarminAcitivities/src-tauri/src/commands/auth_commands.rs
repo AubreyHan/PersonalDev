@@ -222,17 +222,19 @@ pub async fn auth_login_with_token(
         .http_client
         .get(&test_url)
         .header("Referer", format!("{}/modern", reg.connect_host()))
+        .header("Accept", "application/json, text/plain, */*")
+        .header("DI-Backend", "connectapi.garmin.com")
         .send()
         .await
         .map_err(|e| e.to_string())?;
 
     if resp.status().is_success() {
-        let user = UserProfile {
+        let user = client.fetch_user_profile().await.unwrap_or_else(|_| UserProfile {
             display_name: "GarminUser".to_string(),
             full_name: None,
             profile_image_url: None,
             region: reg,
-        };
+        });
         let _ = keychain::save_credential("session_cookie", &cookie_str);
         auth_manager.set_logged_in(client, user.clone()).await;
         Ok(AuthResponse {
