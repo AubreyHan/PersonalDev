@@ -6,7 +6,10 @@ pub mod garmin;
 
 use auth::session::AuthManager;
 use commands::activity_commands::activities_fetch_page;
-use commands::auth_commands::{auth_get_current_user, auth_login, auth_logout, auth_submit_mfa};
+use commands::auth_commands::{
+    auth_get_current_user, auth_login, auth_login_with_token, auth_logout, auth_open_web_login,
+    auth_submit_mfa,
+};
 use commands::export_commands::{
     export_control_queue, export_merge_activities, export_start_batch, export_start_incremental,
     settings_get, settings_update,
