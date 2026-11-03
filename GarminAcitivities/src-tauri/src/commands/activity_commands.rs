@@ -28,27 +28,45 @@ pub async fn activities_fetch_page(
     // 1. 若有活动会话，先进行异步网络请求（不占持有数据库锁）
     let mut online_synced = false;
     if let (Some(client), Some(user)) = (client_opt, user_opt) {
-        match GarminActivityClient::fetch_activities(
-            &client,
-            &user.display_name,
-            query.start,
-            query.limit,
-            query.activity_type.as_deref(),
-            query.start_date.as_deref(),
-            query.end_date.as_deref(),
-        )
-        .await
-        {
-            Ok(records) => {
-                // 网络拉取成功，写入数据库
-                if !records.is_empty() {
-                    let mut conn = db_manager.conn.lock().map_err(|e| e.to_string())?;
-                    let _ = HistoryRepo::upsert_activities(&mut conn, &records);
+        let fetch_limit = 100;
+        let mut fetch_start = 0;
+        let max_pages = 5; // 单次拉取最多 500 条最新活动至本地 SQLite
+
+        for _ in 0..max_pages {
+            match GarminActivityClient::fetch_activities(
+                &client,
+                &user.display_name,
+                fetch_start,
+                fetch_limit,
+                query.activity_type.as_deref(),
+                None,
+                None,
+            )
+            .await
+            {
+                Ok(records) => {
+                    let len = records.len();
+                    if !records.is_empty() {
+                        let mut conn = db_manager.conn.lock().map_err(|e| e.to_string())?;
+                        let _ = HistoryRepo::upsert_activities(&mut conn, &records);
+                    }
+                    online_synced = true;
+                    // 云端已无更多记录
+                    if len < fetch_limit as usize {
+                        break;
+                    }
+                    // 如果最旧的一条已经早于用户筛选的起始日期，则无需继续往前拉取
+                    if let (Some(ref start_dt_str), Some(oldest)) = (&query.start_date, records.last()) {
+                        if !start_dt_str.is_empty() && oldest.start_time_local < *start_dt_str {
+                            break;
+                        }
+                    }
+                    fetch_start += fetch_limit;
                 }
-                online_synced = true;
-            }
-            Err(err) => {
-                eprintln!("Online sync failed, falling back to local cache: {:?}", err);
+                Err(err) => {
+                    eprintln!("Online sync warning: {:?}", err);
+                    break;
+                }
             }
         }
     }
