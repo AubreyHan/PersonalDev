@@ -177,7 +177,7 @@ pub async fn auth_open_web_login(
             return false;
         }
 
-        // 2. 拦截 ticket=ST-，利用后端 reqwest 立即消费服务凭据
+        // 2. 拦截 ticket=ST-，利用后端 reqwest 独占消费服务凭据
         if url_str.contains("ticket=ST-") {
             let re = Regex::new(r"ticket=(ST-[a-zA-Z0-9_\-]+)").unwrap();
             if let Some(caps) = re.captures(url_str) {
@@ -187,20 +187,29 @@ pub async fn auth_open_web_login(
 
                 tauri::async_runtime::spawn(async move {
                     let client = SsoClient::new(reg);
-                    if let Ok(_) = client.consume_service_ticket(&ticket).await {
-                        let profile = client.fetch_user_profile().await.unwrap_or_else(|_| UserProfile {
-                            display_name: "GarminUser".to_string(),
-                            full_name: None,
-                            profile_image_url: None,
-                            region: reg,
-                        });
-                        auth_mgr_inner.set_logged_in(client, profile.clone()).await;
-                        let _ = app_inner.emit("auth:login-success", profile);
-                        if let Some(win) = app_inner.get_webview_window("garmin_sso_window") {
-                            let _ = win.close();
+                    match client.consume_service_ticket(&ticket).await {
+                        Ok(_) => {
+                            let profile = client.fetch_user_profile().await.unwrap_or_else(|e| {
+                                eprintln!("Failed to fetch profile: {:?}, fallback default", e);
+                                UserProfile {
+                                    display_name: "GarminUser".to_string(),
+                                    full_name: None,
+                                    profile_image_url: None,
+                                    region: reg,
+                                }
+                            });
+                            auth_mgr_inner.set_logged_in(client, profile.clone()).await;
+                            let _ = app_inner.emit("auth:login-success", profile);
+                            if let Some(win) = app_inner.get_webview_window("garmin_sso_window") {
+                                let _ = win.close();
+                            }
+                        }
+                        Err(err) => {
+                            eprintln!("Failed to consume ticket: {:?}", err);
                         }
                     }
                 });
+                return false; // 必须拦截并取消 WebKit 导航，防止单次票据被前端并发消费作废
             }
         }
         true

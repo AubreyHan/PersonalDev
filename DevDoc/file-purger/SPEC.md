@@ -4,197 +4,130 @@
 
 ## 1. 核心数据契约模型 (Core Data Models)
 
-所有数据结构在前端 React (TypeScript) 与后端 Rust 中保持强类型对应，采用 `camelCase` 风格在 Tauri IPC 中透明序列化。
+所有数据结构在前端 React (TypeScript) 与后端 Rust 中保持类型镜像，采用 `camelCase` 风格在 IPC 中进行无缝序列化。
 
-### 1.1 策略与规则模型 (`Policy`, `RuleSet`, `RuleCondition`)
+### 1.1 文件夹与规则模型 (`FolderItem`, `FolderRule`)
 
 #### TypeScript 类型定义 (`src/types/index.ts`)
 ```typescript
-export type ConditionLogic = 'AND' | 'OR';
+export type TimeUnit = 'minutes' | 'hours' | 'days';
 
-export type ConditionType = 
-  | 'glob'             // Glob 通配符 (如 *.dmg, **/*.tmp)
-  | 'regex'            // 正则表达式 (如 ^backup_\d{4}\.tar$)
-  | 'time'             // 时间条件 (修改/访问/创建时间)
-  | 'size'             // 文件体积大小
-  | 'exclude_hidden';  // 排除隐藏文件
+export type RuleAction = 
+  | 'list'          // 列出：仅在匹配清单中展示，不做删除移动
+  | 'keep'          // 保留：命中后锁定保留，短路终止后续规则
+  | 'direct_trash'  // 直接删除：直接移入系统废纸篓
+  | 'ask_trash';    // 询问后删除：应用内逐一弹窗询问确认
 
-export type TimeField = 'mtime' | 'atime' | 'ctime';
-export type TimeUnit = 'minutes' | 'hours' | 'days' | 'months';
-export type TimeOperator = 'older_than' | 'newer_than' | 'between';
-
-export interface TimeConditionData {
-  field: TimeField;
-  operator: TimeOperator;
-  value: number;
-  unit: TimeUnit;
-  maxValue?: number;   // 针对 between 操作符
+export interface DateAddedCondition {
+  value: number;        // 填 0 或选 Any 表示不限时间
+  unit: TimeUnit;       // 'minutes' | 'hours' | 'days'
+  isAny: boolean;       // 是否不限制时间
 }
 
-export interface SizeConditionData {
-  operator: 'greater_than' | 'less_than' | 'between';
-  minBytes: number;
-  maxBytes?: number;
+export interface FolderRule {
+  id: string;           // 规则唯一 UUID
+  name: string;         // 规则友好名称，如 "Archive PDFs"
+  enabled: boolean;     // 启用/停用开关 Toggle (默认 true)
+  dateAdded: DateAddedCondition; // 添加到该文件夹的时间条件
+  pattern: string;      // 通配符路径表达式 (如 "*.dmg, a*.j*, **/temp*")
+  action: RuleAction;   // 处置动作 (4 选 1)
+  order: number;        // 从上到下的优先匹配序号 (0, 1, 2...)
 }
 
-export interface RuleCondition {
-  id: string;
-  type: ConditionType;
-  enabled: boolean;
-  invertMatch: boolean; // 是否取反 (NOT)
-  // 具体子条件载荷
-  globPattern?: string;
-  regexPattern?: string;
-  timeData?: TimeConditionData;
-  sizeData?: SizeConditionData;
-}
-
-export interface RuleSet {
-  logic: ConditionLogic;      // AND (全部满足) 或 OR (任一满足)
-  conditions: RuleCondition[];
-  maxScanDepth?: number;      // 最大扫描目录递归深度 (可选，未指定为无限制)
-  followSymlinks: boolean;    // 是否追踪软链接 (默认 false)
+export interface FolderItem {
+  id: string;           // 文件夹唯一 UUID
+  name: string;         // 文件夹显示名称，如 "Downloads"
+  path: string;         // 文件夹绝对物理路径，如 "/Users/aubreyhan/Downloads"
+  isTrash: boolean;     // 是否为左侧顶部常驻废纸篓项 (如果是，右侧使用 TrashRuleConfig)
+  isPreset: boolean;    // 是否为预置文件夹 (如默认预置 Downloads)
+  topWhitelist: string; // 置顶保留规则内容 (逗号分隔的通配符表达式)
+  rules: FolderRule[];  // 属于该文件夹的普通规则列表 (严格按 order 升序排列)
+  createdAt: number;
 }
 ```
 
 ---
 
-### 1.2 处置动作模型 (`ActionConfig`)
+### 1.2 回收站专属配置模型 (`TrashRuleConfig`)
 
 ```typescript
-export type ActionType = 
-  | 'trash'          // 移入系统废纸篓 (默认安全)
-  | 'archive'        // 移动归档至指定目录
-  | 'zip'            // 压缩为 Zip 归档并清理源文件
-  | 'hard_delete';   // 永久物理粉碎 (高危)
-
-export interface ActionConfig {
-  type: ActionType;
-  // archive / zip 专用字段
-  targetDirectory?: string;         // 归档目标根目录
-  pathTemplate?: string;            // 归档子路径模板，支持 {YYYY}/{MM}/{DD}/{EXT}
-  conflictStrategy?: 'rename' | 'overwrite' | 'skip'; // 重名处理策略 (默认 rename: 自动加序号)
-  // zip 专用字段
-  zipFileNameTemplate?: string;     // zip 包命名模板，如 "archive_{YYYY}{MM}{DD}_{POLICY}.zip"
-  zipCompressionLevel?: number;     // 1~9，默认 6
-  // hard_delete 专用字段
-  safetyConfirmed?: boolean;        // 用户是否已在前端明确确认高危动作
+export interface TrashRuleConfig {
+  // 规则 1：超龄天数清理 (填 0 表示不执行)
+  daysThreshold: number; // 默认初始值 0
+  // 规则 2：容量上限清理 (填 0 表示不执行)
+  maxCapacityGB: number; // 默认初始值 0，单位 GB
 }
 ```
 
 ---
 
-### 1.3 调度模式模型 (`ScheduleConfig`)
+### 1.3 逐一询问项模型 (`AskItem`) 与 匹配结果清单模型 (`MatchListItem`)
 
 ```typescript
-export type ScheduleType = 'manual' | 'cron' | 'watcher' | 'hybrid';
+export interface AskItem {
+  id: string;           // 唯一任务 ID
+  folderId: string;     // 来源文件夹 ID
+  filePath: string;     // 文件的绝对路径
+  fileName: string;     // 文件名
+  sizeBytes: number;    // 文件大小
+  dateAdded: number;    // 添加时间戳 (毫秒)
+  ruleName: string;     // 触发的规则名称
+}
 
-export interface ScheduleConfig {
-  type: ScheduleType;
-  // Cron 定时参数
-  cronExpression?: string;          // 5位或6位 Cron 表达式，如 "0 18 * * 5"
-  // Watcher 文件监听参数
-  watcherEnabled: boolean;          // 是否启用变动监听
-  debounceSeconds: number;          // 防抖延迟窗口 (秒，默认 5，范围 1~60)
-  // 运行约束
-  runOnStartup: boolean;            // 应用启动/托盘拉起时是否立即执行一次
+export interface MatchListItem {
+  filePath: string;     // 文件路径
+  fileName: string;     // 文件名
+  sizeBytes: number;    // 文件大小
+  dateAdded: number;    // 添加时间戳
+  ruleName: string;     // 命中的"列出"规则名称
 }
 ```
 
 ---
 
-### 1.4 完整策略模型 (`Policy`)
-
-```typescript
-export interface Policy {
-  id: string;                       // 策略唯一 UUID
-  name: string;                     // 策略友好名称，如 "下载目录双周保洁"
-  description?: string;             // 策略说明
-  enabled: boolean;                 // 是否全局启用该策略
-  targetDirectories: string[];      // 目标监听/扫描目录集合 (绝对路径)
-  ruleSet: RuleSet;                 // 复合规则集合
-  action: ActionConfig;             // 处置动作配置
-  schedule: ScheduleConfig;         // 调度方式配置
-  createdAt: number;                // 创建毫秒时间戳
-  updatedAt: number;                // 最后修改时间戳
-  lastExecutedAt?: number;          // 最后一次触发时间
-  lastExecuteResult?: {
-    success: boolean;
-    filesCount: number;
-    bytesProcessed: number;
-    message?: string;
-  };
-}
-```
-
----
-
-### 1.5 审计流水模型 (`AuditRecord`)
-
-```typescript
-export interface AuditRecord {
-  id: string;                       // 审计记录 UUID
-  timestamp: number;                // 执行时间戳
-  policyId: string;                 // 关联策略 ID
-  policyName: string;               // 策略名称
-  triggerType: 'manual' | 'cron' | 'watcher'; // 触发源
-  actionType: ActionType;           // 执行动作
-  totalFilesProcessed: number;      // 成功处理的文件数
-  totalBytesFreed: number;          // 释放/归档的总字节数
-  durationMs: number;               // 耗时毫秒
-  status: 'success' | 'partial_error' | 'failed';
-  errorMessage?: string;
-  processedItems: {
-    originalPath: string;
-    newPath?: string;               // 归档目标路径 (若有)
-    sizeBytes: number;
-    status: 'ok' | 'skipped_locked' | 'permission_denied';
-  }[];
-}
-```
-
----
-
-### 1.6 Rust 数据结构映射 (`src-tauri/src/models/mod.rs`)
+### 1.4 Rust 契约模型映射 (`src-tauri/src/models/mod.rs`)
 
 ```rust
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Policy {
+pub struct FolderItem {
     pub id: String,
     pub name: String,
-    pub description: Option<String>,
-    pub enabled: bool,
-    pub target_directories: Vec<String>,
-    pub rule_set: RuleSet,
-    pub action: ActionConfig,
-    pub schedule: ScheduleConfig,
+    pub path: String,
+    pub is_trash: bool,
+    pub is_preset: bool,
+    pub top_whitelist: String,
+    pub rules: Vec<FolderRule>,
     pub created_at: i64,
-    pub updated_at: i64,
-    pub last_executed_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RuleSet {
-    pub logic: String, // "AND" | "OR"
-    pub conditions: Vec<RuleCondition>,
-    pub max_scan_depth: Option<usize>,
-    pub follow_symlinks: bool,
+pub struct FolderRule {
+    pub id: String,
+    pub name: String,
+    pub enabled: bool,
+    pub date_added: DateAddedCondition,
+    pub pattern: String,
+    pub action: String, // "list" | "keep" | "direct_trash" | "ask_trash"
+    pub order: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ActionConfig {
-    pub r#type: String, // "trash" | "archive" | "zip" | "hard_delete"
-    pub target_directory: Option<String>,
-    pub path_template: Option<String>,
-    pub conflict_strategy: Option<String>,
-    pub zip_file_name_template: Option<String>,
-    pub zip_compression_level: Option<u32>,
-    pub safety_confirmed: Option<bool>,
+pub struct DateAddedCondition {
+    pub value: u32,
+    pub unit: String, // "minutes" | "hours" | "days"
+    pub is_any: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashRuleConfig {
+    pub days_threshold: u32,
+    pub max_capacity_gb: u32,
 }
 ```
 
@@ -202,66 +135,64 @@ pub struct ActionConfig {
 
 ## 2. Tauri IPC 通信协议接口 (Commands & Events)
 
-### 2.1 双向指令接口 (Tauri Commands)
+### 2.1 双向调用指令 (Tauri Commands)
 
 | 指令名称 | 输入参数 (Payload) | 返回值 (Result) | 说明 |
 | :--- | :--- | :--- | :--- |
-| `list_policies` | `None` | `Result<Vec<Policy>, String>` | 获取当前所有已配置的策略列表 |
-| `save_policy` | `{ policy: Policy }` | `Result<Policy, String>` | 新增或更新策略（触发后端 Watcher/Cron 动态重载） |
-| `delete_policy` | `{ policyId: String }` | `Result<bool, String>` | 删除指定策略，销毁关联的监听器与定时器 |
-| `toggle_policy` | `{ policyId: String, enabled: bool }` | `Result<bool, String>` | 启用或停用单个策略 |
-| `dry_run_policy` | `{ policy: Policy }` | `Result<DryRunResult, String>` | **真实目录预演**: 仅扫描比对，返回命中清单与体积，不执行真实改动 |
-| `test_regex_sandbox` | `{ pattern: String, testStrings: Vec<String> }` | `Result<Vec<RegexMatchResult>, String>` | **沙盒测试**: 验证正则表达式合法性与命中详情 |
-| `execute_policy_now` | `{ policyId: String, targetPaths?: Vec<String> }` | `Result<AuditRecord, String>` | 立即手动触发执行指定策略（支持仅执行部分勾选文件） |
-| `pause_all_schedulers` | `None` | `Result<bool, String>` | 托盘快捷操作：全局暂停所有后台 Watcher 和 Cron |
-| `resume_all_schedulers` | `None` | `Result<bool, String>` | 恢复所有后台调度 |
-| `get_audit_history` | `{ limit: usize, offset: usize }` | `Result<Vec<AuditRecord>, String>` | 分页获取审计历史日志流水 |
-| `clear_audit_history` | `None` | `Result<bool, String>` | 清空审计日志 |
-| `export_config` | `None` | `Result<String, String>` | 导出全部策略配置为 JSON 字符串 |
-| `import_config` | `{ jsonContent: String }` | `Result<bool, String>` | 导入并校验策略配置文件 |
+| `get_all_folders` | `None` | `Result<Vec<FolderItem>, String>` | 获取左侧全部文件夹列表（包含首项常驻废纸篓） |
+| `add_folder` | `{ path: String }` | `Result<FolderItem, String>` | 添加新监控文件夹（执行父子重叠检测与系统路径检测） |
+| `remove_folder` | `{ folderId: String }` | `Result<bool, String>` | 从监控列表中移除文件夹（物理文件夹不受影响） |
+| `update_top_whitelist` | `{ folderId: String, whitelist: String }` | `Result<bool, String>` | 更新选中文件夹的置顶保留规则 |
+| `save_rule` | `{ folderId: String, rule: FolderRule }` | `Result<FolderRule, String>` | 新增或编辑修改单条普通规则 |
+| `delete_rule` | `{ folderId: String, ruleId: String }` | `Result<bool, String>` | 删除指定普通规则 |
+| `reorder_rules` | `{ folderId: String, ruleIds: Vec<String> }` | `Result<bool, String>` | 按前端拖拽后的 ID 列表重新设定所有规则的 order |
+| `get_trash_config` | `None` | `Result<TrashRuleConfig, String>` | 获取废纸篓双规则配置 |
+| `save_trash_config` | `{ config: TrashRuleConfig }` | `Result<bool, String>` | 保存废纸篓双规则配置 |
+| `trigger_scan_now` | `{ folderId?: Option<String> }` | `Result<bool, String>` | 立即手动触发全量或单个文件夹的规则执行与扫描 |
+| `respond_ask_item` | `{ itemId: String, decision: "trash" \| "keep" }` | `Result<bool, String>` | 用户对“询问后删除”单项做出手动决策 |
+| `get_autostart_status`| `None` | `Result<bool, String>` | 查询当前开机自启动是否已在 macOS 激活 |
+| `set_autostart` | `{ enabled: bool }` | `Result<bool, String>` | 切换 macOS 开机自启动注册状态 (`SMAppService`) |
+| `clean_uninstall` | `None` | `Result<bool, String>` | 执行彻底卸载：注销自启、清除全部本地配置、移至废纸篓自杀 |
 
 ---
 
 ### 2.2 流式事件接口 (Event Channels)
 
-- `app:tray_status_change`: 广播后台常驻状态（空闲 / 正在执行 / 暂停）。
-- `policy:triggered`: 某条策略被 Cron 或 Watcher 触发执行，携带策略 ID 与简要概况。
-- `policy:progress`: 策略批量处理中派发百分比进度条（如归档/压缩中）。
-- `policy:completed`: 策略处理完成，携带本次生成的一条 `AuditRecord`。
-- `policy:error`: 处理过程捕获异常（如权限拒绝、目录被移除）。
+- `app:ask_queue_update`: 当后台扫描命中“询问后删除”时向前端派发待确认项队列，唤起前端逐一询问弹窗。
+- `app:match_list_update`: 派发当前文件夹最新命中的“列出”结果集给前端更新下方表格。
+- `app:trash_status_changed`: 广播废纸篓当前总大小与清理统计。
 
 ---
 
-## 3. 模板变量与路径规范 (Path Templating Specification)
+## 3. 通配符与组合路径语法规范 (Pattern Grammar)
 
-当策略动作选用 `archive`（移动归档）或 `zip`（压缩归档）时，支持在路径中内嵌动态变量。后端负责在运行时原子解析：
+系统使用严格大小写敏感的通配符语法，支持单层、多层与多文件组合：
 
-| 模板变量 | 说明 | 解析示例 (当前时间 2026-11-03 20:30) |
-| :--- | :--- | :--- |
-| `{YYYY}` | 4 位当前年份 | `2026` |
-| `{MM}` | 2 位当前月份 (补零) | `11` |
-| `{DD}` | 2 位当前日期 (补零) | `03` |
-| `{POLICY}` | 当前策略名称的 Slug 形式 | `downloads-cleaner` |
-| `{EXT}` | 原始文件的小写扩展名 (无点) | `dmg`, `zip`, `log` |
-| `{FILE_MTIME_YYYY}` | 目标文件本身的最后修改年份 | `2024` |
-| `{FILE_MTIME_MM}` | 目标文件本身的最后修改月份 | `08` |
+### 3.1 语法对照表
 
-**示例应用**:
-- 配置归档路径模板: `/Volumes/Storage/Archives/{YYYY}/{MM}/{EXT}/`
-- 输入文件: `app_installer.dmg`
-- 实际落地路径: `/Volumes/Storage/Archives/2026/11/dmg/app_installer.dmg`
+| 语法符号 | 语义说明 | 典型示例 | 匹配结果示例 |
+| :--- | :--- | :--- | :--- |
+| `*` | 匹配当前层级所有文件 | `*` | 匹配当前文件夹下的所有文件 |
+| `a*` | 以 `a` 开头的所有文件 | `a*` | `apple.dmg`, `abc.pdf` |
+| `*a` | 以 `a` 结尾的文件（**不含扩展名**） | `*a` | `banana.txt` (主干以 a 结尾), `data.log` (不匹配) |
+| `a*.j*` | 文件名以 `a` 开头且扩展名以 `j` 开头 | `a*.j*` | `app.jpeg`, `apple.jpg` |
+| `*/` 或 `a*/` | 匹配一级单层子文件夹 | `*/temp*` | 任意一级子目录下的 `temp*` 文件 |
+| `**` | 递归所有子文件夹（多层） | `**/*.dmg` | 无论多深子目录下的所有 `.dmg` 文件 |
+| `,` 或 `，` | 多个表达式分隔符（**OR 逻辑**） | `*.dmg, *.pkg, **/test*` | 命中这 3 项中任意 1 项即算命中 |
 
 ---
 
 ## 4. 边界条件与异常处理矩阵 (Edge Cases Matrix)
 
-| 场景编号 | 边界/异常情形 | 发生原因 | 系统处理机制与防御策略 |
+| 场景编号 | 异常/边界情形 | 发生原因 | 系统处理机制与防御策略 |
 | :--- | :--- | :--- | :--- |
-| **EC-01** | 用户配置目标包含核心系统目录 | 误选 `/System` 或 `C:\Windows` | `PathGuard` 在前端与后端拦截，直接拒绝创建/保存该策略，返回 `403 Forbidden Directory`。 |
-| **EC-02** | 软链接形成死循环 (Symlink Loops) | 目录内包含软链接指向自己或上级 | 扫描器默认 `follow_symlinks = false`，将软链接视为普通孤立条目，绝不递归深入。 |
-| **EC-03** | 文件正被外部进程写入 (大文件下载未完成) | 浏览器正在向 Downloads 写入 `.crdownload` | Watcher 具备 5~30 秒防抖窗口；动作执行时检测文件独占锁，若报错优雅跳过并在下周期重试。 |
-| **EC-04** | 正则表达式语法错误或 ReDoS 攻击 | 用户输入了非法或极端复杂正则 | 后端使用 Rust `regex` crate，在线性时间保证下解析；解析失败返回具体语法错误行，前端标红提示。 |
-| **EC-05** | 归档目标目录所在外置硬盘被拔出 | 外置磁盘意外离线 | 捕获 I/O 错误，策略执行失败并写入审计异常日志，系统推送桌面错误通知，不造成程序崩溃。 |
-| **EC-06** | 移动归档时发生文件名冲突 | 目标路径已存在同名文件 | 依据配置策略处理：默认 `rename`（自动追加 `(1)`, `(2)` 序列后缀）；或 `skip`（跳过当前文件）。 |
-| **EC-07** | 用户在托盘一键关闭全部调度 | 用户进入专注模式不希望有后台磁盘操作 | `pause_all_schedulers` 暂时挂起 Tokio Watcher 接收器与 Cron 计时器，托盘图标变灰展示“暂停中”。 |
-| **EC-08** | 高危直接粉碎误触防范 | 用户选择了 `hard_delete` | UI 强制要求输入大写确认文本（如 `DELETE PERMANENTLY`），后端检查 `safety_confirmed` 标记，否则拒绝擦除。 |
+| **EC-01** | 用户尝试添加现有文件夹的父级 | 已有 `~/Downloads/code`，尝试添加 `~/Downloads` | `PathHierarchyGuard` 检测到父子重叠，前端弹出明确警告对话框并直接拒绝添加。 |
+| **EC-02** | 用户尝试添加现有文件夹的子级 | 已有 `~/Downloads`，尝试添加 `~/Downloads/temp` | `PathHierarchyGuard` 识别为子级重叠，弹出警告并直接拒绝添加。 |
+| **EC-03** | 尝试添加 macOS 核心系统目录 | 误选 `/System`, `/Library`, `/Applications` 等 | 后端直接拦截阻断，拒绝加入监控列表。 |
+| **EC-04** | 目录中存在以 `.` 开头的隐藏文件 | 目录中有 `.DS_Store`, `.localized`, `.git/` | 扫描层自动忽略，通配符永远无法单独命中隐藏文件。 |
+| **EC-05** | 子文件夹整体被规则命中移入废纸篓 | 规则为 `**/temp*/`，匹配了整份子文件夹 | 允许连带将该子文件夹内部的 `.DS_Store` 等隐藏文件一并移入废纸篓，确保目录整洁。 |
+| **EC-06** | 目标文件正被其他应用程序占用独占写入 | 浏览器正在向 Downloads 写入未完成的文件 | 捕获 OS 文件独占锁定错误，优雅跳过，等待下一个防抖周期或下次巡检处理。 |
+| **EC-07** | 大文件写入触发频繁变动通知 | 用户解压一个 10GB 包含上千文件的压缩包 | 防抖队列设定 3 秒窗口，写入期间不断重置倒计时，直至全部写入完毕静止 3 秒后仅触发 1 次扫描。 |
+| **EC-08** | 用户对“询问后删除”弹窗长期不操作 | 弹窗唤起后用户未进行确认 | 状态保持挂起等待，文件依然保持在原处，绝不擅自删除；只有用户手动点击【移至废纸篓】才执行。 |
+| **EC-09** | 废纸篓容量设置了 0 或天数设置了 0 | 用户只希望做普通文件夹清理，不碰废纸篓 | 值为 0 判定为规则关闭，后台绝不主动清倒系统废纸篓。 |
+| **EC-10** | 彻底卸载应用 (Clean Uninstall) | 用户选择彻底清除 | 调用 macOS `SMAppService.unregister` 注销自启，抹除全部本地配置，将自身移入废纸篓并正常退出，0 垃圾残留。 |
