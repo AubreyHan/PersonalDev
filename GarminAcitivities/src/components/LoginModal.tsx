@@ -248,8 +248,8 @@ export const LoginModal: React.FC = () => {
                   onChange={(e) => setCookieToken(e.target.value)}
                   className="w-full bg-[#161616] border border-gray-800 rounded-lg p-2.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-sky-500 font-mono resize-none"
                 />
-                <p className="text-[10px] text-gray-500 mt-1">
-                  该方式绕过所有 SSO 和人机挑战，直接建立长效会话并加密存入系统钥匙串。
+                <p className="text-[10px] text-gray-400 mt-1 leading-relaxed bg-[#141414] p-2 rounded border border-gray-800">
+                  💡 <b>Cookie 复制秘籍</b>：若 Garmin 官方 SSO 页面偶发 500 异常，您可先在平时常用的浏览器（Chrome / Safari）中打开并登录 <span className="text-sky-400 font-mono">connect.garmin.com</span>。登录后按 F12 打开开发者工具，在【网络 (Network)】面板点击任意请求，复制其标头中的 <span className="text-emerald-400 font-mono">Cookie</span> 完整文本粘贴到此处，即可瞬间直接登录！
                 </p>
               </div>
 
