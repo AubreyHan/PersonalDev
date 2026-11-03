@@ -342,7 +342,11 @@ pub async fn auth_get_current_user(
     // 若内存中暂无会话，尝试从本地安全存储恢复已持久化的 session_cookie 与 jwt_token
     if user.is_none() {
         if let Ok(Some(cookie_str)) = keychain::get_credential("session_cookie") {
-            let reg = GarminRegion::Global;
+            let reg = if let Ok(Some(r)) = keychain::get_credential("region") {
+                if r == "cn" { GarminRegion::Cn } else { GarminRegion::Global }
+            } else {
+                GarminRegion::Global
+            };
             let jwt_opt = keychain::get_credential("jwt_token").ok().flatten();
             let csrf_opt = keychain::get_credential("csrf_token").ok().flatten();
             let client = SsoClient::new(reg).with_tokens(jwt_opt, Some(cookie_str.clone()), csrf_opt);
@@ -354,10 +358,14 @@ pub async fn auth_get_current_user(
                     }
                 }
             }
-            if let Ok(profile) = client.fetch_user_profile().await {
-                auth_manager.set_logged_in(client, profile.clone()).await;
-                user = Some(profile);
-            }
+            let profile = client.fetch_user_profile().await.unwrap_or_else(|_| UserProfile {
+                display_name: "GarminUser".to_string(),
+                full_name: None,
+                profile_image_url: None,
+                region: reg,
+            });
+            auth_manager.set_logged_in(client, profile.clone()).await;
+            user = Some(profile);
         }
     }
 
@@ -382,6 +390,7 @@ pub async fn auth_logout(
         let _ = keychain::delete_credential("session_cookie");
         let _ = keychain::delete_credential("jwt_token");
         let _ = keychain::delete_credential("csrf_token");
+        let _ = keychain::delete_credential("region");
     }
 
     Ok(serde_json::json!({ "success": true }))
