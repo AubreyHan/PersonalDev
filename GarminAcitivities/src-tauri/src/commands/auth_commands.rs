@@ -321,7 +321,7 @@ pub async fn auth_login_with_token(
         }
     }
 
-    let client = SsoClient::new(reg).with_tokens(jwt_opt.clone(), Some(cookie_str.clone()));
+    let client = SsoClient::new(reg).with_tokens(jwt_opt.clone(), Some(cookie_str.clone()), None);
 
     let url: Url = reg.connect_host().parse().map_err(|e: url::ParseError| e.to_string())?;
     for part in cookie_str.split(';') {
@@ -427,7 +427,8 @@ pub async fn auth_get_current_user(
         if let Ok(Some(cookie_str)) = keychain::get_credential("session_cookie") {
             let reg = GarminRegion::Global;
             let jwt_opt = keychain::get_credential("jwt_token").ok().flatten();
-            let client = SsoClient::new(reg).with_tokens(jwt_opt, Some(cookie_str.clone()));
+            let csrf_opt = keychain::get_credential("csrf_token").ok().flatten();
+            let client = SsoClient::new(reg).with_tokens(jwt_opt, Some(cookie_str.clone()), csrf_opt);
             if let Ok(url) = reg.connect_host().parse::<Url>() {
                 for part in cookie_str.split(';') {
                     let trimmed = part.trim();
