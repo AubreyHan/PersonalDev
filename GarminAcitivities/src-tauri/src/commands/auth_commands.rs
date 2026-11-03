@@ -133,33 +133,42 @@ pub async fn auth_open_web_login(
     .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36")
     .initialization_script(r#"
         (function() {
-            function checkAuth() {
+            function reportToken(token) {
+                if (token && typeof token === 'string' && token.length > 20) {
+                    window.location.href = 'https://connect.garmin.com/app?tauri_token=' + encodeURIComponent(token);
+                }
+            }
+
+            // 1. Hook window.fetch
+            var origFetch = window.fetch;
+            window.fetch = async function() {
                 try {
-                    var token = null;
-                    for (var i = 0; i < localStorage.length; i++) {
-                        var k = localStorage.key(i);
-                        if (k && (k === 'token' || k.includes('token') || k.includes('auth'))) {
-                            var v = localStorage.getItem(k);
-                            if (v) {
-                                try {
-                                    var p = JSON.parse(v);
-                                    var act = p.access_token || p.token || (typeof p === 'string' ? p : null);
-                                    if (act && typeof act === 'string' && act.length > 20) {
-                                        token = act;
-                                        break;
-                                    }
-                                } catch(e) {}
-                            }
-                        }
+                    var args = arguments;
+                    var opts = args[1] || {};
+                    var headers = opts.headers || {};
+                    var auth = null;
+                    if (headers instanceof Headers) {
+                        auth = headers.get('authorization') || headers.get('Authorization');
+                    } else if (typeof headers === 'object') {
+                        auth = headers['authorization'] || headers['Authorization'];
                     }
-                    if (token) {
-                        window.location.href = 'https://connect.garmin.com/app?tauri_token=' + encodeURIComponent(token);
-                        return true;
+                    if (auth && auth.indexOf('Bearer ') === 0) {
+                        reportToken(auth.slice(7));
                     }
                 } catch(e) {}
-                return false;
-            }
-            setInterval(checkAuth, 600);
+                return origFetch.apply(this, arguments);
+            };
+
+            // 2. Hook XMLHttpRequest
+            var origSetHeader = XMLHttpRequest.prototype.setRequestHeader;
+            XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
+                try {
+                    if (header && header.toLowerCase() === 'authorization' && value && value.indexOf('Bearer ') === 0) {
+                        reportToken(value.slice(7));
+                    }
+                } catch(e) {}
+                return origSetHeader.apply(this, arguments);
+            };
         })();
     "#)
     .on_navigation(move |nav_url| {
