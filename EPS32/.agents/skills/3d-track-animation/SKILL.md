@@ -2,17 +2,20 @@
 name: 3d-track-animation
 description: >-
   Generate 3D GPS trajectory flyover animation videos (both 9:16 vertical 720x1280
-  and 16:9 horizontal 1280x720 MP4s) from one or more GPX (.gpx) files. Activate this
-  skill when the user uploads or specifies GPX file(s) and issues a command like
-  "3D轨迹： 行走｜骑行｜自驾（如没有说明，根据速度判断） 轨迹名称" (or asks to generate a 3D trajectory
-  animation from GPX files).
+  and 16:9 horizontal 1280x720 MP4s) from one or more GPX (.gpx) files or compressed
+  archives (.zip, .tar.gz, .tgz, .tar.bz2, .tar.xz, .gz, .bz2, .xz, .7z, .rar).
+  Activate this skill when the user uploads or specifies GPX file(s) or compressed
+  archive(s) and issues a command like "3D轨迹： 行走｜骑行｜自驾（如没有说明，根据速度判断） 轨迹名称"
+  (or asks to generate a 3D trajectory animation from GPX files).
 ---
 
 # 3D轨迹动画生成技能 (3D GPX Trajectory Animation Skill)
 
-当用户上传或指定一个或多个 `.gpx` 轨迹文件，并发出如下格式的指令时自动触发本技能，生成 **16:9 横屏 (`1280x720`)** 与 **9:16 竖屏 (`720x1280`)** 两种分辨率的 3D 轨迹巡航动画（无任何第三方水印）：
+当用户上传或指定一个或多个 `.gpx` 轨迹文件（或包含 `.gpx` 的压缩文件），并发出如下格式的指令时自动触发本技能，生成 **16:9 横屏 (`1280x720`)** 与 **9:16 竖屏 (`720x1280`)** 两种分辨率的 3D 轨迹巡航动画（无任何第三方水印）：
 
-1. **上传或指定 GPX 文件**（支持单个或多个 `.gpx` 文件；如有多个 `.gpx` 文件，脚本会自动按时间顺序合并为一条完整轨迹）。
+1. **上传或指定 GPX 文件 / 压缩包**：
+   - 支持直接传入单个或多个 `.gpx` 文件、文件夹，或压缩包（`.zip`, `.tar`, `.tar.gz`, `.tgz`, `.tar.bz2`, `.tbz2`, `.tar.xz`, `.txz`, `.gz`, `.bz2`, `.xz`, `.7z`, `.rar`）。
+   - 若上传的是压缩文件（包括多层嵌套压缩包或被重命名的上传附件），脚本会自动通过扩展名与文件魔数（Magic Bytes）识别并递归解包，提取其中所有 `.gpx` 轨迹文件（自动过滤 `__MACOSX` 及 `._*` 隐藏文件），并按时间顺序合并为一条完整轨迹。
 2. **发出指令格式**：
    `3D轨迹： [行走|骑行|自驾] <轨迹名称>`
    - 示例 1（指定运动类型）：`3D轨迹： 自驾 武汉回京`
