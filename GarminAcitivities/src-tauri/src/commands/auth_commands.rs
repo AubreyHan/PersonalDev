@@ -235,7 +235,15 @@ pub async fn auth_login_with_token(
     auth_manager: State<'_, AuthManager>,
 ) -> Result<AuthResponse, String> {
     let reg = if region == "cn" { GarminRegion::Cn } else { GarminRegion::Global };
-    let client = SsoClient::new(reg);
+    let mut jwt_opt = None;
+    for part in cookie_str.split(';') {
+        let trimmed = part.trim();
+        if trimmed.starts_with("JWT_WEB=") {
+            jwt_opt = Some(trimmed.trim_start_matches("JWT_WEB=").to_string());
+        }
+    }
+
+    let client = SsoClient::new(reg).with_tokens(jwt_opt.clone(), Some(cookie_str.clone()));
 
     let url: Url = reg.connect_host().parse().map_err(|e: url::ParseError| e.to_string())?;
     for part in cookie_str.split(';') {
@@ -245,43 +253,26 @@ pub async fn auth_login_with_token(
         }
     }
 
-    // 验证会话连通性
-    let test_url = format!(
-        "{}/modern/proxy/activitylist-service/activities/search/activities?start=0&limit=1",
-        reg.connect_host()
-    );
-    let resp = client
-        .http_client
-        .get(&test_url)
-        .header("Referer", format!("{}/modern", reg.connect_host()))
-        .header("Accept", "application/json, text/plain, */*")
-        .header("DI-Backend", "connectapi.garmin.com")
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if resp.status().is_success() {
-        let user = client.fetch_user_profile().await.unwrap_or_else(|_| UserProfile {
-            display_name: "GarminUser".to_string(),
-            full_name: None,
-            profile_image_url: None,
-            region: reg,
-        });
-        let _ = keychain::save_credential("session_cookie", &cookie_str);
-        auth_manager.set_logged_in(client, user.clone()).await;
-        Ok(AuthResponse {
-            success: true,
-            require_mfa: false,
-            user: Some(user),
-            error: None,
-        })
-    } else {
-        Ok(AuthResponse {
+    match client.fetch_user_profile().await {
+        Ok(user) => {
+            let _ = keychain::save_credential("session_cookie", &cookie_str);
+            if let Some(ref jwt) = jwt_opt {
+                let _ = keychain::save_credential("jwt_token", jwt);
+            }
+            auth_manager.set_logged_in(client, user.clone()).await;
+            Ok(AuthResponse {
+                success: true,
+                require_mfa: false,
+                user: Some(user),
+                error: None,
+            })
+        }
+        Err(_) => Ok(AuthResponse {
             success: false,
             require_mfa: false,
             user: None,
             error: Some("Cookie/Token 无效或已过期，请重新从浏览器复制".to_string()),
-        })
+        }),
     }
 }
 
