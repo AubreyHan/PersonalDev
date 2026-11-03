@@ -29,6 +29,13 @@ impl GarminRegion {
         }
     }
 
+    pub fn connectapi_host(&self) -> &'static str {
+        match self {
+            GarminRegion::Cn => "https://connectapi.garmin.cn",
+            GarminRegion::Global => "https://connectapi.garmin.com",
+        }
+    }
+
     pub fn tld(&self) -> &'static str {
         match self {
             GarminRegion::Cn => "cn",
