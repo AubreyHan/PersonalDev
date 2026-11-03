@@ -18,7 +18,7 @@ export const ActivityTable: React.FC = () => {
     setQuery,
     fetchActivities,
   } = useActivityStore();
-  const { user, openWebLogin, logout } = useAuthStore();
+  const { logout } = useAuthStore();
   const { openDrawer } = useExportStore();
 
   const [isMerging, setIsMerging] = useState(false);
