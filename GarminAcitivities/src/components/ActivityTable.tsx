@@ -186,10 +186,10 @@ export const ActivityTable: React.FC = () => {
                 立即从 Garmin 云端拉取
               </button>
               <button
-                onClick={() => openWebLogin(user?.region || "global")}
+                onClick={() => logout()}
                 className="px-3 py-1.5 rounded-md bg-sky-500/20 text-sky-300 hover:bg-sky-500/30 transition-colors border border-sky-500/40 font-medium"
               >
-                重新连接 Garmin 账号
+                重新连接 Garmin 账号 (打开登录中心)
               </button>
             </div>
           </div>
