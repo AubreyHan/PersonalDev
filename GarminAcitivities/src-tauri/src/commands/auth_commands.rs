@@ -161,13 +161,16 @@ pub async fn auth_open_web_login(
                     for cookie in cookie_list {
                         let name = cookie.name().to_string();
                         let value = cookie.value().to_string();
-                        // 必须是登录成功后由 SSO 网关发放的核心认证凭据
+                        let domain = cookie.domain().unwrap_or(".garmin.com");
+                        let path = cookie.path().unwrap_or("/");
+                        eprintln!("WebKit Cookie: {} (domain: {}, path: {})", name, domain, path);
+
                         if name == "JWT_WEB" || (name == "CASTGC" && !value.is_empty()) {
                             has_jwt_token = true;
                         }
-                        let cookie_str = format!("{}={}", name, value);
+                        let cookie_str = format!("{}={}; Domain={}; Path={}", name, value, domain, path);
                         client.cookie_store.add_cookie_str(&cookie_str, &target_url);
-                        cookie_pairs.push(cookie_str);
+                        cookie_pairs.push(format!("{}={}", name, value));
                     }
 
                     if has_jwt_token && !is_handled_for_load.swap(true, std::sync::atomic::Ordering::SeqCst) {

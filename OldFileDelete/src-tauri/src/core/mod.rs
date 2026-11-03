@@ -1,3 +1,5 @@
+#![allow(unused_imports, dead_code)]
+
 pub mod date_added;
 pub mod path_hierarchy_guard;
 pub mod pattern_matcher;
