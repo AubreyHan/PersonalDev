@@ -6,15 +6,22 @@ calculate optimal 3D map tile zoom & bounds, and download satellite + road overl
 """
 
 import argparse
+import bz2
 import concurrent.futures
+import gzip
 import json
+import lzma
 import math
 import os
 import re
+import shutil
 import ssl
+import subprocess
 import sys
+import tarfile
 import urllib.request
 import xml.etree.ElementTree as ET
+import zipfile
 from datetime import datetime
 
 
