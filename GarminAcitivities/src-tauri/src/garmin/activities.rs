@@ -214,6 +214,11 @@ impl GarminActivityClient {
         if let Some(ref cookies) = client.cookie_header {
             req = req.header("Cookie", cookies);
         }
+        if let Some(ref csrf) = client.csrf_token {
+            if !csrf.is_empty() {
+                req = req.header("connect-csrf-token", csrf);
+            }
+        }
 
         let response = req.send().await?;
 
@@ -255,7 +260,49 @@ impl GarminActivityClient {
         }
 
         eprintln!("fetch_activities raw JSON len: {}, preview: {}", trimmed.len(), &trimmed[..std::cmp::min(150, trimmed.len())]);
-        let records = Self::parse_activities(trimmed, user_id, client.region.tld())?;
+        let mut records = Self::parse_activities(trimmed, user_id, client.region.tld())?;
+
+        // 兜底回退：若 /proxy/ 返回空字典 {}，尝试直接请求根域路径 /activitylist-service/...
+        if records.is_empty() && trimmed == "{}" {
+            let direct_url = format!(
+                "{}/activitylist-service/activities/search/activities?start={}&limit={}",
+                client.region.connect_host(),
+                start.max(0),
+                limit.max(1)
+            );
+            let mut direct_req = client
+                .http_client
+                .get(&direct_url)
+                .header("Referer", format!("{}/app", client.region.connect_host()))
+                .header("Accept", "application/json, text/plain, */*")
+                .header("DI-Backend", "connectapi.garmin.com");
+
+            if let Some(ref jwt) = client.jwt_token {
+                direct_req = direct_req.header("Authorization", format!("Bearer {}", jwt));
+            }
+            if let Some(ref cookies) = client.cookie_header {
+                direct_req = direct_req.header("Cookie", cookies);
+            }
+            if let Some(ref csrf) = client.csrf_token {
+                if !csrf.is_empty() {
+                    direct_req = direct_req.header("connect-csrf-token", csrf);
+                }
+            }
+
+            if let Ok(direct_resp) = direct_req.send().await {
+                if direct_resp.status().is_success() {
+                    if let Ok(direct_text) = direct_resp.text().await {
+                        let direct_trimmed = direct_text.trim();
+                        if !direct_trimmed.starts_with('<') && !direct_trimmed.is_empty() {
+                            if let Ok(recs) = Self::parse_activities(direct_trimmed, user_id, client.region.tld()) {
+                                records = recs;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         eprintln!("Successfully parsed {} activities", records.len());
         Ok(records)
     }
