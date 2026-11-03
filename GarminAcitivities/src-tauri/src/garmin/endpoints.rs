@@ -10,8 +10,8 @@ impl GarminEndpoints {
         start: i64,
         limit: i64,
         activity_type: Option<&str>,
-        start_date: Option<&str>,
-        end_date: Option<&str>,
+        _start_date: Option<&str>,
+        _end_date: Option<&str>,
     ) -> String {
         let mut url = format!(
             "{}/modern/proxy/activitylist-service/activities/search/activities?start={}&limit={}",
@@ -23,18 +23,6 @@ impl GarminEndpoints {
         if let Some(t) = activity_type {
             if t != "all" && !t.is_empty() {
                 url.push_str(&format!("&activityType={}", t));
-            }
-        }
-
-        if let Some(s) = start_date {
-            if !s.is_empty() {
-                url.push_str(&format!("&startDate={}", s));
-            }
-        }
-
-        if let Some(e) = end_date {
-            if !e.is_empty() {
-                url.push_str(&format!("&endDate={}", e));
             }
         }
 
