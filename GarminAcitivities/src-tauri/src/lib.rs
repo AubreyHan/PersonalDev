@@ -38,6 +38,8 @@ pub fn run() {
         .manage(export_queue)
         .invoke_handler(tauri::generate_handler![
             auth_login,
+            auth_open_web_login,
+            auth_login_with_token,
             auth_submit_mfa,
             auth_get_current_user,
             auth_logout,
