@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useActivityStore } from "../store/activityStore";
 import { useExportStore } from "../store/exportStore";
-import { Calendar, Filter, RefreshCw } from "lucide-react";
+import { Calendar, Filter, RefreshCw, Zap } from "lucide-react";
 import { api } from "../api/client";
 
 const formatActivityTypeLabel = (typeKey: string): string => {
