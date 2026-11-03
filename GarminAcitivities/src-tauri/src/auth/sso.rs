@@ -286,6 +286,7 @@ impl SsoClient {
             .get(&profile_url)
             .header(REFERER, format!("{}/modern", self.region.connect_host()))
             .header("Accept", "application/json, text/plain, */*")
+            .header("DI-Backend", "connectapi.garmin.com")
             .send()
             .await?;
 
@@ -294,6 +295,11 @@ impl SsoClient {
                 "Failed to fetch profile: HTTP {}",
                 resp.status()
             )));
+        }
+
+        let body_text = resp.text().await?;
+        if body_text.trim_start().starts_with('<') {
+            return Err(SsoError::Other("Received HTML instead of JSON profile".to_string()));
         }
 
         #[derive(Deserialize)]
@@ -306,7 +312,7 @@ impl SsoClient {
             profile_image_url_medium: Option<String>,
         }
 
-        let raw: RawProfile = resp.json().await?;
+        let raw: RawProfile = serde_json::from_str(&body_text).map_err(|e| SsoError::Other(e.to_string()))?;
         let display_name = raw
             .display_name
             .or(raw.user_name)
