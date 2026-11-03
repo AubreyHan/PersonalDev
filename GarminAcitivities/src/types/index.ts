@@ -34,6 +34,8 @@ export interface ActivitiesPageResponse {
   totalCount: number;
   items: ActivityListItem[];
   fromCache: boolean;
+  availableTypes: string[];
+  syncError?: string;
 }
 
 export interface TaskProgressEvent {
