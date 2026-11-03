@@ -247,13 +247,77 @@ impl SsoClient {
     /// 消费 Service Ticket：调用 /modern?ticket=ST-xxxx，写入 Connect 核心 JWT/Cookie
     pub async fn consume_service_ticket(&self, ticket: &str) -> Result<(), SsoError> {
         let modern_url = format!("{}/modern?ticket={}", self.region.connect_host(), ticket);
-        let _ = self
+        let resp = self
             .http_client
             .get(&modern_url)
             .header(REFERER, self.region.signin_url())
             .send()
             .await?;
+
+        let status = resp.status();
+        if !status.is_success() && status.as_u16() != 302 {
+            // 回退尝试 /app?ticket= 端点
+            let app_url = format!("{}/app?ticket={}", self.region.connect_host(), ticket);
+            let app_resp = self
+                .http_client
+                .get(&app_url)
+                .header(REFERER, self.region.signin_url())
+                .send()
+                .await?;
+            if !app_resp.status().is_success() && app_resp.status().as_u16() != 302 {
+                return Err(SsoError::Other(format!(
+                    "Failed to consume ticket: modern status {}, app status {}",
+                    status,
+                    app_resp.status()
+                )));
+            }
+        }
         Ok(())
+    }
+
+    /// 拉取 Garmin 真实个人信息与显示名称
+    pub async fn fetch_user_profile(&self) -> Result<UserProfile, SsoError> {
+        let profile_url = format!(
+            "{}/modern/proxy/userprofile-service/userprofile/personal-information",
+            self.region.connect_host()
+        );
+        let resp = self
+            .http_client
+            .get(&profile_url)
+            .header(REFERER, format!("{}/modern", self.region.connect_host()))
+            .header("Accept", "application/json, text/plain, */*")
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(SsoError::Other(format!(
+                "Failed to fetch profile: HTTP {}",
+                resp.status()
+            )));
+        }
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct RawProfile {
+            display_name: Option<String>,
+            user_name: Option<String>,
+            full_name: Option<String>,
+            profile_image_url_large: Option<String>,
+            profile_image_url_medium: Option<String>,
+        }
+
+        let raw: RawProfile = resp.json().await?;
+        let display_name = raw
+            .display_name
+            .or(raw.user_name)
+            .unwrap_or_else(|| "GarminUser".to_string());
+
+        Ok(UserProfile {
+            display_name,
+            full_name: raw.full_name,
+            profile_image_url: raw.profile_image_url_large.or(raw.profile_image_url_medium),
+            region: self.region,
+        })
     }
 
     /// 从 HTML 中提取 CSRF Token
