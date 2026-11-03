@@ -21,3 +21,5 @@ uuid = { version = "1.8", features = ["v4"] }
 walkdir = "2.5"
 objc = "0.2"
 cocoa = "0.25"
+thiserror = "2.0"
+dirs = "6.0"
