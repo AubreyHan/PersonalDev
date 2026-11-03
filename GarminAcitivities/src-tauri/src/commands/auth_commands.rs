@@ -1,7 +1,6 @@
 use crate::auth::keychain;
 use crate::auth::session::AuthManager;
 use crate::auth::sso::{GarminRegion, LoginState, SsoClient, UserProfile};
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use url::Url;
