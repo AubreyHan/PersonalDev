@@ -219,10 +219,10 @@ def download_tiles(z, x_min, x_max, y_min, y_max, sat_dir, road_dir, use_road_ov
         url, out_path = item
         if os.path.exists(out_path) and os.path.getsize(out_path) > 100:
             return True
-        for attempt in range(3):
+        for attempt in range(2):
             try:
                 req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+                with urllib.request.urlopen(req, timeout=6, context=ctx) as resp:
                     data = resp.read()
                     if len(data) > 100:
                         with open(out_path, 'wb') as f:
@@ -233,7 +233,7 @@ def download_tiles(z, x_min, x_max, y_min, y_max, sat_dir, road_dir, use_road_ov
         return False
 
     ok_count = 0
-    with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=36) as ex:
         for res in ex.map(fetch_one, tasks):
             if res:
                 ok_count += 1
