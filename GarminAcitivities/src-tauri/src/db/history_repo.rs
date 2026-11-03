@@ -378,6 +378,26 @@ pub mod tests {
         assert_eq!(items[0].activity_id, 1002); // 按时间倒序
         assert!(!items[0].is_exported);
 
+        // 验证按日期范围动态提取运动类型
+        let types_all = HistoryRepo::query_activity_types_in_range(&conn, None, None).unwrap();
+        assert_eq!(types_all, vec!["cycling".to_string(), "running".to_string()]);
+
+        // 筛选仅包含 2026-11-01 (running)
+        let types_day1 = HistoryRepo::query_activity_types_in_range(
+            &conn,
+            Some("2026-11-01"),
+            Some("2026-11-01"),
+        ).unwrap();
+        assert_eq!(types_day1, vec!["running".to_string()]);
+
+        // 筛选仅包含 2026-11-02 (cycling)
+        let types_day2 = HistoryRepo::query_activity_types_in_range(
+            &conn,
+            Some("2026-11-02"),
+            Some("2026-11-02"),
+        ).unwrap();
+        assert_eq!(types_day2, vec!["cycling".to_string()]);
+
         // 验证分类过滤
         let (total_run, run_items) = HistoryRepo::query_activities_page(&conn, &ActivityQuery {
             start: 0,
