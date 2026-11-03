@@ -312,7 +312,28 @@ pub async fn auth_submit_mfa(
 pub async fn auth_get_current_user(
     auth_manager: State<'_, AuthManager>,
 ) -> Result<CurrentUserResponse, String> {
-    let user = auth_manager.get_current_user().await;
+    let mut user = auth_manager.get_current_user().await;
+
+    // 若内存中暂无会话，尝试从钥匙串恢复已持久化的 session_cookie
+    if user.is_none() {
+        if let Ok(Some(cookie_str)) = keychain::get_credential("session_cookie") {
+            let reg = GarminRegion::Global;
+            let client = SsoClient::new(reg);
+            if let Ok(url) = reg.connect_host().parse::<Url>() {
+                for part in cookie_str.split(';') {
+                    let trimmed = part.trim();
+                    if !trimmed.is_empty() {
+                        client.cookie_store.add_cookie_str(trimmed, &url);
+                    }
+                }
+            }
+            if let Ok(profile) = client.fetch_user_profile().await {
+                auth_manager.set_logged_in(client, profile.clone()).await;
+                user = Some(profile);
+            }
+        }
+    }
+
     Ok(CurrentUserResponse {
         is_logged_in: user.is_some(),
         user,
