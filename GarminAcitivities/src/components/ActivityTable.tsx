@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { useActivityStore } from "../store/activityStore";
+import { useAuthStore } from "../store/authStore";
 import { useExportStore } from "../store/exportStore";
 import { api } from "../api/client";
-import { CheckCircle2, Download, FolderOpen, Layers } from "lucide-react";
+import { CheckCircle2, Download, FolderOpen, Layers, AlertCircle } from "lucide-react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 export const ActivityTable: React.FC = () => {
@@ -13,9 +14,11 @@ export const ActivityTable: React.FC = () => {
     selectAll,
     clearSelection,
     isLoading,
+    syncError,
     setQuery,
     fetchActivities,
   } = useActivityStore();
+  const { user, openWebLogin } = useAuthStore();
   const { openDrawer } = useExportStore();
 
   const [isMerging, setIsMerging] = useState(false);
