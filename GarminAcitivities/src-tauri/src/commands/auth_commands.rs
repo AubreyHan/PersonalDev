@@ -164,54 +164,58 @@ pub async fn auth_open_web_login(
         })();
     "#)
     .on_navigation(move |nav_url| {
-        if nav_url.scheme() == "tauri-bridge" {
-            let mut access_token = None;
-            let mut csrf_token = None;
-            for (k, v) in nav_url.query_pairs() {
-                if k == "token" {
-                    access_token = Some(v.to_string());
-                } else if k == "csrf" {
-                    csrf_token = Some(v.to_string());
-                }
-            }
+        let u = nav_url.as_str();
+        eprintln!("SSO Window Navigating: {}", u);
 
-            if let Some(token) = access_token {
-                if !is_handled_for_nav.swap(true, std::sync::atomic::Ordering::SeqCst) {
-                    let app_in = app_handle_for_nav.clone();
-                    let auth_in = auth_mgr_for_nav.clone();
-                    let csrf_in = csrf_token.clone();
+        if let Some(pos) = u.find("tauri_debug=") {
+            let encoded = &u[pos + "tauri_debug=".len()..];
+            let decoded = url::form_urlencoded::parse(encoded.as_bytes())
+                .next()
+                .map(|(k, _)| k.to_string())
+                .unwrap_or_else(|| encoded.to_string());
+            eprintln!(">>> LOCALSTORAGE DEBUG: {}", decoded);
+            return false;
+        }
 
-                    tauri::async_runtime::spawn(async move {
-                        eprintln!(">>> CAPTURED REAL OAUTH ACCESS TOKEN! Token length: {}", token.len());
-                        let mut cookie_pairs = Vec::new();
+        if let Some(pos) = u.find("tauri_token=") {
+            let encoded = &u[pos + "tauri_token=".len()..];
+            let decoded = url::form_urlencoded::parse(encoded.as_bytes())
+                .next()
+                .map(|(k, _)| k.to_string())
+                .unwrap_or_else(|| encoded.to_string());
+
+            if !decoded.is_empty() && !is_handled_for_nav.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                let token = decoded.clone();
+                eprintln!(">>> CAPTURED REAL OAUTH TOKEN via HTTPS: length {}", token.len());
+                let app_in = app_handle_for_nav.clone();
+                let auth_in = auth_mgr_for_nav.clone();
+
+                tauri::async_runtime::spawn(async move {
+                    let mut cookie_pairs = Vec::new();
+                    if let Some(w) = app_in.get_webview_window("garmin_sso_window") {
+                        if let Ok(cookies) = w.cookies() {
+                            for c in cookies {
+                                cookie_pairs.push(format!("{}={}", c.name(), c.value()));
+                            }
+                        }
+                    }
+                    let full_cookie_str = cookie_pairs.join("; ");
+                    let client = SsoClient::new(reg).with_tokens(
+                        Some(token.clone()),
+                        Some(full_cookie_str.clone()),
+                        None,
+                    );
+
+                    if let Ok(profile) = client.fetch_user_profile().await {
+                        let _ = keychain::save_credential("session_cookie", &full_cookie_str);
+                        let _ = keychain::save_credential("jwt_token", &token);
+                        auth_in.set_logged_in(client, profile.clone()).await;
+                        let _ = app_in.emit("auth:login-success", profile);
                         if let Some(w) = app_in.get_webview_window("garmin_sso_window") {
-                            if let Ok(cookies) = w.cookies() {
-                                for c in cookies {
-                                    cookie_pairs.push(format!("{}={}", c.name(), c.value()));
-                                }
-                            }
+                            let _ = w.close();
                         }
-                        let full_cookie_str = cookie_pairs.join("; ");
-                        let client = SsoClient::new(reg).with_tokens(
-                            Some(token.clone()),
-                            Some(full_cookie_str.clone()),
-                            csrf_in.clone(),
-                        );
-
-                        if let Ok(profile) = client.fetch_user_profile().await {
-                            let _ = keychain::save_credential("session_cookie", &full_cookie_str);
-                            let _ = keychain::save_credential("jwt_token", &token);
-                            if let Some(ref c) = csrf_in {
-                                let _ = keychain::save_credential("csrf_token", c);
-                            }
-                            auth_in.set_logged_in(client, profile.clone()).await;
-                            let _ = app_in.emit("auth:login-success", profile);
-                            if let Some(w) = app_in.get_webview_window("garmin_sso_window") {
-                                let _ = w.close();
-                            }
-                        }
-                    });
-                }
+                    }
+                });
             }
             return false;
         }
@@ -222,7 +226,6 @@ pub async fn auth_open_web_login(
             let u = payload.url().as_str();
             eprintln!("SSO Window Page: Finished loading {}", u);
 
-            // 1. 严格校验当前 URL 路径是否已真正进入用户控制台（必须不是登录页，且不是带有 service 参数的跳转入口）
             let is_on_dashboard = if let Ok(parsed) = Url::parse(u) {
                 let path = parsed.path();
                 (path.starts_with("/modern") || path.starts_with("/app"))
@@ -234,20 +237,37 @@ pub async fn auth_open_web_login(
             };
 
             if is_on_dashboard {
-                // 主动触发 WebKit 内部 token 提取并回传 bridge
+                // 探测 localStorage 中的所有内容并通过 HTTPS query 回传
                 let eval_js = r#"
                     (function() {
                         try {
-                            var raw = localStorage.getItem('token');
-                            if (raw) {
-                                var p = JSON.parse(raw);
-                                var act = p.access_token || p.token;
-                                if (act && act.length > 20) {
-                                    var csrf = (document.querySelector('meta[name="csrf-token"]') && document.querySelector('meta[name="csrf-token"]').content) || '';
-                                    window.location.href = 'tauri-bridge://auth?token=' + encodeURIComponent(act) + '&csrf=' + encodeURIComponent(csrf);
+                            var token = null;
+                            for (var i = 0; i < localStorage.length; i++) {
+                                var k = localStorage.key(i);
+                                if (k && (k === 'token' || k.includes('token') || k.includes('auth'))) {
+                                    try {
+                                        var p = JSON.parse(localStorage.getItem(k));
+                                        var act = p.access_token || p.token || (typeof p === 'string' ? p : null);
+                                        if (act && typeof act === 'string' && act.length > 20) {
+                                            token = act;
+                                            break;
+                                        }
+                                    } catch(e) {}
                                 }
                             }
-                        } catch(e) {}
+                            if (token) {
+                                window.location.href = 'https://connect.garmin.com/app?tauri_token=' + encodeURIComponent(token);
+                            } else {
+                                var sample = {};
+                                for (var j = 0; j < localStorage.length; j++) {
+                                    var key = localStorage.key(j);
+                                    sample[key] = (localStorage.getItem(key) || '').slice(0, 80);
+                                }
+                                window.location.href = 'https://connect.garmin.com/app?tauri_debug=' + encodeURIComponent(JSON.stringify(sample));
+                            }
+                        } catch(err) {
+                            window.location.href = 'https://connect.garmin.com/app?tauri_debug=' + encodeURIComponent(JSON.stringify({ error: err.toString() }));
+                        }
                     })();
                 "#;
                 let _ = win.eval(eval_js);
