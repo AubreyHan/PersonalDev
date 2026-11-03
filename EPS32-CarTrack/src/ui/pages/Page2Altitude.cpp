@@ -44,7 +44,17 @@ void Page2Altitude::render(M5Canvas& canvas, const SystemContext& ctx) {
     canvas.setTextColor(UiColors::COLOR_PRIMARY);
     char altBuf[32];
     snprintf(altBuf, sizeof(altBuf), "%.1f m", ctx.trip.currentAltitudeM);
-    canvas.drawString(altBuf, 210, 68);
+    canvas.drawString(altBuf, 210, 64);
+
+    canvas.setTextSize(2);
+    canvas.setTextColor(UiColors::COLOR_MUTED);
+    char calibBuf[64];
+    if (ctx.gnss.isValid && ctx.gnss.altitudeMeters > 0.0f) {
+        snprintf(calibBuf, sizeof(calibBuf), "GPS 3D Ref: %.1fm | Sea P0: %.1fhPa", ctx.gnss.altitudeMeters, ctx.baro.seaLevelPressureHpa);
+    } else {
+        snprintf(calibBuf, sizeof(calibBuf), "Baro P: %.1fhPa | Sea P0: %.1fhPa", ctx.baro.pressureHpa, ctx.baro.seaLevelPressureHpa);
+    }
+    canvas.drawString(calibBuf, 210, 116);
 
     canvas.setTextDatum(top_right);
     canvas.setTextSize(2);
