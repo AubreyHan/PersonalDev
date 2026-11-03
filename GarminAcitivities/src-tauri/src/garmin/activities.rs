@@ -70,9 +70,28 @@ impl GarminActivityRaw {
 pub struct GarminActivityClient;
 
 impl GarminActivityClient {
-    /// 解析从 Garmin search API 接收到的 JSON 数组
+    /// 解析从 Garmin search API 接收到的 JSON 响应（支持裸数组或包装字典）
     pub fn parse_activities(json_str: &str, user_id: &str, region: &str) -> Result<Vec<ActivityRecord>, serde_json::Error> {
-        let raw_list: Vec<GarminActivityRaw> = serde_json::from_str(json_str)?;
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum ActivityPayload {
+            Array(Vec<GarminActivityRaw>),
+            Wrapped {
+                #[serde(rename = "activityList")]
+                activity_list: Vec<GarminActivityRaw>,
+            },
+            WrappedAlt {
+                activities: Vec<GarminActivityRaw>,
+            },
+        }
+
+        let payload: ActivityPayload = serde_json::from_str(json_str)?;
+        let raw_list = match payload {
+            ActivityPayload::Array(list) => list,
+            ActivityPayload::Wrapped { activity_list } => activity_list,
+            ActivityPayload::WrappedAlt { activities } => activities,
+        };
+
         let records = raw_list
             .into_iter()
             .map(|raw| raw.to_activity_record(user_id, region))
