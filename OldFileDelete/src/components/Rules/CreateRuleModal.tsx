@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { X, Sparkles, Sliders } from "lucide-react";
+import { X, Sliders } from "lucide-react";
 import { FolderRule, RuleAction, TimeUnit } from "../../types";
 
 interface Props {
   isOpen: boolean;
-  folderId: string;
+  folderId?: string;
   initialRule?: FolderRule | null;
   onClose: () => void;
   onSave: (rule: FolderRule) => void;
@@ -12,7 +12,6 @@ interface Props {
 
 export const CreateRuleModal: React.FC<Props> = ({
   isOpen,
-  folderId,
   initialRule,
   onClose,
   onSave,

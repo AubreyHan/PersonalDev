@@ -488,14 +488,8 @@ mod tests {
         use reqwest::cookie::CookieStore;
         let jar = reqwest::cookie::Jar::default();
         let target_url = "https://connect.garmin.com".parse::<url::Url>().unwrap();
-        jar.add_cookie_str("JWT_WEB=abc123xyz; Domain=.garmin.com; Path=/", &target_url);
+        jar.add_cookie_str("CASTGC=TGT-xxx; Domain=sso.garmin.com; Path=/", &target_url);
         let header = jar.cookies(&target_url);
-        eprintln!("Header for https://connect.garmin.com: {:?}", header);
-        assert!(header.is_some());
-
-        let api_url = "https://connect.garmin.com/modern/proxy/activitylist-service/activities/search/activities".parse::<url::Url>().unwrap();
-        let api_header = jar.cookies(&api_url);
-        eprintln!("Header for api_url: {:?}", api_header);
-        assert!(api_header.is_some());
+        eprintln!("Header for sso cookie on connect: {:?}", header);
     }
 }

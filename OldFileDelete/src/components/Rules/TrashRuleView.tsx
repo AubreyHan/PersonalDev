@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Trash2, Clock, HardDrive, ShieldAlert } from "lucide-react";
+import { Clock, HardDrive, ShieldAlert } from "lucide-react";
 import { useFolderStore } from "../../store/useFolderStore";
 
 export const TrashRuleView: React.FC = () => {
