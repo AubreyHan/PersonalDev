@@ -153,8 +153,7 @@ pub async fn auth_open_web_login(
                         }
                     }
                     if (token) {
-                        var csrf = (document.querySelector('meta[name="csrf-token"]') && document.querySelector('meta[name="csrf-token"]').content) || '';
-                        window.location.href = 'tauri-bridge://auth?token=' + encodeURIComponent(token) + '&csrf=' + encodeURIComponent(csrf);
+                        window.location.href = 'https://connect.garmin.com/app?tauri_token=' + encodeURIComponent(token);
                         return true;
                     }
                 } catch(e) {}
