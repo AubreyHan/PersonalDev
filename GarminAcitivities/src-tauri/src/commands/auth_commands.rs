@@ -52,12 +52,12 @@ pub async fn auth_login(
 
     match client.login(&payload.email, &payload.password).await {
         Ok(LoginState::Success { ticket: _ }) => {
-            let user = UserProfile {
+            let user = client.fetch_user_profile().await.unwrap_or_else(|_| UserProfile {
                 display_name: payload.email.split('@').next().unwrap_or("GarminUser").to_string(),
                 full_name: None,
                 profile_image_url: None,
                 region,
-            };
+            });
 
             // 存储钥匙串凭据
             if payload.remember_me {
