@@ -168,7 +168,7 @@ def choose_optimal_zoom(lats, lons, use_gcj02):
         y_min, y_max = int(math.floor(ty0)), int(math.floor(ty1))
         cols = x_max - x_min + 1
         rows = y_max - y_min + 1
-        if max(cols, rows) <= 22 and cols * rows <= 360:
+        if max(cols, rows) <= 26 and cols * rows <= 400:
             best_z = z
             break
 
