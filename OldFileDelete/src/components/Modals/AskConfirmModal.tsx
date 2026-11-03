@@ -1,5 +1,5 @@
 import React from "react";
-import { AlertCircle, Trash2, ShieldCheck, FileQuestion } from "lucide-react";
+import { Trash2, ShieldCheck, FileQuestion } from "lucide-react";
 import { useAskQueueStore } from "../../store/useAskQueueStore";
 
 export const AskConfirmModal: React.FC = () => {
