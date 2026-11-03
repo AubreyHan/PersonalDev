@@ -1,5 +1,6 @@
 #![allow(unused_imports, dead_code)]
 
+pub mod autostart;
 pub mod date_added;
 pub mod debounce_queue;
 pub mod fsevents_watcher;
@@ -8,6 +9,7 @@ pub mod pattern_matcher;
 pub mod trash_controller;
 pub mod waterfall_engine;
 
+pub use autostart::{get_macos_autostart_status, set_macos_autostart};
 pub use date_added::get_date_added;
 pub use debounce_queue::DebounceQueue;
 pub use fsevents_watcher::{spawn_hourly_heartbeat, FsEventsWatcher};
