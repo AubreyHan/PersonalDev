@@ -116,11 +116,7 @@ pub async fn auth_open_web_login(
         return Ok(());
     }
 
-    let app_handle = app.clone();
-    let auth_mgr = (*auth_manager).clone();
     let is_handled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let is_handled_for_load = is_handled.clone();
-
     let app_handle_for_nav = app.clone();
     let auth_mgr_for_nav = (*auth_manager).clone();
     let is_handled_for_nav = is_handled.clone();
