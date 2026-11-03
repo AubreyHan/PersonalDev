@@ -287,30 +287,30 @@ impl SsoClient {
 
     /// 拉取 Garmin 真实个人信息与显示名称
     pub async fn fetch_user_profile(&self) -> Result<UserProfile, SsoError> {
+        let make_request = |url: &str| {
+            let mut req = self
+                .http_client
+                .get(url)
+                .header(REFERER, format!("{}/app", self.region.connect_host()))
+                .header("Accept", "application/json, text/plain, */*")
+                .header("DI-Backend", "connectapi.garmin.com");
+
+            if let Some(ref jwt) = self.jwt_token {
+                req = req.header("Authorization", format!("Bearer {}", jwt));
+            }
+            if let Some(ref cookies) = self.cookie_header {
+                req = req.header("Cookie", cookies);
+            }
+            req
+        };
+
+        // 尝试端点 1: personal-information
         let profile_url = format!(
             "{}/modern/proxy/userprofile-service/userprofile/personal-information",
             self.region.connect_host()
         );
-        let resp = self
-            .http_client
-            .get(&profile_url)
-            .header(REFERER, format!("{}/modern", self.region.connect_host()))
-            .header("Accept", "application/json, text/plain, */*")
-            .header("DI-Backend", "connectapi.garmin.com")
-            .send()
-            .await?;
-
-        if !resp.status().is_success() {
-            return Err(SsoError::Other(format!(
-                "Failed to fetch profile: HTTP {}",
-                resp.status()
-            )));
-        }
-
-        let body_text = resp.text().await?;
-        if body_text.trim_start().starts_with('<') {
-            return Err(SsoError::Other("Received HTML instead of JSON profile".to_string()));
-        }
+        let resp = make_request(&profile_url).send().await?;
+        let body_text = resp.text().await.unwrap_or_default();
 
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -322,18 +322,65 @@ impl SsoClient {
             profile_image_url_medium: Option<String>,
         }
 
-        let raw: RawProfile = serde_json::from_str(&body_text).map_err(|e| SsoError::Other(e.to_string()))?;
-        let display_name = raw
-            .display_name
-            .or(raw.user_name)
-            .unwrap_or_else(|| "GarminUser".to_string());
+        if !body_text.trim_start().starts_with('<') && !body_text.trim().is_empty() {
+            if let Ok(raw) = serde_json::from_str::<RawProfile>(&body_text) {
+                let display_name = raw
+                    .display_name
+                    .or(raw.user_name)
+                    .unwrap_or_else(|| "GarminUser".to_string());
 
-        Ok(UserProfile {
-            display_name,
-            full_name: raw.full_name,
-            profile_image_url: raw.profile_image_url_large.or(raw.profile_image_url_medium),
-            region: self.region,
-        })
+                return Ok(UserProfile {
+                    display_name,
+                    full_name: raw.full_name,
+                    profile_image_url: raw.profile_image_url_large.or(raw.profile_image_url_medium),
+                    region: self.region,
+                });
+            }
+        }
+
+        // 尝试端点 2: socialProfile
+        let social_url = format!(
+            "{}/modern/proxy/userprofile-service/socialProfile",
+            self.region.connect_host()
+        );
+        let social_resp = make_request(&social_url).send().await?;
+        let social_body = social_resp.text().await.unwrap_or_default();
+        if !social_body.trim_start().starts_with('<') && !social_body.trim().is_empty() {
+            if let Ok(raw) = serde_json::from_str::<RawProfile>(&social_body) {
+                let display_name = raw
+                    .display_name
+                    .or(raw.user_name)
+                    .unwrap_or_else(|| "GarminUser".to_string());
+
+                return Ok(UserProfile {
+                    display_name,
+                    full_name: raw.full_name,
+                    profile_image_url: raw.profile_image_url_large.or(raw.profile_image_url_medium),
+                    region: self.region,
+                });
+            }
+        }
+
+        // 尝试端点 3: 验证 activitylist 是否可访问（只要能返回活动列表 JSON 说明凭据已有效）
+        let activity_check_url = format!(
+            "{}/modern/proxy/activitylist-service/activities/search/activities?start=0&limit=1",
+            self.region.connect_host()
+        );
+        let act_resp = make_request(&activity_check_url).send().await?;
+        let act_body = act_resp.text().await.unwrap_or_default();
+        if !act_body.trim_start().starts_with('<') && (act_body.starts_with('[') || act_body.starts_with('{')) {
+            return Ok(UserProfile {
+                display_name: "GarminUser".to_string(),
+                full_name: None,
+                profile_image_url: None,
+                region: self.region,
+            });
+        }
+
+        Err(SsoError::Other(format!(
+            "Garmin API returned HTML response (session might not be established yet). Preview: {}",
+            &body_text[..std::cmp::min(100, body_text.len())]
+        )))
     }
 
     /// 从 HTML 中提取 CSRF Token
