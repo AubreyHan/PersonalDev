@@ -36,6 +36,13 @@ impl GarminRegion {
         }
     }
 
+    pub fn portal_signin_url(&self) -> String {
+        let tld = self.tld();
+        format!(
+            "https://connect.garmin.{tld}/signin/?service=https%3A%2F%2Fconnect.garmin.{tld}%2Fmodern"
+        )
+    }
+
     pub fn signin_url(&self) -> String {
         let tld = self.tld();
         format!(
