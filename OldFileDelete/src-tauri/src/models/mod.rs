@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 pub mod folder;
 pub mod match_result;
 pub mod rule;
