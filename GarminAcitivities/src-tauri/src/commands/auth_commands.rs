@@ -106,7 +106,7 @@ pub async fn auth_open_web_login(
     auth_manager: State<'_, AuthManager>,
 ) -> Result<(), String> {
     let reg = if region == "cn" { GarminRegion::Cn } else { GarminRegion::Global };
-    let signin_url = reg.signin_url();
+    let signin_url = reg.portal_signin_url();
     let parsed_url: Url = signin_url.parse().map_err(|e: url::ParseError| e.to_string())?;
 
     // 如果之前已有残留登录窗口，先关闭
