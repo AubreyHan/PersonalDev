@@ -154,9 +154,10 @@ pub async fn auth_open_web_login(
             if is_on_dashboard {
                 if let Ok(cookie_list) = win.cookies() {
                     let mut has_jwt_token = false;
+                    let mut jwt_token_val: Option<String> = None;
                     let mut cookie_pairs = Vec::new();
                     let target_url: Url = reg.connect_host().parse().unwrap();
-                    let client = SsoClient::new(reg);
+                    let base_client = SsoClient::new(reg);
 
                     for cookie in cookie_list {
                         let name = cookie.name().to_string();
@@ -166,6 +167,7 @@ pub async fn auth_open_web_login(
                         eprintln!("WebKit Cookie: {} (domain: {}, path: {})", name, domain, path);
 
                         if name == "JWT_WEB" && !value.is_empty() {
+                            jwt_token_val = Some(value.clone());
                             has_jwt_token = true;
                         }
 
@@ -174,25 +176,31 @@ pub async fn auth_open_web_login(
                         let cookie_host = format!("https://{}", clean_domain);
                         if let Ok(cookie_url) = Url::parse(&cookie_host) {
                             let cookie_str = format!("{}={}; Domain={}; Path={}", name, value, domain, path);
-                            client.cookie_store.add_cookie_str(&cookie_str, &cookie_url);
+                            base_client.cookie_store.add_cookie_str(&cookie_str, &cookie_url);
                         }
                         // 兜底直接关联至 Connect 域
-                        client.cookie_store.add_cookie_str(&format!("{}={}", name, value), &target_url);
+                        base_client.cookie_store.add_cookie_str(&format!("{}={}", name, value), &target_url);
 
                         cookie_pairs.push(format!("{}={}", name, value));
                     }
+
+                    let full_cookie_str = cookie_pairs.join("; ");
+                    let client = base_client.with_tokens(jwt_token_val.clone(), Some(full_cookie_str.clone()));
 
                     if has_jwt_token && !is_handled_for_load.swap(true, std::sync::atomic::Ordering::SeqCst) {
                         let app_inner = app_handle.clone();
                         let auth_mgr_inner = auth_mgr.clone();
                         let is_handled_reset = is_handled_for_load.clone();
-                        let full_cookie_str = cookie_pairs.join("; ");
+                        let jwt_for_save = jwt_token_val.clone();
 
                         tauri::async_runtime::spawn(async move {
                             match client.fetch_user_profile().await {
                                 Ok(profile) => {
                                     eprintln!("Successfully fetched user profile: {}", profile.display_name);
                                     let _ = keychain::save_credential("session_cookie", &full_cookie_str);
+                                    if let Some(jwt) = jwt_for_save {
+                                        let _ = keychain::save_credential("jwt_token", &jwt);
+                                    }
                                     auth_mgr_inner.set_logged_in(client, profile.clone()).await;
                                     let _ = app_inner.emit("auth:login-success", profile);
 
