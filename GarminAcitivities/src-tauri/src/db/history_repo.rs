@@ -243,6 +243,55 @@ impl HistoryRepo {
         Ok((total_count, items))
     }
 
+    /// 动态查询指定日期区间内实际存在的运动类型列表（去重升序）
+    pub fn query_activity_types_in_range(
+        conn: &Connection,
+        start_date: Option<&str>,
+        end_date: Option<&str>,
+    ) -> Result<Vec<String>> {
+        let mut where_clauses = Vec::new();
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+        if let Some(start) = start_date {
+            let trimmed = start.trim();
+            if !trimmed.is_empty() {
+                let start_dt = format!("{} 00:00:00", trimmed);
+                where_clauses.push("start_time_local >= ?");
+                params.push(Box::new(start_dt));
+            }
+        }
+
+        if let Some(end) = end_date {
+            let trimmed = end.trim();
+            if !trimmed.is_empty() {
+                let end_dt = format!("{} 23:59:59", trimmed);
+                where_clauses.push("start_time_local <= ?");
+                params.push(Box::new(end_dt));
+            }
+        }
+
+        let where_sql = if where_clauses.is_empty() {
+            "".to_string()
+        } else {
+            format!("WHERE {}", where_clauses.join(" AND "))
+        };
+
+        let sql = format!(
+            "SELECT DISTINCT activity_type FROM activities {} ORDER BY activity_type ASC",
+            where_sql
+        );
+
+        let params_slice: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(params_slice), |r| r.get(0))?;
+
+        let mut types = Vec::new();
+        for t in rows {
+            types.push(t?);
+        }
+        Ok(types)
+    }
+
     /// 读取系统设置
     pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
         let mut stmt = conn.prepare("SELECT value FROM app_settings WHERE key = ?1")?;
