@@ -135,7 +135,7 @@ pub async fn auth_open_web_login(
                 let app_inner = app_handle.clone();
                 let auth_mgr_inner = auth_mgr.clone();
 
-                tokio::spawn(async move {
+                tauri::async_runtime::spawn(async move {
                     let client = SsoClient::new(reg);
                     let _ = client.consume_service_ticket(&ticket).await;
                     let user = UserProfile {
