@@ -70,32 +70,115 @@ impl GarminActivityRaw {
 pub struct GarminActivityClient;
 
 impl GarminActivityClient {
-    /// 解析从 Garmin search API 接收到的 JSON 响应（支持裸数组或包装字典）
+    /// 解析从 Garmin search API 接收到的 JSON 响应（支持裸数组、各种包裹格式与宽容字段解析）
     pub fn parse_activities(json_str: &str, user_id: &str, region: &str) -> Result<Vec<ActivityRecord>, serde_json::Error> {
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum ActivityPayload {
-            Array(Vec<GarminActivityRaw>),
-            Wrapped {
-                #[serde(rename = "activityList")]
-                activity_list: Vec<GarminActivityRaw>,
-            },
-            WrappedAlt {
-                activities: Vec<GarminActivityRaw>,
-            },
-        }
+        let root: serde_json::Value = serde_json::from_str(json_str)?;
 
-        let payload: ActivityPayload = serde_json::from_str(json_str)?;
-        let raw_list = match payload {
-            ActivityPayload::Array(list) => list,
-            ActivityPayload::Wrapped { activity_list } => activity_list,
-            ActivityPayload::WrappedAlt { activities } => activities,
+        // 提取活动列表数组（可能是顶层数组，也可能是包装对象中的字段）
+        let raw_array_opt = if let Some(arr) = root.as_array() {
+            Some(arr)
+        } else if let Some(obj) = root.as_object() {
+            obj.get("activityList")
+                .or_else(|| obj.get("activities"))
+                .or_else(|| obj.get("activityListEntries"))
+                .and_then(|v| v.as_array())
+        } else {
+            None
         };
 
-        let records = raw_list
-            .into_iter()
-            .map(|raw| raw.to_activity_record(user_id, region))
-            .collect();
+        let raw_array = match raw_array_opt {
+            Some(arr) => arr,
+            None => {
+                // 如果返回的是空的字典如 `{}`，说明当前范围没有活动记录
+                return Ok(Vec::new());
+            }
+        };
+
+        let mut records = Vec::new();
+        for item in raw_array {
+            // 提取 activity_id (支持 i64, u64 或 string)
+            let activity_id = item
+                .get("activityId")
+                .and_then(|v| v.as_i64().or_else(|| v.as_u64().map(|u| u as i64)).or_else(|| v.as_str().and_then(|s| s.parse().ok())));
+
+            let activity_id = match activity_id {
+                Some(id) => id,
+                None => continue, // 跳过无有效 ID 的异常项
+            };
+
+            let activity_name = item
+                .get("activityName")
+                .and_then(|v| v.as_str())
+                .unwrap_or("未命名活动")
+                .to_string();
+
+            // 提取运动类型，可能为对象 {"typeKey": "running"} 或直接字符串 "running"
+            let activity_type = item
+                .get("activityType")
+                .and_then(|v| {
+                    if let Some(s) = v.as_str() {
+                        Some(s.to_string())
+                    } else if let Some(obj) = v.as_object() {
+                        obj.get("typeKey").and_then(|k| k.as_str()).map(|s| s.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| "other".to_string());
+
+            let start_time_local = item
+                .get("startTimeLocal")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            let distance_meters = item.get("distance").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let duration_seconds = item
+                .get("duration")
+                .and_then(|v| v.as_f64())
+                .map(|d| d.round() as i64)
+                .unwrap_or(0);
+            let avg_speed_mps = item
+                .get("averageSpeed")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
+
+            let avg_hr_bpm = item
+                .get("averageHR")
+                .or_else(|| item.get("averageHeartRate"))
+                .and_then(|v| v.as_f64())
+                .map(|hr| hr.round() as i32);
+
+            let max_hr_bpm = item
+                .get("maxHR")
+                .or_else(|| item.get("maxHeartRate"))
+                .and_then(|v| v.as_f64())
+                .map(|hr| hr.round() as i32);
+
+            let elevation_gain_m = item
+                .get("elevationGain")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
+
+            let raw_json = serde_json::to_string(item).ok();
+
+            records.push(ActivityRecord {
+                activity_id,
+                user_id: user_id.to_string(),
+                region: region.to_string(),
+                activity_name,
+                activity_type,
+                start_time_local,
+                distance_meters,
+                duration_seconds,
+                avg_speed_mps,
+                avg_hr_bpm,
+                max_hr_bpm,
+                elevation_gain_m,
+                raw_json,
+            });
+        }
+
         Ok(records)
     }
 
