@@ -204,40 +204,59 @@ def download_tiles(z, x_min, x_max, y_min, y_max, sat_dir, road_dir, use_road_ov
     ctx.verify_mode = ssl.CERT_NONE
 
     tasks = []
+    cached_count = 0
     for y in range(y_min, y_max + 1):
         for x in range(x_min, x_max + 1):
             sat_out = os.path.join(sat_dir, f"{z}_{x}_{y}.jpg")
             sat_url = f"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-            tasks.append((sat_url, sat_out))
+            if os.path.exists(sat_out) and os.path.getsize(sat_out) > 100:
+                cached_count += 1
+            else:
+                tasks.append((sat_url, sat_out))
             if use_road_overlay and z <= 16:
                 road_out = os.path.join(road_dir, f"{z}_{x}_{y}.png")
                 srv = ((x + y) % 4) + 1
                 road_url = f"https://webst0{srv}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}"
-                tasks.append((road_url, road_out))
+                if os.path.exists(road_out) and os.path.getsize(road_out) > 100:
+                    cached_count += 1
+                else:
+                    tasks.append((road_url, road_out))
+
+    total_needed = cached_count + len(tasks)
+    if not tasks:
+        print(f"Map tiles 100% hit from local cache: {cached_count}/{total_needed} (z={z}, x={x_min}..{x_max}, y={y_min}..{y_max}).")
+        return
 
     def fetch_one(item):
         url, out_path = item
         if os.path.exists(out_path) and os.path.getsize(out_path) > 100:
             return True
+        tmp_path = f"{out_path}.tmp.{os.getpid()}"
         for attempt in range(2):
             try:
                 req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
                 with urllib.request.urlopen(req, timeout=6, context=ctx) as resp:
                     data = resp.read()
                     if len(data) > 100:
-                        with open(out_path, 'wb') as f:
+                        with open(tmp_path, 'wb') as f:
                             f.write(data)
+                        os.replace(tmp_path, out_path)
                         return True
             except Exception:
-                pass
+                try:
+                    if os.path.exists(tmp_path):
+                        os.remove(tmp_path)
+                except Exception:
+                    pass
         return False
 
-    ok_count = 0
+    dl_count = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=36) as ex:
         for res in ex.map(fetch_one, tasks):
             if res:
-                ok_count += 1
-    print(f"Downloaded/verified {ok_count}/{len(tasks)} map tiles (z={z}, x={x_min}..{x_max}, y={y_min}..{y_max}).")
+                dl_count += 1
+    ok_count = cached_count + dl_count
+    print(f"Map tiles ready: {ok_count}/{total_needed} (Local cache hit: {cached_count}, Newly downloaded: {dl_count}) [z={z}, x={x_min}..{x_max}, y={y_min}..{y_max}].")
 
 
 def is_valid_gpx_candidate(filepath):
