@@ -27,7 +27,7 @@ DevDoc/
 
 ## 已收录项目 (Projects)
 
-- [file-purger](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/file-purger/README.md)：基于 Tauri 2.x (Rust) + React 的轻量级系统托盘应用，定位为深度自定义通用文件清理与自动化管理引擎，支持多目录独立策略、正则/Glob 高级匹配、多样化处置动作（废纸篓/动态归档/Zip压缩/粉碎）与全能混合调度（定时 + 实时变动监听）。
+- [file-purger](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/file-purger/README.md)：专为 macOS 深度打造的轻量级纯菜单栏旧文件自动清理工具，支持父子目录防重叠、系统废纸篓 FIFO 容量控顶、置顶免死白名单、瀑布式优先规则（列出/保留/直接删除/逐一询问确认）与 FSEvents 内核级零压力监听。
 - [m5-vehicle-tracker](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/m5-vehicle-tracker/README.md)：基于 M5Stack Core2 + u-blox NEO-M9N 的车载高精度轨迹记录仪与多功能数字仪表系统。
 - [github-auto-sync](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/github-auto-sync/README.md)：基于 Tauri 2.0 (Rust) + React 的轻量级桌面系统托盘应用，支持多目录 Git 仓库自动递归发现、动态监听与 4 种模式策略化自动同步。
 - [qnap-photosphere](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/qnap-photosphere/README.md)：基于 Go + QPKG 原生打包的威联通 NAS 全能相册与资产清洗中枢，集成 Immich 协议兼容与 CPU 友好型 AI 整理。
