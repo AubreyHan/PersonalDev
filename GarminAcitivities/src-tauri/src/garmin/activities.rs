@@ -254,7 +254,9 @@ impl GarminActivityClient {
             ));
         }
 
+        eprintln!("fetch_activities raw JSON len: {}, preview: {}", trimmed.len(), &trimmed[..std::cmp::min(150, trimmed.len())]);
         let records = Self::parse_activities(trimmed, user_id, client.region.tld())?;
+        eprintln!("Successfully parsed {} activities", records.len());
         Ok(records)
     }
 }
