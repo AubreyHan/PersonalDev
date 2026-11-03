@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { listen } from "@tauri-apps/api/event";
 import { api } from "../api/client";
 import { GarminRegion, UserProfile } from "../types";
 
@@ -11,9 +12,12 @@ interface AuthState {
 
   checkAuth: () => Promise<void>;
   login: (region: GarminRegion, email: string, pass: string, remember: boolean) => Promise<boolean>;
+  openWebLogin: (region: GarminRegion) => Promise<void>;
+  loginWithToken: (region: GarminRegion, cookieStr: string) => Promise<boolean>;
   submitMfa: (code: string) => Promise<boolean>;
   logout: () => Promise<void>;
   clearError: () => void;
+  initAuthListener: () => Promise<() => void>;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -34,6 +38,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     } catch {
       set({ user: null, isLoggedIn: false, isLoading: false });
+    }
+  },
+
+  openWebLogin: async (region) => {
+    set({ isLoading: true, error: null });
+    try {
+      await api.openWebLogin(region);
+      set({ isLoading: false });
+    } catch (err: any) {
+      set({ error: err?.toString() || "打开登录窗口失败", isLoading: false });
+    }
+  },
+
+  loginWithToken: async (region, cookieStr) => {
+    set({ isLoading: true, error: null });
+    try {
+      const res = await api.loginWithToken(region, cookieStr);
+      if (res.success && res.user) {
+        set({ user: res.user, isLoggedIn: true, isLoading: false });
+        return true;
+      } else {
+        set({ error: res.error || "Token/Cookie 无效", isLoading: false });
+        return false;
+      }
+    } catch (err: any) {
+      set({ error: err?.toString() || "验证失败", isLoading: false });
+      return false;
     }
   },
 
@@ -84,4 +115,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  initAuthListener: async () => {
+    const unlisten = await listen<UserProfile>("auth:login-success", (event) => {
+      set({ user: event.payload, isLoggedIn: true, error: null, isLoading: false });
+    });
+    return unlisten;
+  },
 }));
