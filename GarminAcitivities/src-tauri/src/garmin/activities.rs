@@ -118,14 +118,21 @@ impl GarminActivityClient {
             end_date,
         );
 
-        let response = client
+        let mut req = client
             .http_client
             .get(&url)
-            .header("Referer", format!("{}/modern", client.region.connect_host()))
+            .header("Referer", format!("{}/app", client.region.connect_host()))
             .header("Accept", "application/json, text/plain, */*")
-            .header("DI-Backend", "connectapi.garmin.com")
-            .send()
-            .await?;
+            .header("DI-Backend", "connectapi.garmin.com");
+
+        if let Some(ref jwt) = client.jwt_token {
+            req = req.header("Authorization", format!("Bearer {}", jwt));
+        }
+        if let Some(ref cookies) = client.cookie_header {
+            req = req.header("Cookie", cookies);
+        }
+
+        let response = req.send().await?;
 
         let status = response.status();
         let final_url = response.url().to_string();
