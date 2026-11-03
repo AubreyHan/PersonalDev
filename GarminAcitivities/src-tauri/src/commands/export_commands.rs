@@ -126,7 +126,7 @@ pub async fn export_start_batch(
     let app_clone = app.clone();
     let db_clone = (*db_manager).clone();
 
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         q_clone
             .process_batch(
                 app_clone,
