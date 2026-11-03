@@ -81,16 +81,30 @@ void AltitudeFusion::update() {
                 if (!_gpsCalibrated) {
                     // First calibration: immediately snap P0 to target and re-anchor fused altitude
                     _seaLevelPressureHpa = p0Target;
-                    _gpsCalibrated = true;
-                    _fusedAltitudeM = hGnss;
-                    _lastAltitudeM = hGnss;
-                    _lastBaroAltitudeM = hGnss;
+                    _lastSavedP0         = p0Target;
+                    _gpsCalibrated       = true;
+                    _fusedAltitudeM      = hGnss;
+                    _lastAltitudeM       = hGnss;
+                    _lastBaroAltitudeM   = hGnss;
                     Serial.printf("[ALTITUDE] GPS 3D Calibrated Sea-Level Pressure: %.2f hPa (GPS Alt=%.1f m, Baro P=%.2f hPa)\n",
                                   _seaLevelPressureHpa, hGnss, P);
+                    Preferences prefs;
+                    if (prefs.begin("m5track", false)) {
+                        prefs.putFloat("sea_p0", _seaLevelPressureHpa);
+                        prefs.end();
+                    }
                 } else {
                     // Continuous slow calibration: gentle complementary drift correction
                     constexpr float ALPHA = 0.015f;
                     _seaLevelPressureHpa += ALPHA * (p0Target - _seaLevelPressureHpa);
+                    if (fabsf(_seaLevelPressureHpa - _lastSavedP0) > 0.4f) {
+                        _lastSavedP0 = _seaLevelPressureHpa;
+                        Preferences prefs;
+                        if (prefs.begin("m5track", false)) {
+                            prefs.putFloat("sea_p0", _seaLevelPressureHpa);
+                            prefs.end();
+                        }
+                    }
                 }
             }
         }
