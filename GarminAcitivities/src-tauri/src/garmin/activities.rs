@@ -104,22 +104,48 @@ impl GarminActivityClient {
             .get(&url)
             .header("Referer", format!("{}/modern", client.region.connect_host()))
             .header("Accept", "application/json, text/plain, */*")
+            .header("DI-Backend", "connectapi.garmin.com")
             .send()
             .await?;
 
         let status = response.status();
+        let final_url = response.url().to_string();
+
+        // 若被重定向至登录/SSO页面，说明会话未登录或已过期
+        if final_url.contains("/signin") || final_url.contains("/sso") {
+            return Err(GarminApiError::Unauthorized(
+                "Garmin 会话未登录或已失效，请点击下方「重新连接 Garmin 账号」".to_string(),
+            ));
+        }
+
         if status.as_u16() == 401 || status.as_u16() == 403 {
-            return Err(GarminApiError::Unauthorized("Session expired or invalid".to_string()));
+            return Err(GarminApiError::Unauthorized(
+                "Garmin 会话已失效(401/403)，请点击下方「重新连接 Garmin 账号」".to_string(),
+            ));
         }
         if status.as_u16() == 429 {
-            return Err(GarminApiError::RateLimited("Garmin 429 Too Many Requests".to_string()));
+            return Err(GarminApiError::RateLimited("Garmin 429 请求过于频繁，请稍后重试".to_string()));
         }
         if !status.is_success() {
             return Err(GarminApiError::Http(status.as_u16()));
         }
 
         let json_text = response.text().await?;
-        let records = Self::parse_activities(&json_text, user_id, client.region.tld())?;
+        let trimmed = json_text.trim();
+
+        // 容错：空响应表示无更多数据
+        if trimmed.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // 容错：若返回 HTML（以 '<' 开头），说明返回了重定向落地页而非 API JSON
+        if trimmed.starts_with('<') {
+            return Err(GarminApiError::Unauthorized(
+                "Garmin 返回了网页而非活动数据，说明当前账号尚未登录，请点击下方「重新连接 Garmin 账号」".to_string(),
+            ));
+        }
+
+        let records = Self::parse_activities(trimmed, user_id, client.region.tld())?;
         Ok(records)
     }
 }
