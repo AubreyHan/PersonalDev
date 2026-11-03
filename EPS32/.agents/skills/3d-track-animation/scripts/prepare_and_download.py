@@ -153,8 +153,8 @@ def choose_optimal_zoom(lats, lons, use_gcj02):
         min_lat, max_lat = min(lats), max(lats)
         min_lon, max_lon = min(lons), max(lons)
 
-    lat_pad = max(0.002, (max_lat - min_lat) * 0.25)
-    lon_pad = max(0.002, (max_lon - min_lon) * 0.28)
+    lat_pad = max(0.0015, (max_lat - min_lat) * 0.12)
+    lon_pad = max(0.0015, (max_lon - min_lon) * 0.22)
     b_min_lat = max(-85.0, min_lat - lat_pad)
     b_max_lat = min(85.0, max_lat + lat_pad)
     b_min_lon = max(-179.9, min_lon - lon_pad)
@@ -174,10 +174,10 @@ def choose_optimal_zoom(lats, lons, use_gcj02):
 
     tx0, ty1 = latlon_to_tile_frac(b_min_lat, b_min_lon, best_z)
     tx1, ty0 = latlon_to_tile_frac(b_max_lat, b_max_lon, best_z)
-    x_min = max(0, int(math.floor(tx0)) - 1)
-    x_max = min((1 << best_z) - 1, int(math.floor(tx1)) + 1)
-    y_min = max(0, int(math.floor(ty0)) - 1)
-    y_max = min((1 << best_z) - 1, int(math.floor(ty1)) + 1)
+    x_min = max(0, int(math.floor(tx0)))
+    x_max = min((1 << best_z) - 1, int(math.floor(tx1)))
+    y_min = max(0, int(math.floor(ty0)))
+    y_max = min((1 << best_z) - 1, int(math.floor(ty1)))
     return best_z, x_min, x_max, y_min, y_max
 
 
