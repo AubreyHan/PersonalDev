@@ -167,7 +167,10 @@ pub async fn auth_open_web_login(
         let u = nav_url.as_str();
         if let Some(pos) = u.find("#tauri_auth=") {
             let encoded = &u[pos + "#tauri_auth=".len()..];
-            let decoded = url::form_urlencoded::percent_decode(encoded.as_bytes()).decode_utf8_lossy();
+            let decoded = url::form_urlencoded::parse(encoded.as_bytes())
+                .next()
+                .map(|(k, _)| k.to_string())
+                .unwrap_or_else(|| encoded.to_string());
             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&decoded) {
                 let access_token = parsed.get("accessToken").and_then(|v| v.as_str()).map(|s| s.to_string());
                 let csrf_token = parsed.get("csrfToken").and_then(|v| v.as_str()).map(|s| s.to_string());
