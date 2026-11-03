@@ -151,11 +151,13 @@ mod tests {
         let event = tokio::time::timeout(Duration::from_secs(2), rx.recv()).await;
         assert!(event.is_ok(), "Expected watcher to receive debounced event");
         let path = event.unwrap().unwrap();
+        let canonical_temp = temp_dir.canonicalize().unwrap();
+        let canonical_path = path.canonicalize().unwrap();
         assert!(
-            path.starts_with(&temp_dir) || path == temp_dir,
+            canonical_path.starts_with(&canonical_temp) || canonical_path == canonical_temp,
             "Received path {:?} should be inside {:?}",
-            path,
-            temp_dir
+            canonical_path,
+            canonical_temp
         );
 
         let _ = fs::remove_dir_all(&temp_dir);
