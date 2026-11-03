@@ -108,12 +108,13 @@ mod tests {
 
     #[test]
     fn test_stem_ending_pattern() {
-        // `*a` matches `banana.txt` (stem `banana` ends with `a`) but not `data.log` (stem `data` ends with `a`)
+        // `*a` matches files whose base stem (excluding extension) ends with `a`
         let matcher = PatternMatcher::new("*a").unwrap();
         assert!(matcher.is_match(Path::new("banana.txt"), "banana.txt"));
+        assert!(matcher.is_match(Path::new("banana.doc"), "banana.doc"));
         assert!(matcher.is_match(Path::new("data.log"), "data.log"));
-        assert!(!matcher.is_match(Path::new("banana.doc"), "banana.doc")); // wait, banana stem ends with a!
         assert!(!matcher.is_match(Path::new("apple.txt"), "apple.txt"));
+        assert!(!matcher.is_match(Path::new("orange.pdf"), "orange.pdf"));
     }
 
     #[test]
