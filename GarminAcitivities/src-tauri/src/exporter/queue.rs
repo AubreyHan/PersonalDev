@@ -133,7 +133,7 @@ impl ExportQueue {
             let comp_arc = completed.clone();
             let fail_arc = failed.clone();
 
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 let _permit = permit;
 
                 // 注入随机延时抖动 (300~700ms) 保护用户 IP
