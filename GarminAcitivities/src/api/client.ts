@@ -24,6 +24,12 @@ export const api = {
   login: (payload: { region: GarminRegion; email: string; password: string; rememberMe: boolean }) =>
     invoke<AuthResponse>("auth_login", { payload }),
 
+  openWebLogin: (region: GarminRegion) =>
+    invoke<void>("auth_open_web_login", { region }),
+
+  loginWithToken: (region: GarminRegion, cookieStr: string) =>
+    invoke<AuthResponse>("auth_login_with_token", { region, cookieStr }),
+
   submitMfa: (code: string) =>
     invoke<AuthResponse>("auth_submit_mfa", { payload: { code } }),
 
