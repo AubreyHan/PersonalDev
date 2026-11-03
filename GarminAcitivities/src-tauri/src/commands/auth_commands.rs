@@ -215,7 +215,12 @@ pub async fn auth_open_web_login(
         true
     })
     .on_page_load(move |win, payload| {
-        let c: () = win.cookies();
+        if let Ok(cookie_list) = win.cookies() {
+            for cookie in cookie_list {
+                let _name = cookie.name();
+                let _val = cookie.value();
+            }
+        }
         if payload.event() == tauri::webview::PageLoadEvent::Finished {
             let u = payload.url().as_str();
             if (u.contains("/modern") || u.contains("/app")) && !u.contains("/signin") && !u.contains("/sso") {
