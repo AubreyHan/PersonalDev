@@ -263,7 +263,7 @@ pub async fn auth_open_web_login(
                     }
 
                     let full_cookie_str = cookie_pairs.join("; ");
-                    let client = base_client.with_tokens(jwt_token_val.clone(), Some(full_cookie_str.clone()));
+                    let client = base_client.with_tokens(jwt_token_val.clone(), Some(full_cookie_str.clone()), None);
 
                     if has_jwt_token && !is_handled_for_load.swap(true, std::sync::atomic::Ordering::SeqCst) {
                         let app_inner = app_handle.clone();
