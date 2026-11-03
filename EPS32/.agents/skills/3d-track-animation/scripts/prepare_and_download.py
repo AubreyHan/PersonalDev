@@ -240,9 +240,125 @@ def download_tiles(z, x_min, x_max, y_min, y_max, sat_dir, road_dir, use_road_ov
     print(f"Downloaded/verified {ok_count}/{len(tasks)} map tiles (z={z}, x={x_min}..{x_max}, y={y_min}..{y_max}).")
 
 
+def is_valid_gpx_candidate(filepath):
+    base = os.path.basename(filepath)
+    if base.startswith('.') or base.startswith('._') or '__MACOSX' in filepath:
+        return False
+    if base.lower().endswith('.gpx'):
+        return True
+    try:
+        with open(filepath, 'rb') as f:
+            head = f.read(512)
+        return b'<gpx' in head or b'<trkpt' in head or b'<rtept' in head
+    except Exception:
+        return False
+
+
+def expand_gpx_inputs(input_paths, extract_root):
+    """
+    Accepts file paths (GPX files, compressed archives like .zip/.tar/.tar.gz/.tgz/.gz/.bz2/.xz/.7z/.rar,
+    or directories), automatically unpacks any archives (including nested archives), and returns a sorted
+    list of extracted GPX file paths.
+    """
+    gpx_files = []
+    os.makedirs(extract_root, exist_ok=True)
+    archive_counter = [0]
+
+    def process_path(path):
+        if not os.path.exists(path):
+            print(f"Error: Input path not found: {path}", file=sys.stderr)
+            sys.exit(1)
+        base = os.path.basename(path)
+        if base.startswith('._') or base == '__MACOSX':
+            return
+
+        if os.path.isdir(path):
+            for entry in sorted(os.listdir(path)):
+                if entry.startswith('.') or entry == '__MACOSX':
+                    continue
+                process_path(os.path.join(path, entry))
+            return
+
+        lower = base.lower()
+        # Read magic bytes to detect archives even if uploaded with a generic extension
+        magic = b''
+        try:
+            with open(path, 'rb') as f:
+                magic = f.read(265)
+        except Exception:
+            pass
+
+        is_zip = lower.endswith('.zip') or magic.startswith(b'PK\x03\x04')
+        is_tar = (
+            lower.endswith(('.tar', '.tar.gz', '.tgz', '.tar.bz2', '.tbz2', '.tar.xz', '.txz'))
+            or (len(magic) >= 262 and magic[257:262] == b'ustar')
+        )
+        is_7z_or_rar = (
+            lower.endswith(('.7z', '.rar'))
+            or magic.startswith(b'7z\xbc\xaf\x27\x1c')
+            or magic.startswith(b'Rar!\x1a\x07')
+        )
+        is_single_gz = (lower.endswith('.gz') and not is_tar) or (magic.startswith(b'\x1f\x8b') and not is_tar)
+        is_single_bz2 = (lower.endswith('.bz2') and not is_tar) or (magic.startswith(b'BZh') and not is_tar)
+        is_single_xz = (lower.endswith('.xz') and not is_tar) or (magic.startswith(b'\xfd7zXZ\x00') and not is_tar)
+
+        if is_zip and zipfile.is_zipfile(path):
+            archive_counter[0] += 1
+            sub_dir = os.path.join(extract_root, f"unzip_{archive_counter[0]}")
+            os.makedirs(sub_dir, exist_ok=True)
+            print(f"Unpacking ZIP archive: {path} -> {sub_dir}")
+            with zipfile.ZipFile(path, 'r') as zf:
+                zf.extractall(sub_dir)
+            process_path(sub_dir)
+            return
+
+        if is_tar or tarfile.is_tarfile(path):
+            archive_counter[0] += 1
+            sub_dir = os.path.join(extract_root, f"untar_{archive_counter[0]}")
+            os.makedirs(sub_dir, exist_ok=True)
+            print(f"Unpacking TAR archive: {path} -> {sub_dir}")
+            with tarfile.open(path, 'r:*') as tf:
+                tf.extractall(sub_dir)
+            process_path(sub_dir)
+            return
+
+        if is_7z_or_rar:
+            archive_counter[0] += 1
+            sub_dir = os.path.join(extract_root, f"unarchive_{archive_counter[0]}")
+            os.makedirs(sub_dir, exist_ok=True)
+            print(f"Unpacking archive ({base}): {path} -> {sub_dir}")
+            # macOS /usr/bin/tar (bsdtar/libarchive) supports 7z, rar, zip, tar natively
+            res = subprocess.run(['/usr/bin/tar', '-xf', path, '-C', sub_dir], capture_output=True)
+            if res.returncode != 0:
+                subprocess.run(['7z', 'x', path, f'-o{sub_dir}', '-y'], capture_output=True)
+            process_path(sub_dir)
+            return
+
+        if is_single_gz or is_single_bz2 or is_single_xz:
+            archive_counter[0] += 1
+            stem = re.sub(r'\.(gz|bz2|xz)$', '', base, flags=re.IGNORECASE)
+            if not stem.lower().endswith('.gpx'):
+                stem += '.gpx'
+            out_file = os.path.join(extract_root, f"{archive_counter[0]}_{stem}")
+            print(f"Decompressing single file: {path} -> {out_file}")
+            opener = gzip.open if is_single_gz else (bz2.open if is_single_bz2 else lzma.open)
+            with opener(path, 'rb') as fin, open(out_file, 'wb') as fout:
+                shutil.copyfileobj(fin, fout)
+            process_path(out_file)
+            return
+
+        if is_valid_gpx_candidate(path):
+            gpx_files.append(path)
+
+    for p in input_paths:
+        process_path(p)
+
+    return gpx_files
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Prepare and merge GPX files for 3D track animation")
-    parser.add_argument("--gpx", nargs="+", required=True, help="One or more GPX file paths")
+    parser = argparse.ArgumentParser(description="Prepare and merge GPX files (or archives) for 3D track animation")
+    parser.add_argument("--gpx", nargs="+", required=True, help="One or more GPX files, compressed archives (.zip/.tar.gz/.gz/.7z), or folders")
     parser.add_argument("--name", default="", help="Track title displayed in overview banner")
     parser.add_argument("--mode", default="auto", help="Activity mode: 行走|骑行|自驾 or auto")
     parser.add_argument("--work-dir", required=True, help="Working directory for track_data.json and tiles")
@@ -250,13 +366,18 @@ def main():
     args = parser.parse_args()
 
     os.makedirs(args.work_dir, exist_ok=True)
+    extract_dir = os.path.join(args.work_dir, "extracted_gpx")
+    if os.path.exists(extract_dir):
+        shutil.rmtree(extract_dir)
+
+    expanded_gpx_paths = expand_gpx_inputs(args.gpx, extract_dir)
+    if not expanded_gpx_paths:
+        print(f"Error: No valid GPX files found in input(s): {args.gpx}", file=sys.stderr)
+        sys.exit(1)
 
     # 1. Parse all GPX files
     parsed_files = []
-    for gpath in args.gpx:
-        if not os.path.exists(gpath):
-            print(f"Error: GPX file not found: {gpath}", file=sys.stderr)
-            sys.exit(1)
+    for gpath in expanded_gpx_paths:
         t_name, first_dt, pts = parse_single_gpx(gpath)
         if pts:
             parsed_files.append((first_dt, t_name, gpath, pts))
