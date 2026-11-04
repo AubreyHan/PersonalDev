@@ -21,7 +21,11 @@ public final class LargeFileHandler {
             if let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
                let size = attrs[.size] as? UInt64 {
                 if size >= Self.maxFileSize {
-                    detectedLargeFiles.append(cleanPath)
+                    // 若文件已配置 Git LFS 托管（.gitattributes 中含有 filter=lfs），允许由 LFS 正常同步，不视作超限大文件拦截
+                    let isLFS = await isTrackedByLFS(path: cleanPath, at: repoURL)
+                    if !isLFS {
+                        detectedLargeFiles.append(cleanPath)
+                    }
                 }
             }
         }
@@ -57,5 +61,11 @@ public final class LargeFileHandler {
         }
 
         return detectedLargeFiles
+    }
+
+    /// 检查指定路径文件是否已被 Git LFS 属性接管
+    private func isTrackedByLFS(path: String, at repoURL: URL) async -> Bool {
+        let result = (try? await GitRunner.shared.run(args: ["check-attr", "filter", path], at: repoURL)) ?? ""
+        return result.contains("filter: lfs")
     }
 }
