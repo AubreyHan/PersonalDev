@@ -20,6 +20,8 @@ import subprocess
 import re
 
 BASE_DIR = "/Users/aubreyhan/Tools/git_repo/PersonalDev/3D"
+OUT_DIR = os.path.join(BASE_DIR, "output")
+os.makedirs(OUT_DIR, exist_ok=True)
 BAMBU_CLI = "/Applications/BambuStudio.app/Contents/MacOS/BambuStudio"
 BBL_PROFILE_DIR = "/Applications/BambuStudio.app/Contents/Resources/profiles/BBL"
 
@@ -380,7 +382,7 @@ def generate_bambu_3mf(sector_stl_files, out_3mf_name="Circle_16_Sectors_X1C_PET
     print(f"=======================================================")
 
     raw_3mf_path = os.path.join("/tmp", "raw_" + out_3mf_name)
-    final_3mf_path = os.path.join(BASE_DIR, out_3mf_name)
+    final_3mf_path = os.path.join(OUT_DIR, out_3mf_name)
 
     # 1. Load & Flatten Official Bambu Lab X1C Machine, Filament, and Process Profiles
     flat_machine = load_flattened_bambu_profile("machine", "Bambu Lab X1 Carbon 0.4 nozzle.json")
@@ -627,7 +629,7 @@ def main():
     single_tris = build_single_sector_triangles()
 
     # 1. Single sector STL
-    single_stl_path = os.path.join(BASE_DIR, "Circle_16_Sector_Single.stl")
+    single_stl_path = os.path.join(OUT_DIR, "Circle_16_Sector_Single.stl")
     write_binary_stl(single_stl_path, single_tris, "16-Sector Circle - Single 22.5 deg Sector")
 
     # 2. Assembled 16-sector circle STL (0.2mm radial offset so all 16 shells remain separate)
@@ -639,7 +641,7 @@ def main():
         assembled_tris.extend(
             transform_triangles(single_tris, rot_deg=ang, tx=r_off * math.cos(rad), ty=r_off * math.sin(rad))
         )
-    assembled_stl_path = os.path.join(BASE_DIR, "Circle_16_Sectors_Assembled.stl")
+    assembled_stl_path = os.path.join(OUT_DIR, "Circle_16_Sectors_Assembled.stl")
     write_binary_stl(assembled_stl_path, assembled_tris, "16-Sector Circle - Assembled O120x6mm")
 
     # 3. Print Plate 16-sector circle STL (3.0mm radial separation for one-shot printing)
@@ -667,11 +669,11 @@ def main():
         write_binary_stl(part_stl, sec_bed, f"Sector {i+1:02d} of 16")
         temp_sector_stls.append(part_stl)
 
-    print_plate_stl_path = os.path.join(BASE_DIR, "Circle_16_Sectors_Print_Plate.stl")
+    print_plate_stl_path = os.path.join(OUT_DIR, "Circle_16_Sectors_Print_Plate.stl")
     write_binary_stl(print_plate_stl_path, print_plate_tris, "16-Sector Circle - Print Plate Layout")
 
     # 4. Render CAD Preview
-    render_png_path = os.path.join(BASE_DIR, "Circle_16_Sectors_CAD_Render.png")
+    render_png_path = os.path.join(OUT_DIR, "Circle_16_Sectors_CAD_Render.png")
     render_cad_preview(single_tris, render_png_path)
 
     # 5. Generate Bambu Lab X1C 3MF Project
