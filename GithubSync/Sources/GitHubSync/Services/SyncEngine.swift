@@ -67,6 +67,7 @@ public final class SyncEngine {
 
         // 3. 强制对齐到远端分支
         _ = try await gitRunner.run(args: ["reset", "--hard", "origin/\(branch)"], at: repoURL)
+        await pullLFSIfNeeded(at: repoURL)
     }
 
     // MARK: - 模式三：双向同步（新覆盖旧 - bidirectional_newest）
@@ -104,8 +105,9 @@ public final class SyncEngine {
             // 本地领先，直接推送
             _ = try await gitRunner.run(args: ["push", "origin", branch], at: repoURL)
         } else if ahead == 0 && behind > 0 {
-            // 远端领先，快进合并
+            // 远端领先，快进合并并拉取 LFS 实体
             _ = try await gitRunner.run(args: ["merge", "--ff-only", "origin/\(branch)"], at: repoURL)
+            await pullLFSIfNeeded(at: repoURL)
         } else if ahead > 0 && behind > 0 {
             // 两侧均有提交（冲突分叉），进行智能合并
             let mergeRes = try await gitRunner.execute(
