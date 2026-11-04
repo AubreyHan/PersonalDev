@@ -396,7 +396,8 @@ def update_vehicle(vehicle_id: int, data: Dict[str, Any]) -> bool:
             name = ?, brand = ?, model = ?, power_type = ?, displacement = ?,
             fuel_tank_capacity = ?, battery_capacity = ?, plate_number = ?,
             initial_mileage = ?, purchase_date = ?, notes = ?,
-            initial_fuel_percent = ?, initial_battery_percent = ?, updated_at = ?
+            initial_fuel_percent = ?, initial_battery_percent = ?, updated_at = ?,
+            sync_version = COALESCE(sync_version, 1) + 1
             ''' + extra_sql + '''
         WHERE id = ?
     ''', tuple([
@@ -420,6 +421,53 @@ def update_vehicle(vehicle_id: int, data: Dict[str, Any]) -> bool:
     conn.close()
     sync_vehicle_state(vehicle_id)
     return updated
+
+
+def check_optimistic_lock(table_name: str, record_id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    轻量乐观锁校验：
+    当客户端携带 _check_conflict=True 与 _base_version（且非 _force_overwrite）时，
+    检查数据库中当前记录的 sync_version 是否已大于 _base_version。
+    若发生版本冲突，返回包含 server_record 的冲突详情字典；否则返回 None。
+    """
+    allowed_tables = {
+        'vehicles': 'vehicles',
+        'fuel_records': 'fuel_records',
+        'electricity_records': 'electricity_records',
+        'maintenance_records': 'maintenance_records',
+        'status_records': 'status_records',
+    }
+    tbl = allowed_tables.get(table_name)
+    if not tbl or not isinstance(data, dict):
+        return None
+    if data.get('_force_overwrite') in (True, 1, '1', 'true'):
+        return None
+    if not data.get('_check_conflict') or data.get('_base_version') is None:
+        return None
+    try:
+        base_ver = int(data.get('_base_version'))
+    except (ValueError, TypeError):
+        return None
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"SELECT * FROM {tbl} WHERE id = ?", (record_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    rec = dict(row)
+    curr_ver = int(rec.get('sync_version') or 1)
+    if curr_ver > base_ver:
+        return {
+            "conflict": True,
+            "entity_table": tbl,
+            "record_id": record_id,
+            "client_base_version": base_ver,
+            "server_version": curr_ver,
+            "server_record": rec
+        }
+    return None
 
 def delete_vehicle(vehicle_id: int) -> bool:
     conn = get_db_connection()
