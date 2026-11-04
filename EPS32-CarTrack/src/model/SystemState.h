@@ -286,6 +286,8 @@ struct WifiStatus {
     int8_t  rssi;
     uint8_t savedNetworkCount;
     bool    agpsInjected;
+    uint8_t apStations;
+    uint8_t portalConnectState; // 0: IDLE, 1: CONNECTING, 2: SUCCESS, 3: FAILED
 };
 
 struct TrailPoint {
