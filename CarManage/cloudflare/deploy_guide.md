@@ -48,13 +48,13 @@
 
 ### 快速一键脚本：
 ```bash
-cd /Users/aubreyhan/Tools/git_repo/car_maintenance_app
+cd /Users/aubreyhan/Tools/git_repo/PersonalDev/CarManage
 ./cloudflare/deploy.sh
 ```
 
 ### 手动命令行分布执行：
 ```bash
-cd /Users/aubreyhan/Tools/git_repo/car_maintenance_app/cloudflare
+cd /Users/aubreyhan/Tools/git_repo/PersonalDev/CarManage/cloudflare
 
 # 1. 登录 Cloudflare 账号
 npx wrangler login

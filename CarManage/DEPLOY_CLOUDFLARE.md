@@ -97,7 +97,7 @@
 
 ### 1. 安装 Wrangler 并登录
 ```bash
-cd /Users/aubreyhan/Tools/git_repo/car_maintenance_app/cloudflare
+cd /Users/aubreyhan/Tools/git_repo/PersonalDev/CarManage/cloudflare
 
 # 登录 Cloudflare 账号 (会自动拉起浏览器授权)
 npx wrangler login
