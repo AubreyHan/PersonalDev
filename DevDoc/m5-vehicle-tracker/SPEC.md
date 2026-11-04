@@ -498,10 +498,11 @@ struct DualImuStatus {
 ## 4. Web 配网与文件管理 API 及二维码规范 (Captive Portal, QR Codes & SoftAP)
 
 系统所有 Web 交互均以按需启动的独立 SoftAP 热点模式提供，并配合 **DNS Captive Portal (端口 53 全域名解析至 `192.168.4.1`)** 与 **`M5GFX` 原生屏幕二维码 (`canvas.qrcode()`)**：
-- **配网模式 (`PageWifiConfig`)**：
+- **单次扫码一体化配网模式 (`PageWifiConfig`)**：
   - AP SSID：`M5Track-Setup`，IP：`192.168.4.1`；
-  - **二维码 1（扫码自动连热点）**：`WIFI:T:nopass;S:M5Track-Setup;;`
-  - **二维码 2（扫码直达配网界面）**：`http://192.168.4.1/setup`（连上热点后手机 Captive Portal 也会自动唤起该界面）。
+  - **一体化二维码（单次扫码直连与自动弹窗）**：`WIFI:T:nopass;S:M5Track-Setup;;`
+  - **自动弹窗机制**：手机（iOS / Android / 鸿蒙 / 微信）扫码并点击「加入网络」后，DNS 端口 53 劫持全域名并重定向 OS 联网探测（`/hotspot-detect.html`, `/generate_204`, `/library/test/success.html` 等），手机端 1 秒内自动唤起系统 Captive Portal Web 配网页，彻底消除二次扫码；
+  - **智能状态闭环**：屏幕实时反馈手机连入状态与 Wi-Fi 验证进度，配网成功 3 秒后自动关闭 SoftAP 并无缝返回主仪表盘。
 - **TF 卡文件下载模式 (`ToolTfManager`)**：
   - AP SSID：`M5Track-Share`，IP：`192.168.4.1`（仅在触发“通过 Wi-Fi 下载”时开启，退出菜单即关闭）；
   - **二维码 1（扫码自动连热点）**：`WIFI:T:nopass;S:M5Track-Share;;`
