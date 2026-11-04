@@ -4,8 +4,16 @@
 
 const CarDB = {
   dbName: 'CarTrackerLocalDB',
-  version: 3,
+  version: 4,
   db: null,
+
+  entityStoreMap: {
+    vehicles: 'vehicles',
+    fuel: 'fuel_records',
+    electricity: 'electricity_records',
+    maintenance: 'maintenance_records',
+    status: 'status_records'
+  },
 
   async init() {
     return new Promise((resolve, reject) => {
@@ -13,7 +21,7 @@ const CarDB = {
 
       request.onupgradeneeded = (e) => {
         const db = e.target.result;
-        console.log('[IndexedDB] 升级/初始化本地数据库存储');
+        console.log('[IndexedDB] 升级/初始化本地数据库存储 (v4)');
 
         if (!db.objectStoreNames.contains('vehicles')) {
           db.createObjectStore('vehicles', { keyPath: 'id' });
@@ -36,6 +44,10 @@ const CarDB = {
         }
         if (!db.objectStoreNames.contains('sync_queue')) {
           db.createObjectStore('sync_queue', { keyPath: 'qid', autoIncrement: true });
+        }
+        if (!db.objectStoreNames.contains('sync_conflicts')) {
+          const cf = db.createObjectStore('sync_conflicts', { keyPath: 'cid', autoIncrement: true });
+          cf.createIndex('occurred_at', 'occurred_at', { unique: false });
         }
         if (!db.objectStoreNames.contains('settings')) {
           db.createObjectStore('settings', { keyPath: 'key' });
@@ -311,13 +323,86 @@ const CarDB = {
     }
   },
 
-  // 待同步队列 (Outbox) 操作
+  // 待同步队列 (Outbox) 操作 —— 支持离线操作智能合并 (Queue Coalescing) 与乐观锁基准版本捕获
   async enqueueSync(action, entity, data) {
+    const nowIso = new Date().toISOString();
+    const payload = data ? { ...data, _client_updated_at: nowIso } : {};
+    const targetId = payload.id !== undefined ? payload.id : payload._tempId;
+
+    // 若为 UPDATE 且未显式指定 _base_version，尝试从本地 Store 读取基准 sync_version
+    if (action === 'UPDATE' && payload._base_version === undefined && targetId !== undefined) {
+      const storeName = this.entityStoreMap[entity];
+      if (storeName) {
+        try {
+          const existingLocal = await this.get(storeName, targetId);
+          if (existingLocal && existingLocal.sync_version !== undefined) {
+            payload._base_version = parseInt(existingLocal.sync_version) || 1;
+          } else {
+            payload._base_version = 1;
+          }
+        } catch (e) {
+          payload._base_version = 1;
+        }
+      } else {
+        payload._base_version = 1;
+      }
+      payload._check_conflict = true;
+    }
+
+    // 检查当前待同步队列，执行同实体同 ID 离线操作智能合并
+    if (targetId !== undefined && targetId !== null) {
+      const queue = await this.getSyncQueue();
+      const matched = queue.find(q => q.entity === entity && q.data && (q.data.id == targetId || q.data._tempId == targetId));
+      if (matched) {
+        if (matched.action === 'CREATE' && action === 'UPDATE') {
+          // 离线新建后又在离线状态下修改：直接合并进原 CREATE 项
+          const mergedData = { ...matched.data, ...payload };
+          delete mergedData._check_conflict;
+          delete mergedData._base_version;
+          matched.data = mergedData;
+          matched.updated_at = nowIso;
+          await this.put('sync_queue', matched);
+          CarSync.notifyQueueChanged();
+          return;
+        }
+        if (matched.action === 'CREATE' && action === 'DELETE') {
+          // 离线新建后尚未同步即删除：直接从待同步队列抵消移除，节省网络开销
+          await this.delete('sync_queue', matched.qid);
+          CarSync.notifyQueueChanged();
+          return;
+        }
+        if (matched.action === 'UPDATE' && action === 'UPDATE') {
+          // 离线多次修改同一条记录：合并最新字段，但保留最初捕获的 _base_version 基准版本号
+          const origBaseVer = matched.data._base_version || payload._base_version || 1;
+          matched.data = {
+            ...matched.data,
+            ...payload,
+            _base_version: origBaseVer,
+            _check_conflict: true
+          };
+          matched.updated_at = nowIso;
+          await this.put('sync_queue', matched);
+          CarSync.notifyQueueChanged();
+          return;
+        }
+        if (matched.action === 'UPDATE' && action === 'DELETE') {
+          // 离线修改后又决定删除：将原 UPDATE 升级为 DELETE
+          matched.action = 'DELETE';
+          matched.data = { id: targetId };
+          matched.updated_at = nowIso;
+          await this.put('sync_queue', matched);
+          CarSync.notifyQueueChanged();
+          return;
+        }
+      }
+    }
+
     const queueItem = {
       action, // 'CREATE', 'UPDATE', 'DELETE'
-      entity, // 'vehicles', 'fuel', 'electricity', 'maintenance'
-      data,
-      created_at: new Date().toISOString()
+      entity, // 'vehicles', 'fuel', 'electricity', 'maintenance', 'status'
+      data: payload,
+      created_at: nowIso,
+      updated_at: nowIso
     };
     await this.put('sync_queue', queueItem);
     CarSync.notifyQueueChanged();
@@ -335,6 +420,32 @@ const CarDB = {
   async clearSyncQueue() {
     await this.clear('sync_queue');
     CarSync.notifyQueueChanged();
+  },
+
+  // 同步冲突日志仓库 (sync_conflicts) 操作
+  async recordConflict(conflictItem) {
+    if (!this.db || !this.db.objectStoreNames.contains('sync_conflicts')) return null;
+    const entry = {
+      ...conflictItem,
+      occurred_at: conflictItem.occurred_at || new Date().toISOString()
+    };
+    return await this.put('sync_conflicts', entry);
+  },
+
+  async getConflicts() {
+    if (!this.db || !this.db.objectStoreNames.contains('sync_conflicts')) return [];
+    const list = await this.getAll('sync_conflicts');
+    return list.sort((a, b) => (b.occurred_at || '').localeCompare(a.occurred_at || ''));
+  },
+
+  async removeConflict(cid) {
+    if (!this.db || !this.db.objectStoreNames.contains('sync_conflicts')) return;
+    await this.delete('sync_conflicts', cid);
+  },
+
+  async clearConflicts() {
+    if (!this.db || !this.db.objectStoreNames.contains('sync_conflicts')) return;
+    await this.clear('sync_conflicts');
   },
 
   // 设置存储 (如 Cloudflare Worker 基础 URL)
@@ -521,6 +632,9 @@ const CarSync = {
         if (statuses && statuses.length > 0) {
           await CarDB.putMany('status_records', statuses);
         }
+
+        // 若队列中仍有尚未推送成功的本地变更，重放保护到本地 IndexedDB，防止断网半途失败导致本地修改丢失
+        await this.applyPendingQueueToLocalStores();
 
         console.log('[CarSync] 云端数据双向同步完成！');
         this.lastError = null;
