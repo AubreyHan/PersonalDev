@@ -4,10 +4,6 @@
     <stop offset="0%" stop-color="#1e293b"/>
     <stop offset="100%" stop-color="#090d16"/>
   </radialGradient>
-  <linearGradient id="headerGrad" x1="0" y1="0" x2="1" y2="0">
-    <stop offset="0%" stop-color="#38bdf8"/>
-    <stop offset="100%" stop-color="#f59e0b"/>
-  </linearGradient>
 </defs>
 <rect width="100%" height="100%" fill="url(#bg)"/>
 <line x1="0" y1="0" x2="0" y2="1100" stroke="#334155" stroke-width="0.5" stroke-dasharray="3,6" opacity="0.3"/>
@@ -47,12 +43,12 @@
 <line x1="0" y1="880" x2="1800" y2="880" stroke="#334155" stroke-width="0.5" stroke-dasharray="3,6" opacity="0.3"/>
 <line x1="0" y1="960" x2="1800" y2="960" stroke="#334155" stroke-width="0.5" stroke-dasharray="3,6" opacity="0.3"/>
 <line x1="0" y1="1040" x2="1800" y2="1040" stroke="#334155" stroke-width="0.5" stroke-dasharray="3,6" opacity="0.3"/>
-<text x="60" y="65" fill="url(#headerGrad)" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif" font-size="30" font-weight="800">16等分扇形圆模型 (Ø120mm × 6mm 可分离拼块)</text>
-<text x="60" y="98" fill="#94a3b8" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif" font-size="15" font-weight="500">16 × 22.5° Equal Detachable Sectors • 0.10mm Side Clearance • R0.8mm Tip Fillet • 0.4mm Top/Bottom Chamfer</text>
+<text x="60" y="65" fill="#38bdf8" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="28" font-weight="700">16等分扇形圆模型 — 拓竹 X1C + PETG-HF 纹理板工程视图 (Ø120mm × 6mm)</text>
+<text x="60" y="98" fill="#94a3b8" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="15" font-weight="500">16 × 22.5° Equal Detachable Sectors • 0.10mm Side Clearance • R0.8mm Tip Fillet • 0.4mm Top/Bottom Chamfer</text>
 <rect x="50" y="125" width="820" height="920" rx="14" fill="#0f172a" stroke="#334155" stroke-width="1.5" opacity="0.65"/>
 <text x="80" y="168" fill="#f8fafc" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="20" font-weight="700">1. 16等分圆盘拼合轴测图 (Assembled Ø120mm × 6mm)</text>
 <rect x="900" y="125" width="850" height="445" rx="14" fill="#0f172a" stroke="#334155" stroke-width="1.5" opacity="0.65"/>
-<text x="930" y="168" fill="#f8fafc" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="20" font-weight="700">2. 俯视正交图 / 打印盘防粘连排布 (Top Orthographic View)</text>
+<text x="930" y="168" fill="#f8fafc" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="20" font-weight="700">2. 拓竹 X1C 纹理 PEI 板一盘直打排布 (Top Orthographic View)</text>
 <rect x="900" y="600" width="850" height="445" rx="14" fill="#0f172a" stroke="#334155" stroke-width="1.5" opacity="0.65"/>
 <text x="930" y="643" fill="#f8fafc" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="20" font-weight="700">3. 扇形交错拼接近似平行四边形 (Area Derivation: πr × r)</text>
 <polygon points="470.0,746.1 457.5,797.3 460.7,797.3" fill="#ce8509" stroke="#855605" stroke-width="0.35"/>
@@ -5881,7 +5877,7 @@
 <polygon points="1434.9,410.5 1480.2,401.9 1480.5,400.4" fill="#ce8509" stroke="#855605" stroke-width="0.35"/>
 <polygon points="1434.9,410.5 1480.5,400.4 1480.9,398.8" fill="#ce8509" stroke="#855605" stroke-width="0.35"/>
 <polygon points="1434.9,410.5 1480.9,398.8 1345.6,371.9" fill="#ce8509" stroke="#855605" stroke-width="0.35"/>
-<text x="930" y="545" fill="#94a3b8" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="14">径向展开 3.0mm 间距一盘直打，16个独立零件互不粘连，支持拓竹 AMS 双色/多色分件染色</text>
+<text x="930" y="545" fill="#94a3b8" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="14">居中排布于 256×256mm 热床 (128,128)，径向展开 3.0mm 防粘连，16个独立对象支持分件染色</text>
 <polygon points="1075.0,942.6 1075.5,942.6 1074.6,941.1" fill="#2a90bd" stroke="#1b5d7a" stroke-width="0.35"/>
 <polygon points="1075.5,942.6 1075.9,942.6 1075.0,941.0" fill="#2b92bf" stroke="#1b5e7c" stroke-width="0.35"/>
 <polygon points="1074.5,942.5 1075.0,942.6 1074.2,941.1" fill="#298db9" stroke="#1a5b78" stroke-width="0.35"/>
