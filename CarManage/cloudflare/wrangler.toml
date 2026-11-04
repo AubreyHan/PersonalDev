@@ -1,0 +1,13 @@
+name = "car-care-tracker"
+main = "worker.js"
+compatibility_date = "2024-09-01"
+
+# 绑定 Cloudflare D1 数据库
+[[d1_databases]]
+binding = "DB"
+database_name = "car_tracker_d1"
+database_id = "YOUR_D1_DATABASE_UUID_HERE"
+
+# 允许托管静态前端资源（可选：如果希望全部托管在 Cloudflare Pages / Workers Sites）
+# [site]
+# bucket = "../static"

@@ -1,0 +1,323 @@
+:root {
+  --primary: #3b82f6;
+  --primary-dark: #1d4ed8;
+  --primary-light: #eff6ff;
+  --fuel-color: #f59e0b;
+  --fuel-light: #fef3c7;
+  --elec-color: #10b981;
+  --elec-light: #d1fae5;
+  --maint-color: #8b5cf6;
+  --maint-light: #ede9fe;
+  --bg-main: #f8fafc;
+  --card-bg: #ffffff;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  line-height: 1.5;
+  padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); /* Space for mobile bottom bar + iOS Home indicator */
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (min-width: 768px) {
+  body {
+    padding-bottom: 32px; /* Tablets / iPad / Desktop */
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Vehicle Selector Bar */
+.vehicle-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.badge-gas { background-color: #fef3c7; color: #b45309; }
+.badge-ev { background-color: #d1fae5; color: #065f46; }
+.badge-phev { background-color: #e0e7ff; color: #3730a3; }
+.badge-erev { background-color: #fce7f3; color: #9d174d; }
+.badge-hybrid { background-color: #ccfbf1; color: #115e59; }
+
+/* Tri-Calculation Highlight */
+.tri-input-wrapper {
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.tri-calculated {
+  background-color: #f0fdf4 !important;
+  border-color: #22c55e !important;
+  color: #15803d !important;
+  font-weight: 600;
+}
+
+.calc-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.72rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #dcfce7;
+  color: #166534;
+  font-weight: 500;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Quick Select Pills */
+.pill-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: #fff;
+  font-size: 0.875rem;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.pill-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-light);
+}
+.pill-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  font-weight: 500;
+}
+
+/* Stat Cards */
+.stat-card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+/* Tab Navigation */
+.nav-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #64748b;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.nav-tab-btn:hover {
+  color: var(--primary);
+}
+.nav-tab-btn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+
+/* Mobile Bottom Navigation */
+.mobile-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: #64748b;
+  padding: 6px 0;
+  flex: 1;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.mobile-nav-item.active {
+  color: var(--primary);
+  font-weight: 600;
+}
+.mobile-nav-item svg {
+  width: 22px;
+  height: 22px;
+  margin-bottom: 2px;
+}
+
+/* Toast Notifications */
+#toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+.toast {
+  background: #1e293b;
+  color: #fff;
+  padding: 12px 18px;
+  border-radius: 10px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+  animation: slideDown 0.3s ease;
+}
+.toast.toast-success {
+  background: #065f46;
+  border-left: 4px solid #34d399;
+}
+.toast.toast-error {
+  background: #991b1b;
+  border-left: 4px solid #f87171;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Modals */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.modal-content {
+  background: #ffffff;
+  border-radius: 16px;
+  max-width: 560px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  animation: popIn 0.2s ease-out;
+}
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Form Input Styling */
+.form-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #334155;
+  margin-bottom: 6px;
+}
+.form-input, .form-select, .form-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  color: #0f172a;
+  background-color: #fff;
+  outline: none;
+  transition: all 0.15s;
+}
+.form-input:focus, .form-select:focus, .form-textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+/* Battery SOC Progress bar */
+.soc-bar-container {
+  height: 12px;
+  background: #e2e8f0;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+}
+.soc-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+  border-radius: 6px;
+  transition: width 0.3s ease;
+}
+
+/* ================= iOS (iPhone & iPad) 专属深度适配 ================= */
+
+/* 1. iOS 刘海屏 / 灵动岛 (Notch / Dynamic Island) 与 底部 Home 条 (Home Indicator) */
+header {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.mobile-bottom-nav {
+  padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+}
+
+/* 2. 避免 iOS Safari 聚焦输入框时强制页面局部放大 (font-size < 16px 会触发自动放大) */
+@media screen and (max-width: 768px) {
+  .form-input, .form-select, .form-textarea, input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* 3. iOS 平滑惯性滚动体验 */
+.overflow-y-auto, .overflow-x-auto, .modal-content {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 4. iPadOS 平板端专属适配 (768px ~ 1024px 竖屏 & 横屏) */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .nav-tab-btn {
+    padding: 10px 14px;
+    font-size: 0.9rem;
+  }
+  .stat-card {
+    padding: 14px;
+  }
+}

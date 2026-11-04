@@ -1,0 +1,2086 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>我的车管家 - 汽车维护与能耗记录</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+            },
+            fuel: {
+              50: '#fffbeb',
+              100: '#fef3c7',
+              500: '#f59e0b',
+              600: '#d97706',
+            },
+            elec: {
+              50: '#ecfdf5',
+              100: '#d1fae5',
+              500: '#10b981',
+              600: '#059669',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="style.css">
+  <!-- PWA 元标签与苹果触控图标配置 -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="我的车管家">
+  <link rel="apple-touch-icon" href="icon-192.png">
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+  <!-- Toast 消息容器 -->
+  <div id="toast-container"></div>
+
+  <!-- 顶部导航条 -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-200">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 19H5a2 2 0 01-2-2V7a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2zM9 13a2 2 0 100-4 2 2 0 000 4zm6 0a2 2 0 100-4 2 2 0 000 4z"></path>
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            我的车管家
+            <span class="text-xs font-normal px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">PWA离线云同步</span>
+          </h1>
+          <p class="text-xs text-slate-500">多车辆油耗 · 电耗 · 维护保养一体化记录</p>
+        </div>
+      </div>
+
+      <!-- 当前车辆快速切换器、用户中心与云端同步状态 -->
+      <div class="flex items-center space-x-2">
+        <!-- 同步状态小胶囊 -->
+        <button onclick="App.openSyncModal()" id="sync-status-btn" class="inline-flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 transition shadow-sm" title="点击查看 Cloudflare D1 同步设置与离线状态">
+          <span id="sync-status-dot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span id="sync-status-text">已同步</span>
+        </button>
+
+        <!-- 用户账号与修改密码入口 -->
+        <button onclick="App.openUserModal()" id="user-profile-btn" class="inline-flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200 hover:border-slate-300 transition shadow-sm" title="点击管理账号与修改密码">
+          <span class="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px]">👤</span>
+          <span id="user-profile-name" class="hidden sm:inline">AubreyHan</span>
+        </button>
+
+        <div class="relative">
+          <select id="vehicle-select" onchange="App.onVehicleChange(this.value)" class="appearance-none bg-slate-100 border border-slate-300 text-slate-800 text-sm font-medium rounded-lg pl-3 pr-8 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer max-w-[180px] sm:max-w-xs truncate">
+
+            <option value="">加载车辆中...</option>
+          </select>
+          <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+          </div>
+        </div>
+
+        <button onclick="App.openVehicleModal()" class="hidden sm:inline-flex items-center space-x-1 px-3 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+          <span>添加车辆</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 桌面端横向导航栏 -->
+    <div class="max-w-6xl mx-auto px-4 border-t border-slate-100 hidden md:block">
+      <nav class="flex space-x-6">
+        <button onclick="App.switchTab('overview')" id="tab-btn-overview" class="nav-tab-btn active">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+          概览看板
+        </button>
+        <button onclick="App.switchTab('energy')" id="tab-btn-energy" class="nav-tab-btn">
+          <svg class="w-4 h-4 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+          能耗分析
+        </button>
+        <button onclick="App.switchTab('fuel')" id="tab-btn-fuel" class="nav-tab-btn">
+          <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+          油耗录入
+        </button>
+        <button onclick="App.switchTab('electricity')" id="tab-btn-electricity" class="nav-tab-btn">
+          <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+          电耗录入
+        </button>
+        <button onclick="App.switchTab('maintenance')" id="tab-btn-maintenance" class="nav-tab-btn">
+          <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+          费用支出
+        </button>
+        <button onclick="App.switchTab('history')" id="tab-btn-history" class="nav-tab-btn">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          历史明细
+        </button>
+        <button onclick="App.switchTab('vehicles')" id="tab-btn-vehicles" class="nav-tab-btn">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+          车辆管理
+        </button>
+
+      </nav>
+    </div>
+  </header>
+
+  <!-- 主体内容区 -->
+  <main class="max-w-6xl mx-auto px-4 py-6">
+
+    <!-- 0. 引导添加车辆提示 (当暂无车辆时展示) -->
+    <div id="no-vehicle-notice" class="hidden text-center py-16 bg-white rounded-2xl border border-dashed border-slate-300 shadow-sm">
+      <div class="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+      </div>
+      <h3 class="text-xl font-bold text-slate-800 mb-2">欢迎使用我的车管家！</h3>
+      <p class="text-slate-500 max-w-md mx-auto mb-6 text-sm">系统支持多车辆管理，请首先录入您的爱车信息（支持车名、品牌、型号、排量、油箱容量、电池容量、车牌号及初始里程）。</p>
+      <button onclick="App.openVehicleModal()" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl shadow-md shadow-blue-200 transition">
+        立即录入第一台车
+      </button>
+    </div>
+
+    <!-- 1. TAB: 概览看板 -->
+    <div id="tab-overview" class="tab-pane space-y-6">
+      <!-- 车辆主信息横幅 -->
+      <div id="vehicle-hero-card" class="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white rounded-2xl p-6 shadow-xl relative overflow-hidden">
+        <div class="absolute right-0 top-0 bottom-0 opacity-10 flex items-center pointer-events-none">
+          <svg class="w-96 h-96 -mr-16 text-white" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/>
+          </svg>
+        </div>
+        <div class="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <div class="flex items-center space-x-3 mb-1">
+              <span id="hero-badge" class="vehicle-badge badge-gas">燃油车</span>
+            </div>
+            <h2 id="hero-name" class="text-2xl sm:text-3xl font-extrabold tracking-tight font-mono">车牌号加载中...</h2>
+            <p id="hero-model" class="text-sm text-slate-300 mt-1">品牌型号加载中...</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-3">
+            <button onclick="App.openCurrentStatusModal()" id="hero-btn-status" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold flex items-center gap-1.5 shadow-lg shadow-blue-500/30 transition">
+              <span>📊 录入当前状态</span>
+            </button>
+            <button onclick="App.switchTab('fuel')" id="hero-btn-fuel" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-semibold flex items-center gap-1.5 shadow-lg shadow-amber-500/30 transition">
+              <span>⛽ 记一笔油耗</span>
+            </button>
+            <button onclick="App.switchTab('electricity')" id="hero-btn-elec" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-semibold flex items-center gap-1.5 shadow-lg shadow-emerald-500/30 transition">
+              <span>⚡ 记一笔电耗</span>
+            </button>
+            <button onclick="App.switchTab('maintenance')" id="hero-btn-maint" class="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl text-sm font-semibold flex items-center gap-1.5 shadow-lg shadow-indigo-500/30 transition">
+              <span>💰 费用支出</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 关键指标条 -->
+        <div id="hero-metrics-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-8 gap-4 mt-6 pt-6 border-t border-slate-700/60 relative z-10">
+          <div onclick="App.openCurrentStatusModal()" class="cursor-pointer group select-none" title="点击直接录入当前车辆状态 (里程/电量/油量)">
+            <p class="text-xs text-slate-400 flex items-center justify-between gap-1">
+              <span class="flex items-center gap-1"><span>当前状态</span> <span class="text-[10px] px-1.5 py-0.2 bg-blue-500/20 text-blue-300 rounded font-normal">表显</span></span>
+              <span class="text-[11px] text-blue-400 group-hover:text-blue-300 font-normal">✏️ 录入</span>
+            </p>
+            <p class="text-xl sm:text-2xl font-bold mt-0.5 group-hover:text-blue-300 transition-colors">
+              <span id="hero-current-mileage">0</span> <span class="text-xs font-normal text-slate-400">km</span>
+            </p>
+            <div class="mt-1 flex items-center flex-wrap gap-x-2 gap-y-0.5 text-xs text-slate-400">
+              <span id="hero-status-battery-box" class="inline-flex items-center gap-0.5 text-emerald-300 font-medium">
+                <span>⚡</span><span id="hero-status-battery">--%</span>
+              </span>
+              <span id="hero-status-fuel-box" class="inline-flex items-center gap-0.5 text-amber-300 font-medium">
+                <span>⛽</span><span id="hero-status-fuel">--%</span>
+              </span>
+              <span class="text-slate-400 text-[11px]">行驶 <span id="hero-driven-km" class="text-slate-200">0</span>km</span>
+            </div>
+          </div>
+          <div id="hero-metric-daily-mileage" class="cursor-help" title="自购车以来的平均每日行驶里程（自购车行驶里程 / 天数）">
+            <p class="text-xs text-sky-300 font-semibold flex items-center gap-1">
+              <span>🛣️</span> 平均每天里程
+            </p>
+            <p class="text-xl sm:text-2xl font-bold text-sky-300 mt-0.5"><span id="hero-km-per-day">0.00</span> <span class="text-xs font-normal text-slate-400">km/天</span></p>
+            <p class="text-xs text-slate-400 mt-1" id="hero-days-owned-subtext">购车 <span id="hero-days-owned" class="text-slate-200 font-mono">1</span> 天</p>
+          </div>
+          <div id="hero-metric-energy-cost-per-day" class="cursor-help" title="自购车以来的平均每日能耗费用支出（总能耗费用 / 购车天数）">
+            <p class="text-xs text-amber-300 font-semibold flex items-center gap-1">
+              <span>⚡⛽</span> 平均每日能耗
+            </p>
+            <p class="text-xl sm:text-2xl font-bold text-amber-300 mt-0.5">
+              ¥<span id="hero-energy-cost-per-day">0.00</span> <span class="text-xs font-normal text-slate-400">/ 天</span>
+            </p>
+            <p class="text-xs text-slate-400 mt-1" id="hero-fifo-energy-per-day-subtext">
+              实耗 ¥<span id="hero-fifo-energy-cost-per-day" class="text-slate-200 font-mono">0.00</span>/天
+            </p>
+          </div>
+          <div>
+            <p class="text-xs text-slate-400">累计能耗与维护总开销</p>
+            <p class="text-xl sm:text-2xl font-bold text-amber-400 mt-0.5">¥<span id="hero-total-cost">0.00</span></p>
+            <p class="text-xs text-slate-400 mt-1 flex items-center flex-wrap gap-x-1.5" id="hero-cost-subtext">
+              <span>均摊 <span id="hero-cost-per-km" class="text-slate-200">0.00</span> 元/km</span>
+              <span class="opacity-40">·</span>
+              <span>日均 <span id="hero-cost-per-day" class="text-slate-200 font-semibold text-amber-200">0.00</span> 元/天</span>
+            </p>
+          </div>
+          <div id="hero-metric-fuel">
+            <p class="text-xs text-slate-400">百公里平均油耗</p>
+            <p class="text-xl sm:text-2xl font-bold text-amber-300 mt-0.5"><span id="hero-avg-fuel">0.00</span> <span class="text-xs font-normal text-slate-400">L/100km</span></p>
+            <p class="text-xs text-slate-400 mt-1 flex items-center gap-1.5 flex-wrap">
+              <span>加油 <span id="hero-fuel-records-count">0</span> 次</span>
+              <span class="opacity-40">·</span>
+              <span title="平均每次加油花费">次均 ¥<span id="hero-avg-fuel-cost-per-time" class="text-amber-200 font-mono">0.00</span></span>
+            </p>
+          </div>
+          <div id="hero-metric-elec">
+            <p class="text-xs text-slate-400">百公里平均电耗</p>
+            <p class="text-xl sm:text-2xl font-bold text-emerald-400 mt-0.5"><span id="hero-avg-elec">0.00</span> <span class="text-xs font-normal text-slate-400">kWh/100km</span></p>
+            <p class="text-xs text-slate-400 mt-1 flex items-center gap-1.5 flex-wrap">
+              <span>充电 <span id="hero-elec-records-count">0</span> 次</span>
+              <span class="opacity-40">·</span>
+              <span title="平均每次充电花费">次均 ¥<span id="hero-avg-elec-cost-per-time" class="text-emerald-200 font-mono">0.00</span></span>
+            </p>
+          </div>
+          <div id="hero-metric-equiv" class="border-t sm:border-t-0 sm:border-l border-slate-700/60 pt-3 sm:pt-0 sm:pl-3">
+            <p class="text-xs text-cyan-300 font-semibold flex items-center gap-1">
+              <span>🔋</span> 综合等效电耗
+            </p>
+            <p class="text-xl sm:text-2xl font-bold text-cyan-300 mt-0.5">
+              <span id="hero-avg-equiv-elec">0.00</span> <span class="text-xs font-normal text-slate-400">kWh/100km</span>
+            </p>
+            <p class="text-xs text-slate-400 mt-1">
+              等效总电量: <span id="hero-equiv-total-consumed" class="text-slate-200 font-mono">0.0</span> 度
+            </p>
+          </div>
+          <div id="hero-metric-energy-cost-100" class="border-t sm:border-t-0 sm:border-l border-slate-700/60 pt-3 sm:pt-0 sm:pl-3 cursor-help" title="根据每次补能时先进先出 (FIFO) 结算的实耗油电总金额除以终极里程计算">
+            <p class="text-xs text-rose-300 font-semibold flex items-center gap-1">
+              <span>⚡⛽</span> 每公里能耗成本
+            </p>
+            <p class="text-xl sm:text-2xl font-bold text-rose-300 mt-0.5">
+              ¥<span id="hero-energy-cost-per-hundred">0.00</span> <span class="text-xs font-normal text-slate-400">/ km</span>
+            </p>
+            <p class="text-xs text-slate-400 mt-1">
+              实耗 ¥<span id="hero-fifo-energy-cost" class="text-slate-200 font-mono">0.00</span> · <span id="hero-fifo-driven-km" class="text-slate-200 font-mono">0</span>km
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 详细能耗与开销分卡片 -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6" id="overview-stat-cards">
+        <!-- 油耗分析卡片 -->
+        <div id="stat-card-fuel" class="stat-card border-l-4 border-l-amber-500">
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-semibold text-slate-500">⛽ 燃油消耗总览</span>
+              <span class="text-xs px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full font-medium">累计加油</span>
+            </div>
+            <div class="mt-4 flex items-baseline justify-between">
+              <div>
+                <span class="text-3xl font-extrabold text-slate-900" id="stat-total-fuel">0</span>
+                <span class="text-xs text-slate-500 ml-1">升 (L)</span>
+              </div>
+              <div class="text-right">
+                <span class="text-lg font-bold text-amber-600">¥<span id="stat-fuel-cost">0.00</span></span>
+              </div>
+            </div>
+            <!-- 加油成本明细指标 (每升单价 & 次均花费 & 实耗油费) -->
+            <div class="mt-2.5 pt-2 border-t border-dashed border-slate-100 space-y-1.5 text-xs">
+              <div class="flex justify-between items-center text-slate-600">
+                <span class="text-slate-500">⛽ 平均加油成本 (单价):</span>
+                <span class="font-bold text-slate-800 font-mono">¥<span id="stat-fuel-avg-price">0.00</span> / L</span>
+              </div>
+              <div class="flex justify-between items-center text-slate-600">
+                <span class="text-slate-500">⛽ 平均单次加油费用:</span>
+                <span class="font-bold text-amber-600 font-mono">¥<span id="stat-fuel-avg-per-time">0.00</span> / 次</span>
+              </div>
+              <div id="stat-fuel-fifo-box" class="flex justify-between items-center text-slate-600">
+                <span class="text-slate-500" title="按先进先出 (FIFO) 结算实际烧掉燃油的费用">⛽ FIFO实耗油费:</span>
+                <span class="font-bold text-amber-700 font-mono">¥<span id="stat-fuel-fifo-cost">0.00</span></span>
+              </div>
+            </div>
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-100 flex justify-between text-xs text-slate-500">
+            <span>记录笔数: <strong id="stat-fuel-count" class="text-slate-700">0</strong> 笔</span>
+            <button onclick="App.switchTab('fuel')" class="text-blue-600 font-medium hover:underline">新增油耗 ➔</button>
+          </div>
+        </div>
+
+        <!-- 电耗分析卡片 -->
+        <div id="stat-card-elec" class="stat-card border-l-4 border-l-emerald-500">
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-semibold text-slate-500">⚡ 电力补能总览</span>
+              <span class="text-xs px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full font-medium">累计充入</span>
+            </div>
+            <div class="mt-4 flex items-baseline justify-between">
+              <div>
+                <span class="text-3xl font-extrabold text-slate-900" id="stat-total-elec">0</span>
+                <span class="text-xs text-slate-500 ml-1">度 (kWh)</span>
+              </div>
+              <div class="text-right">
+                <span class="text-lg font-bold text-emerald-600">¥<span id="stat-elec-cost">0.00</span></span>
+              </div>
+            </div>
+            <!-- 充电成本明细指标 (每度单价 & 次均花费 & 等效电耗 & 实耗电费) -->
+            <div class="mt-2.5 pt-2 border-t border-dashed border-slate-100 space-y-1.5 text-xs">
+              <div class="flex justify-between items-center text-slate-600">
+                <span class="text-slate-500">⚡ 平均充电成本 (单价):</span>
+                <span class="font-bold text-slate-800 font-mono">¥<span id="stat-elec-avg-price">0.00</span> / 度</span>
+              </div>
+              <div class="flex justify-between items-center text-slate-600">
+                <span class="text-slate-500">⚡ 平均单次充电费用:</span>
+                <span class="font-bold text-emerald-600 font-mono">¥<span id="stat-elec-avg-per-time">0.00</span> / 次</span>
+              </div>
+              <div id="stat-elec-equiv-box" class="flex justify-between items-center text-slate-600">
+                <span class="text-slate-500">🔋 综合等效电耗:</span>
+                <span class="font-bold text-blue-600 font-mono"><span id="stat-equiv-avg">0.00</span> kWh/100km</span>
+              </div>
+              <div id="stat-elec-fifo-box" class="flex justify-between items-center text-slate-600">
+                <span class="text-slate-500" title="按先进先出 (FIFO) 结算实际用掉电量的费用">⚡ FIFO实耗电费:</span>
+                <span class="font-bold text-emerald-700 font-mono">¥<span id="stat-elec-fifo-cost">0.00</span></span>
+              </div>
+            </div>
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-100 flex justify-between text-xs text-slate-500">
+            <span>充电笔数: <strong id="stat-elec-count" class="text-slate-700">0</strong> 笔</span>
+            <button onclick="App.switchTab('electricity')" class="text-blue-600 font-medium hover:underline">新增电耗 ➔</button>
+          </div>
+        </div>
+
+        <!-- 费用支出卡片 -->
+        <div id="stat-card-maint" class="stat-card border-l-4 border-l-indigo-500">
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-semibold text-slate-500">💰 其它费用支出</span>
+              <span class="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full font-medium">累计总额</span>
+            </div>
+            <div class="mt-4 flex items-baseline justify-between">
+              <div>
+                <span class="text-3xl font-extrabold text-slate-900">¥<span id="stat-maint-cost">0.00</span></span>
+              </div>
+              <div class="text-right">
+                <span class="text-sm text-slate-500"><strong id="stat-maint-count" class="text-slate-800">0</strong> 笔支出</span>
+              </div>
+            </div>
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-100 flex justify-between text-xs text-slate-500">
+            <span id="stat-next-maint" class="truncate">暂无待办提醒</span>
+            <button onclick="App.switchTab('maintenance')" class="text-blue-600 font-medium hover:underline">费用登记 ➔</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 按月查看费用堆叠柱状图卡片 -->
+      <div id="monthly-cost-section" class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+              <span>📅</span> 按月费用统计
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">堆叠柱状图直观展示每月各项费用支出结构，悬浮柱体可查看当月燃油、电力、其他支出及总费用明细</p>
+          </div>
+          <!-- 年份选择与图例 -->
+          <div class="flex flex-wrap items-center gap-2.5">
+            <!-- 年份切换器 -->
+            <div class="flex items-center space-x-1.5 text-xs bg-slate-100/90 hover:bg-slate-200/70 transition-colors px-2.5 py-1.5 rounded-xl border border-slate-200/80 shadow-sm">
+              <span class="text-slate-500 font-medium">年份:</span>
+              <select id="monthly-year-select" onchange="App.onMonthlyYearChange(this.value)" class="bg-transparent font-bold text-slate-800 focus:outline-none cursor-pointer text-xs pr-1"></select>
+            </div>
+            <!-- 图例 -->
+            <div id="monthly-chart-legends" class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-xl">
+              <span class="inline-flex items-center gap-1.5 text-slate-600 font-medium">
+                <span class="w-2.5 h-2.5 rounded-sm bg-amber-500"></span>燃油
+              </span>
+              <span class="inline-flex items-center gap-1.5 text-slate-600 font-medium">
+                <span class="w-2.5 h-2.5 rounded-sm bg-emerald-500"></span>电力
+              </span>
+              <span class="inline-flex items-center gap-1.5 text-slate-600 font-medium">
+                <span class="w-2.5 h-2.5 rounded-sm bg-indigo-500"></span>其他
+              </span>
+            </div>
+          </div>
+        </div>
+        <!-- 柱状图与浮窗容器 -->
+        <div class="relative">
+          <div id="monthly-cost-chart-container" class="w-full overflow-x-auto min-h-[220px]">
+            <!-- JS 渲染 SVG 堆叠柱状图 -->
+          </div>
+          <!-- 悬浮提示浮层 (Tooltip) -->
+          <div id="monthly-chart-tooltip" class="absolute z-30 pointer-events-none hidden bg-slate-900/90 backdrop-blur-sm text-white text-xs rounded-xl px-3.5 py-2.5 shadow-xl border border-slate-700/60 transition-all duration-150 transform -translate-x-1/2 -translate-y-full pointer-events-none">
+            <!-- 动态内容 -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 总费用统计饼状图卡片 -->
+      <div id="total-cost-section" class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+              <span>🥧</span> 总费用统计
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">饼状图展示各项费用累计支出汇总（含油费、电费及各项支出明细），直接标明各项金额与百分比占比</p>
+          </div>
+          <!-- 累计总开销显示 -->
+          <div class="flex items-center space-x-2 text-xs bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-xl">
+            <span class="text-slate-500 font-medium">累计总费用:</span>
+            <span id="total-cost-chart-sum" class="font-mono font-bold text-blue-600 text-sm">¥0.00</span>
+          </div>
+        </div>
+        <!-- 饼状图与图例容器 -->
+        <div class="relative">
+          <div id="total-cost-chart-container" class="w-full min-h-[260px]">
+            <!-- JS 渲染 SVG 环形饼状图与详细金额占比图例 -->
+          </div>
+          <!-- 悬浮提示浮层 (Tooltip) -->
+          <div id="total-cost-chart-tooltip" class="absolute z-30 pointer-events-none hidden bg-slate-900/90 backdrop-blur-sm text-white text-xs rounded-xl px-3.5 py-2.5 shadow-xl border border-slate-700/60 transition-all duration-150 transform -translate-x-1/2 -translate-y-full pointer-events-none">
+            <!-- 动态内容 -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 近期记录瀑布流 -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+            <span>⏱️</span> 最近动态记录
+          </h3>
+          <button onclick="App.switchTab('history')" class="text-xs font-semibold text-blue-600 hover:text-blue-800">查看完整明细 ➔</button>
+        </div>
+        <div id="recent-activities-list" class="space-y-3">
+          <!-- JS 动态注入 -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 1.5 TAB: 独立能耗分析页面 (展示每两次补能间能耗与总能耗情况) -->
+    <div id="tab-energy" class="tab-pane hidden space-y-6">
+      <!-- 页面头部说明 -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="w-8 h-8 rounded-lg bg-cyan-100 text-cyan-700 flex items-center justify-center font-bold">📊</span>
+            <h2 class="text-xl font-bold text-slate-900">能耗深度分析与补能台账</h2>
+          </div>
+          <p class="text-xs text-slate-500 mt-1.5">
+            精准分析 <strong id="energy-car-title" class="text-slate-700">当前车辆</strong> 的总体能耗表现及每两次补能（加油/充电）之间的实际区间能耗
+          </p>
+        </div>
+        <div class="flex items-center space-x-2">
+          <button onclick="App.switchTab('fuel')" class="px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl text-xs font-semibold flex items-center gap-1 transition">
+            <span>⛽ 录入油耗</span>
+          </button>
+          <button onclick="App.switchTab('electricity')" class="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-semibold flex items-center gap-1 transition">
+            <span>⚡ 录入电耗</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 第一部分：总的能耗全局统计看板 -->
+      <div class="space-y-4">
+        <h3 class="text-sm font-bold text-slate-700 flex items-center gap-1.5">
+          <span>🌐</span> 全局累计能耗情况
+        </h3>
+
+        <!-- 五大核心指标卡 -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+          <!-- 综合百公里油耗 -->
+          <div class="stat-card border-l-4 border-l-amber-500">
+            <div>
+              <div class="flex items-center justify-between text-xs text-slate-400">
+                <span>⛽ 累计百公里油耗</span>
+                <span class="px-2 py-0.5 rounded bg-amber-50 text-amber-700 font-medium">燃油累计</span>
+              </div>
+              <div class="mt-3 flex items-baseline">
+                <span class="text-3xl font-extrabold text-amber-600" id="ea-overall-fuel">0.00</span>
+                <span class="text-xs text-slate-400 ml-1">L/100km</span>
+              </div>
+            </div>
+            <div class="mt-4 pt-3 border-t border-slate-100 text-xs text-slate-500 flex justify-between">
+              <span>加油: <strong id="ea-fuel-count" class="text-slate-800">0</strong> 次 (累计耗 <span id="ea-fuel-total-amount">0</span> L)</span>
+              <span>¥<span id="ea-fuel-total-cost">0.00</span></span>
+            </div>
+          </div>
+
+          <!-- 综合百公里电耗 -->
+          <div class="stat-card border-l-4 border-l-emerald-500">
+            <div>
+              <div class="flex items-center justify-between text-xs text-slate-400">
+                <span>⚡ 累计百公里电耗</span>
+                <span class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-medium">电力累计</span>
+              </div>
+              <div class="mt-3 flex items-baseline justify-between">
+                <div class="flex items-baseline">
+                  <span class="text-3xl font-extrabold text-emerald-600" id="ea-overall-elec">0.00</span>
+                  <span class="text-xs text-slate-400 ml-1">kWh/100km</span>
+                </div>
+              </div>
+            </div>
+            <div class="mt-4 pt-3 border-t border-slate-100 text-xs text-slate-500 flex justify-between items-center">
+              <span>充电: <strong id="ea-elec-count" class="text-slate-800">0</strong> 次 (耗 <span id="ea-elec-total-amount">0</span> 度)</span>
+              <span>¥<span id="ea-elec-total-cost">0.00</span></span>
+            </div>
+          </div>
+
+          <!-- 综合等效电耗 (独占卡片) -->
+          <div id="ea-card-equiv" class="stat-card border-l-4 border-l-cyan-500 bg-gradient-to-br from-cyan-50/40 via-white to-white">
+            <div>
+              <div class="flex items-center justify-between text-xs text-slate-400">
+                <span class="font-bold text-cyan-950">🔋 累计综合等效电耗</span>
+                <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-bold text-[11px]">1L=3.3kWh</span>
+              </div>
+              <div class="mt-3 flex items-baseline">
+                <span class="text-3xl font-extrabold text-cyan-600 font-mono" id="ea-card-equiv-val">0.00</span>
+                <span class="text-xs text-slate-400 ml-1">kWh/100km</span>
+              </div>
+            </div>
+            <div class="mt-4 pt-3 border-t border-slate-100 text-xs text-slate-500 flex justify-between items-center">
+              <span>折合等效总电量:</span>
+              <span class="font-bold text-cyan-700 font-mono"><strong id="ea-card-equiv-total">0.0</strong> 度</span>
+            </div>
+          </div>
+
+          <!-- 补能总支出与每公里能耗 -->
+          <div class="stat-card border-l-4 border-l-blue-500">
+            <div>
+              <div class="flex items-center justify-between text-xs text-slate-400">
+                <span>💰 补能总支出 (油+电)</span>
+                <span class="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-medium">能耗花费</span>
+              </div>
+              <div class="mt-3 flex items-baseline">
+                <span class="text-3xl font-extrabold text-slate-900">¥<span id="ea-total-energy-cost">0.00</span></span>
+              </div>
+            </div>
+            <div class="mt-4 pt-3 border-t border-slate-100 text-xs text-slate-500 flex justify-between">
+              <span>均摊每公里能耗:</span>
+              <span class="font-bold text-blue-600">¥<span id="ea-cost-per-km">0.00</span> / km</span>
+            </div>
+          </div>
+
+          <!-- 补能节奏规律 -->
+          <div class="stat-card border-l-4 border-l-indigo-500">
+            <div>
+              <div class="flex items-center justify-between text-xs text-slate-400">
+                <span>🔄 补能节奏与均值</span>
+                <span class="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 font-medium">补能规律</span>
+              </div>
+              <div class="mt-3 flex items-baseline">
+                <span class="text-3xl font-extrabold text-indigo-600" id="ea-avg-interval-km">0</span>
+                <span class="text-xs text-slate-400 ml-1">km / 每次补能</span>
+              </div>
+            </div>
+            <div class="mt-4 pt-3 border-t border-slate-100 text-xs text-slate-500 flex justify-between">
+              <span>单次补能均费:</span>
+              <span class="font-semibold text-slate-800">¥<span id="ea-avg-interval-cost">0.00</span></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 能耗极值分析卡 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-transparent border border-emerald-200/80 rounded-2xl p-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+              <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-lg">🏆</div>
+              <div>
+                <div class="text-xs font-semibold text-emerald-800">历史最省能耗</div>
+                <div class="text-xs text-slate-500 mt-0.5" id="ea-best-description">百公里等效电耗最佳</div>
+              </div>
+            </div>
+            <div class="text-right">
+              <span class="text-xl font-extrabold text-emerald-700 font-mono" id="ea-best-badge">-</span>
+              <span class="text-[11px] text-emerald-600/80 block font-mono">kWh/100km</span>
+            </div>
+          </div>
+
+          <div class="bg-gradient-to-r from-rose-500/10 via-rose-500/5 to-transparent border border-rose-200/80 rounded-2xl p-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+              <div class="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center text-lg">⚠️</div>
+              <div>
+                <div class="text-xs font-semibold text-rose-800">历史最高能耗</div>
+                <div class="text-xs text-slate-500 mt-0.5" id="ea-worst-description">百公里等效电耗峰值</div>
+              </div>
+            </div>
+            <div class="text-right">
+              <span class="text-xl font-extrabold text-rose-700 font-mono" id="ea-worst-badge">-</span>
+              <span class="text-[11px] text-rose-600/80 block font-mono">kWh/100km</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 能耗波动趋势走势图 -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <div>
+              <h4 class="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                <span>📊</span> 每次补能百公里能耗分析柱状图
+              </h4>
+              <p class="text-xs text-slate-400 mt-0.5">起点为车辆初始化状态，柱状图直观展示每两次补能行程间的百公里实际油耗与电耗分布</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2.5">
+              <!-- 年份切换器 -->
+              <div class="flex items-center space-x-1.5 text-xs bg-slate-100/90 hover:bg-slate-200/70 transition-colors px-2.5 py-1.5 rounded-xl border border-slate-200/80 shadow-sm">
+                <span class="text-slate-500 font-medium">年份:</span>
+                <select id="energy-year-select" onchange="App.onEnergyYearChange(this.value)" class="bg-transparent font-bold text-slate-800 focus:outline-none cursor-pointer text-xs pr-1"></select>
+              </div>
+              <div id="energy-chart-tabs" class="flex items-center space-x-1.5 bg-slate-100 p-1 rounded-xl text-xs overflow-x-auto">
+                <button onclick="App.setEnergyChartTab('both')" id="ec-tab-both" class="px-2.5 py-1 rounded-lg font-medium transition bg-white text-blue-600 shadow-sm whitespace-nowrap">全部能耗</button>
+                <button onclick="App.setEnergyChartTab('fuel')" id="ec-tab-fuel" class="px-2.5 py-1 rounded-lg font-medium transition text-slate-600 hover:text-slate-900 whitespace-nowrap">⛽ 仅看油耗</button>
+                <button onclick="App.setEnergyChartTab('electricity')" id="ec-tab-elec" class="px-2.5 py-1 rounded-lg font-medium transition text-slate-600 hover:text-slate-900 whitespace-nowrap">⚡ 仅看电耗</button>
+                <button onclick="App.setEnergyChartTab('equivalent')" id="ec-tab-equiv" class="px-2.5 py-1 rounded-lg font-medium transition text-slate-600 hover:text-slate-900 whitespace-nowrap">🔋 等效电耗</button>
+              </div>
+            </div>
+          </div>
+          <div id="energy-chart-container" class="w-full overflow-hidden">
+            <!-- JS 绘制原生响应式 SVG 曲线 -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 第二部分：每两次补能之间的能耗情况流水 -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div>
+            <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+              <span>⛽⚡</span> 每两次补能之间能耗明细台账
+            </h3>
+            <p class="text-xs text-slate-500 mt-0.5">
+              对比上一次记录，精确结算区间行驶里程、单次百公里能耗、每公里费用与均值偏差
+            </p>
+          </div>
+          <!-- 筛选胶囊 -->
+          <div class="flex items-center space-x-2">
+            <button onclick="App.filterEnergyIntervals('all')" id="ei-filter-all" class="pill-btn active">全部区间</button>
+            <button onclick="App.filterEnergyIntervals('fuel')" id="ei-filter-fuel" class="pill-btn">⛽ 燃油区间</button>
+            <button onclick="App.filterEnergyIntervals('electricity')" id="ei-filter-elec" class="pill-btn">⚡ 纯电区间</button>
+          </div>
+        </div>
+
+        <div id="energy-intervals-list" class="space-y-3">
+          <!-- JS 动态注入每两次补能的卡片 -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. TAB: 油耗录入 (核心需求3: 任意两项自算第三项) -->
+    <div id="tab-fuel" class="tab-pane hidden max-w-2xl mx-auto space-y-6">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <span class="w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center font-bold">⛽</span>
+              油耗录入
+            </h2>
+            <p class="text-xs text-slate-500 mt-1">加油量、单价、总价输入任意两项，智能计算第三项</p>
+          </div>
+          <span class="text-xs bg-amber-50 text-amber-700 px-2.5 py-1 rounded-full font-medium">精准核算</span>
+        </div>
+
+        <form id="fuel-form" onsubmit="App.submitFuelRecord(event)" class="space-y-5">
+          <!-- 车辆选择与当前里程 -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="form-label">记录车辆</label>
+              <input type="text" id="fuel-car-display" readonly class="form-input bg-slate-50 text-slate-600 cursor-not-allowed font-medium">
+            </div>
+            <div>
+              <label class="form-label flex justify-between items-center">
+                <span>当前里程 (km) <span class="text-rose-500">*</span></span>
+                <span class="text-xs text-slate-400">上次里程: <span id="fuel-prev-mileage">0</span> km</span>
+              </label>
+              <input type="number" inputmode="decimal" step="0.00001" id="fuel-mileage" required placeholder="如 35200" class="form-input text-lg font-semibold text-slate-900">
+            </div>
+          </div>
+
+          <!-- 核心联动计算卡片：实付总价 = 加油量 × 单价 -->
+          <div class="bg-amber-50/60 border border-amber-200/80 rounded-xl p-4 sm:p-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold tracking-wide text-amber-900 flex items-center gap-1.5">
+                <svg class="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                费用核算：实付总价 = 加油量 × 单价
+              </span>
+              <button type="button" onclick="App.resetTriCalc('fuel')" class="text-xs text-amber-700 hover:text-amber-900 underline">清空数值</button>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-11 gap-2 items-center">
+              <!-- 实付总价 -->
+              <div class="sm:col-span-3">
+                <label class="form-label flex justify-between items-center text-xs">
+                  <span class="font-bold text-amber-900">实付总价 (元)</span>
+                  <span id="fuel-total-tag" class="calc-tag hidden">✨ 自动计算</span>
+                </label>
+                <input type="number" inputmode="decimal" step="0.00001" id="fuel-total-price" placeholder="0.00" class="form-input text-lg font-bold text-amber-950 bg-amber-50/80 border-amber-300">
+              </div>
+
+              <!-- 等号 -->
+              <div class="hidden sm:flex sm:col-span-1 justify-center items-center pt-5 text-amber-500 font-black text-xl select-none">
+                =
+              </div>
+
+              <!-- 加油量 -->
+              <div class="sm:col-span-3">
+                <label class="form-label flex justify-between items-center text-xs">
+                  <span>加油量 (L)</span>
+                  <span id="fuel-amount-tag" class="calc-tag hidden">✨ 计算</span>
+                </label>
+                <input type="number" inputmode="decimal" step="0.00001" id="fuel-amount" oninput="App.onFuelAmountChange()" placeholder="0.00" class="form-input text-lg font-semibold">
+              </div>
+
+              <!-- 乘号 -->
+              <div class="hidden sm:flex sm:col-span-1 justify-center items-center pt-5 text-amber-500 font-black text-xl select-none">
+                ×
+              </div>
+
+              <!-- 单价 -->
+              <div class="sm:col-span-3">
+                <label class="form-label flex justify-between items-center text-xs">
+                  <span>单价 (元/L)</span>
+                  <span id="fuel-price-tag" class="calc-tag hidden">✨ 自动计算</span>
+                </label>
+                <input type="number" inputmode="decimal" step="0.00001" id="fuel-unit-price" placeholder="如 8.15" class="form-input text-lg font-semibold">
+              </div>
+            </div>
+
+            <div id="fuel-formula-preview" class="text-xs text-amber-800/90 font-medium flex items-center gap-1.5 pt-1">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              <span>输入实付总价与加油量自动计算单价；亦支持修改单价调整实付总价。</span>
+            </div>
+          </div>
+
+          <!-- 油品标号 -->
+          <div class="space-y-2">
+            <label class="form-label">油品标号</label>
+            <div class="flex flex-wrap gap-2 mb-2" id="fuel-pills">
+              <button type="button" onclick="App.setFuelType('92#')" class="pill-btn active">92# 汽油</button>
+              <button type="button" onclick="App.setFuelType('95#')" class="pill-btn">95# 汽油</button>
+              <button type="button" onclick="App.setFuelType('98#')" class="pill-btn">98# 汽油</button>
+              <button type="button" onclick="App.setFuelType('0#柴油')" class="pill-btn">0# 柴油</button>
+              <button type="button" onclick="App.setFuelType('-10#柴油')" class="pill-btn">-10# 柴油</button>
+            </div>
+            <input type="text" id="fuel-type" value="92#" required class="form-input text-sm">
+          </div>
+
+          <!-- 是否加满 -->
+          <div>
+            <label class="form-label">是否加满</label>
+            <div class="flex items-center space-x-6 mt-2">
+              <label class="inline-flex items-center cursor-pointer">
+                <input type="radio" name="fuel-is-full" value="1" checked onchange="App.calcFuelPostPercent()" class="text-blue-600 focus:ring-blue-500 h-4 w-4">
+                <span class="ml-2 text-sm text-slate-700 font-medium">加满 (便于测算百公里油耗)</span>
+              </label>
+              <label class="inline-flex items-center cursor-pointer">
+                <input type="radio" name="fuel-is-full" value="0" onchange="App.calcFuelPostPercent()" class="text-blue-600 focus:ring-blue-500 h-4 w-4">
+                <span class="ml-2 text-sm text-slate-700">未加满</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- 加油站选择 (支持历史频次推荐、GPS定位/高德POI模糊搜索、手工输入) -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="form-label mb-0 flex items-center gap-1.5">
+                <span>⛽ 加油站名称</span>
+                <span class="text-[11px] font-normal text-slate-400">(可选)</span>
+              </label>
+              <div class="flex items-center gap-2">
+                <button type="button" id="btn-fuel-nearby-stations" onclick="App.locateNearbyFuelStations()" class="px-2.5 py-1 text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition flex items-center gap-1 shadow-sm shadow-amber-500/20 active:scale-95" title="GPS定位获取附近加油站，按距离由近到远列出">
+                  <span>📍</span> <span id="btn-fuel-nearby-text">定位附近油站</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 方式 1: 历史加油站 (使用频次越多越靠前，点击按钮即选) -->
+            <div id="fuel-history-stations-box" class="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5 hidden">
+              <div class="flex items-center justify-between text-[11px] text-slate-500">
+                <span class="font-medium flex items-center gap-1 text-slate-600">
+                  <svg class="w-3.5 h-3.5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  历史常用油站 (频次排序，点击即选):
+                </span>
+                <span id="fuel-history-count-badge" class="text-[10px] text-slate-400"></span>
+              </div>
+              <div id="fuel-station-pills" class="flex flex-wrap gap-1.5 min-h-0"></div>
+            </div>
+
+            <!-- 方式 2 & 3: 输入框联动高德POI模糊搜索下拉与手工输入 -->
+            <div class="relative">
+              <div class="relative flex gap-2">
+                <div class="relative flex-1">
+                  <input type="text" id="fuel-station" autocomplete="off" placeholder="输入任意地点/商圈/路名搜索周边油站，或手工输入" class="form-input text-sm w-full pr-8">
+                  <datalist id="fuel-station-datalist"></datalist>
+                  <button type="button" id="fuel-station-clear-btn" onclick="App.clearFuelStationInput()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 w-5 h-5 rounded-full flex items-center justify-center text-xs">
+                    ✕
+                  </button>
+                </div>
+                <button type="button" onclick="App.addCustomFuelStation()" class="px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl border border-slate-200 transition shrink-0" title="存入常用油站列表">
+                  + 常用
+                </button>
+              </div>
+
+              <!-- 高德POI模糊搜索 / GPS附近油站 浮层下拉菜单 -->
+              <div id="fuel-station-dropdown" class="hidden absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 max-h-72 overflow-y-auto divide-y divide-slate-100 transition-all">
+                <div id="fuel-dropdown-header" class="px-3 py-2 bg-slate-50 text-[11px] font-semibold text-slate-500 flex items-center justify-between sticky top-0 backdrop-blur z-10">
+                  <span id="fuel-dropdown-title">附近加油站推荐 (由近到远)</span>
+                  <button type="button" onclick="App.closeFuelStationDropdown()" class="text-slate-400 hover:text-slate-700 text-xs font-bold px-1.5 py-0.5 rounded hover:bg-slate-200">关闭</button>
+                </div>
+                <div id="fuel-dropdown-list" class="divide-y divide-slate-100"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 核心需求2: 自动计算录入后的油量百分比卡片 -->
+          <div id="fuel-post-percent-box" class="bg-amber-50/70 border border-amber-200/80 rounded-xl p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                <svg class="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                油量追踪 (自动推算录入后油量百分比)
+              </span>
+              <span class="text-xs text-amber-700 font-medium" id="fuel-post-calc-hint">加满自动锁定 100%</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="form-label flex justify-between items-center text-xs">
+                  <span>加前起步油量 (%)</span>
+                  <span class="text-xs text-slate-400">默认为上次油量</span>
+                </label>
+                <div class="relative">
+                  <input type="number" inputmode="decimal" step="0.00001" min="0" max="100" id="fuel-pre-percent" oninput="App.calcFuelPostPercent()" placeholder="0" class="form-input text-sm font-semibold pr-8">
+                  <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold pointer-events-none">%</span>
+                </div>
+              </div>
+
+              <div>
+                <label class="form-label flex justify-between items-center text-xs">
+                  <span class="text-amber-950 font-bold">加后表显油量 (录入后 %)</span>
+                  <span id="fuel-post-tag" class="text-xs text-amber-700 font-medium">✨ 自动计算</span>
+                </label>
+                <div class="relative">
+                  <input type="number" inputmode="decimal" step="0.00001" min="0" max="100" id="fuel-post-percent" readonly class="form-input text-sm font-bold bg-white text-amber-900 pr-8 border-amber-300 cursor-not-allowed">
+                  <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-amber-600 font-bold pointer-events-none">%</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 动态油量条 -->
+            <div class="space-y-1">
+              <div class="flex justify-between text-[11px] text-amber-800 font-medium">
+                <span>0% (空)</span>
+                <span id="fuel-percent-bar-text" class="font-bold">加后油量: 100%</span>
+                <span>100% (满)</span>
+              </div>
+              <div class="w-full bg-amber-200/50 h-2.5 rounded-full overflow-hidden p-0.5 border border-amber-200">
+                <div id="fuel-percent-bar" class="bg-gradient-to-r from-amber-500 to-amber-600 h-full rounded-full transition-all duration-300" style="width: 100%;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 当前电量录入 (混动/增程车辆专用，纯燃油车自动隐藏) -->
+          <div id="fuel-battery-percent-box" class="bg-emerald-50/50 border border-emerald-200/70 rounded-xl p-4 space-y-1">
+            <label class="form-label flex justify-between items-center text-xs">
+              <span class="font-bold text-emerald-900 flex items-center gap-1.5">
+                <span class="text-emerald-600 font-bold">⚡</span>
+                当前电量 (SOC %)
+              </span>
+              <span class="text-xs text-emerald-700 font-normal">默认为最后一次电量</span>
+            </label>
+            <div class="relative">
+              <input type="number" inputmode="decimal" step="0.00001" min="0" max="100" id="fuel-battery-percent" placeholder="0" class="form-input text-sm font-semibold pr-8">
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-emerald-600 font-bold pointer-events-none">%</span>
+            </div>
+            <p class="text-[11px] text-emerald-700/80">记录加油时的剩余电量百分比，帮助混动/增程车同步精确核算电耗</p>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="form-label">加油时间</label>
+              <input type="datetime-local" id="fuel-date" required class="form-input text-sm">
+            </div>
+            <div>
+              <label class="form-label">备注 (可选)</label>
+              <input type="text" id="fuel-notes" placeholder="优惠券扣减、天气、路况等" class="form-input text-sm">
+            </div>
+          </div>
+
+          <div class="pt-4 flex items-center justify-end space-x-3">
+            <button type="button" onclick="App.resetTriCalc('fuel')" class="px-5 py-2.5 text-sm font-medium text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition">
+              重置
+            </button>
+            <button type="submit" class="px-7 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl shadow-lg shadow-amber-500/20 transition">
+              保存油耗记录
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 3. TAB: 电耗录入 (核心需求4: 任意两项自算第三项，充电类型/油品) -->
+    <div id="tab-electricity" class="tab-pane hidden max-w-2xl mx-auto space-y-6">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <span class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold">⚡</span>
+              电耗录入
+            </h2>
+            <p class="text-xs text-slate-500 mt-1">加电量、单价、总价输入任意两项，智能计算第三项</p>
+          </div>
+          <span class="text-xs bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full font-medium">绿色出行</span>
+        </div>
+
+        <form id="elec-form" onsubmit="App.submitElectricityRecord(event)" class="space-y-5">
+          <!-- 车辆选择与当前里程 -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="form-label">记录车辆</label>
+              <input type="text" id="elec-car-display" readonly class="form-input bg-slate-50 text-slate-600 cursor-not-allowed font-medium">
+            </div>
+            <div>
+              <label class="form-label flex justify-between items-center">
+                <span>当前里程 (km) <span class="text-rose-500">*</span></span>
+                <span class="text-xs text-slate-400">上次里程: <span id="elec-prev-mileage">0</span> km</span>
+              </label>
+              <input type="number" inputmode="decimal" step="0.00001" id="elec-mileage" required placeholder="如 35200" class="form-input text-lg font-semibold text-slate-900">
+            </div>
+          </div>
+
+          <!-- 核心联动计算卡片：实付总价 = 加电量 × 单价 -->
+          <div class="bg-emerald-50/60 border border-emerald-200/80 rounded-xl p-4 sm:p-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold tracking-wide text-emerald-900 flex items-center gap-1.5">
+                <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                费用核算：实付总价 = 加电量 × 单价
+              </span>
+              <button type="button" onclick="App.resetTriCalc('elec')" class="text-xs text-emerald-700 hover:text-emerald-900 underline">清空数值</button>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-11 gap-2 items-center">
+              <!-- 实付总价 -->
+              <div class="sm:col-span-3">
+                <label class="form-label flex justify-between items-center text-xs">
+                  <span class="font-bold text-emerald-900">实付总价 (元)</span>
+                  <span id="elec-total-tag" class="calc-tag hidden">✨ 自动计算</span>
+                </label>
+                <input type="number" inputmode="decimal" step="0.00001" id="elec-total-price" placeholder="0.00" class="form-input text-lg font-bold text-emerald-950 bg-emerald-50/80 border-emerald-300">
+              </div>
+
+              <!-- 等号 -->
+              <div class="hidden sm:flex sm:col-span-1 justify-center items-center pt-5 text-emerald-500 font-black text-xl select-none">
+                =
+              </div>
+
+              <!-- 加电量 -->
+              <div class="sm:col-span-3">
+                <label class="form-label flex justify-between items-center text-xs">
+                  <span>加电量 (kWh / 度)</span>
+                  <span id="elec-amount-tag" class="calc-tag hidden">✨ 计算</span>
+                </label>
+                <input type="number" inputmode="decimal" step="0.00001" id="elec-amount" oninput="App.onElecAmountChange()" placeholder="0.00" class="form-input text-lg font-semibold">
+              </div>
+
+              <!-- 乘号 -->
+              <div class="hidden sm:flex sm:col-span-1 justify-center items-center pt-5 text-emerald-500 font-black text-xl select-none">
+                ×
+              </div>
+
+              <!-- 单价 -->
+              <div class="sm:col-span-3">
+                <label class="form-label flex justify-between items-center text-xs">
+                  <span>单价 (元/度)</span>
+                  <span id="elec-price-tag" class="calc-tag hidden">✨ 自动计算</span>
+                </label>
+                <input type="number" inputmode="decimal" step="0.00001" id="elec-unit-price" placeholder="如 1.250" class="form-input text-lg font-semibold">
+              </div>
+            </div>
+
+            <div id="elec-formula-preview" class="text-xs text-emerald-800/90 font-medium flex items-center gap-1.5 pt-1">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              <span>输入实付总价与加电量自动计算单价；亦支持修改单价调整实付总价。</span>
+            </div>
+          </div>
+
+          <!-- 充电类型/油品标号 -->
+          <div class="space-y-2">
+            <label class="form-label">充电类型 / 充电桩规格</label>
+            <div class="flex flex-wrap gap-2 mb-2" id="elec-pills">
+              <button type="button" onclick="App.setChargingType('快充 (DC直流)')" class="pill-btn active">快充 (DC直流)</button>
+              <button type="button" onclick="App.setChargingType('慢充 (AC交流)')" class="pill-btn">慢充 (AC交流)</button>
+              <button type="button" onclick="App.setChargingType('家用私桩 (谷电)')" class="pill-btn">家用私桩 (谷电)</button>
+              <button type="button" onclick="App.setChargingType('品牌超充')" class="pill-btn">品牌超充</button>
+              <button type="button" onclick="App.setChargingType('第三方公共快充')" class="pill-btn">第三方公共快充</button>
+            </div>
+            <input type="text" id="elec-charging-type" value="快充 (DC直流)" required class="form-input text-sm">
+          </div>
+
+          <!-- 起始电量与结束电量 (核心需求1: 加电量与起始电量联动自算结束电量，无需手动输入) -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="form-label flex justify-between items-center text-xs">
+                <span>起始电量 (SOC %)</span>
+                <span class="text-xs text-slate-400">默认为上次电量</span>
+              </label>
+              <div class="relative">
+                <input type="number" inputmode="decimal" min="0" max="100" step="0.00001" id="elec-start-soc" placeholder="如 20%" oninput="App.calcElecEndSoc()" class="form-input text-sm font-semibold pr-8">
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold pointer-events-none">%</span>
+              </div>
+            </div>
+            <div>
+              <label class="form-label flex justify-between items-center text-xs">
+                <span class="text-emerald-950 font-bold">结束电量 (SOC %)</span>
+                <span class="text-xs text-emerald-700 font-medium">✨ 自动推算 (免手填)</span>
+              </label>
+              <div class="relative">
+                <input type="number" inputmode="decimal" min="0" max="100" step="0.00001" id="elec-end-soc" readonly oninput="App.onElecEndSocInput(false)" placeholder="自动计算" class="form-input text-sm font-bold bg-slate-50 text-emerald-900 border-emerald-300 pr-8 cursor-not-allowed">
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-emerald-600 font-bold pointer-events-none">%</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="soc-bar-container">
+            <div id="soc-preview-bar" class="soc-fill" style="width: 0%;"></div>
+          </div>
+
+          <!-- 电池矫正选项 (核心需求: 勾选后手动输入充电完成百分比，根据充电量和ΔSOC差计算电池容量，只影响本次充电后的数据) -->
+          <div class="bg-gradient-to-br from-emerald-50/70 to-teal-50/40 border border-emerald-200/90 rounded-xl p-3.5 space-y-2.5 transition">
+            <div class="flex items-center justify-between">
+              <label class="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" id="elec-battery-calibrate-toggle" onchange="App.toggleBatteryCalibration(false)" class="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300">
+                <span class="text-sm font-bold text-emerald-950 flex items-center gap-1.5">
+                  <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                  <span>电池矫正</span>
+                </span>
+              </label>
+              <span id="elec-calibrate-badge" class="text-[11px] text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full font-medium">本次标定</span>
+            </div>
+            <p class="text-xs text-slate-500 leading-relaxed">
+              勾选后可手动输入充电完成的实际百分比，系统将依据本次加电量与电量差（ΔSOC%）精准推算电池真实容量。新容量仅影响本次充电后的行驶与能耗核算，不追溯影响历史数据。
+            </p>
+            <div id="elec-calibrate-result-box" class="hidden p-3 rounded-lg bg-white/95 border border-emerald-300 shadow-sm text-xs space-y-1.5">
+              <div class="flex items-center justify-between font-semibold">
+                <span class="text-slate-700 flex items-center gap-1">
+                  <span>🔋</span> 经本次矫正电池容量:
+                </span>
+                <span id="elec-calibrated-capacity-val" class="text-base font-extrabold text-emerald-600">-- kWh</span>
+              </div>
+              <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+                <span>标称/原电池容量: <span id="elec-current-capacity-val" class="font-medium text-slate-700">--</span> kWh</span>
+                <span id="elec-calibrate-delta-soc" class="font-medium text-emerald-700">ΔSOC: --%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 核心需求1: 油量百分比录入 (混动/增程车辆专用，纯电车自动隐藏) -->
+          <div id="elec-fuel-box" class="bg-amber-50/50 border border-amber-200/70 rounded-xl p-4 space-y-1">
+            <label class="form-label flex justify-between items-center text-xs">
+              <span class="font-bold text-amber-900 flex items-center gap-1.5">
+                <svg class="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                当前油量 (百分比 %)
+              </span>
+              <span class="text-xs text-amber-700 font-normal">默认为最后一次油量</span>
+            </label>
+            <div class="relative">
+              <input type="number" inputmode="decimal" step="0.00001" min="0" max="100" id="elec-fuel-percent" placeholder="0" class="form-input text-sm font-semibold pr-8">
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-amber-600 font-bold pointer-events-none">%</span>
+            </div>
+            <p class="text-[11px] text-amber-700/80">记录充完电时的油量百分比，帮助混动/增程车精准核算综合能耗</p>
+          </div>
+
+          <!-- 充电场站选择 (支持历史频次推荐、GPS定位/高德POI模糊搜索、手工输入) -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="form-label mb-0 flex items-center gap-1.5">
+                <span>⚡ 充电场站名称</span>
+                <span class="text-[11px] font-normal text-slate-400">(可选)</span>
+              </label>
+              <div class="flex items-center gap-2">
+                <button type="button" id="btn-elec-nearby-stations" onclick="App.locateNearbyElecStations()" class="px-2.5 py-1 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition flex items-center gap-1 shadow-sm shadow-emerald-600/20 active:scale-95" title="GPS定位获取附近充电站，按距离由近到远列出">
+                  <span>📍</span> <span id="btn-elec-nearby-text">定位附近电站</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 方式 1: 历史充电站 (使用频次越多越靠前，点击按钮即选) -->
+            <div id="elec-history-stations-box" class="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5 hidden">
+              <div class="flex items-center justify-between text-[11px] text-slate-500">
+                <span class="font-medium flex items-center gap-1 text-slate-600">
+                  <svg class="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  历史常用电站 (频次排序，点击即选):
+                </span>
+                <span id="elec-history-count-badge" class="text-[10px] text-slate-400"></span>
+              </div>
+              <div id="elec-station-pills" class="flex flex-wrap gap-1.5 min-h-0"></div>
+            </div>
+
+            <!-- 方式 2 & 3: 输入框联动高德POI模糊搜索下拉与手工输入 -->
+            <div class="relative">
+              <div class="relative flex gap-2">
+                <div class="relative flex-1">
+                  <input type="text" id="elec-station" autocomplete="off" placeholder="输入任意地点/商圈/路名搜索周边充电站，或手工输入" class="form-input text-sm w-full pr-8">
+                  <datalist id="elec-station-datalist"></datalist>
+                  <button type="button" id="elec-station-clear-btn" onclick="App.clearElecStationInput()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 w-5 h-5 rounded-full flex items-center justify-center text-xs">
+                    ✕
+                  </button>
+                </div>
+                <button type="button" onclick="App.addCustomElecStation()" class="px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl border border-slate-200 transition shrink-0" title="存入常用电站列表">
+                  + 常用
+                </button>
+              </div>
+
+              <!-- 高德POI模糊搜索 / GPS附近电站 浮层下拉菜单 -->
+              <div id="elec-station-dropdown" class="hidden absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 max-h-72 overflow-y-auto divide-y divide-slate-100 transition-all">
+                <div id="elec-dropdown-header" class="px-3 py-2 bg-slate-50 text-[11px] font-semibold text-slate-500 flex items-center justify-between sticky top-0 backdrop-blur z-10">
+                  <span id="elec-dropdown-title">附近充电站推荐 (由近到远)</span>
+                  <button type="button" onclick="App.closeElecStationDropdown()" class="text-slate-400 hover:text-slate-700 text-xs font-bold px-1.5 py-0.5 rounded hover:bg-slate-200">关闭</button>
+                </div>
+                <div id="elec-dropdown-list" class="divide-y divide-slate-100"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="form-label">充电时间</label>
+              <input type="datetime-local" id="elec-date" required class="form-input text-sm">
+            </div>
+            <div>
+              <label class="form-label">备注说明 (可选)</label>
+              <input type="text" id="elec-notes" placeholder="含服务费、停车减免、电池预热等" class="form-input text-sm">
+            </div>
+          </div>
+
+          <div class="pt-4 flex items-center justify-end space-x-3">
+            <button type="button" onclick="App.resetTriCalc('elec')" class="px-5 py-2.5 text-sm font-medium text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition">
+              重置
+            </button>
+            <button type="submit" class="px-7 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl shadow-lg shadow-emerald-600/20 transition">
+              保存电耗记录
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 4. TAB: 费用支出录入 -->
+    <!-- 4. TAB: 费用支出录入 -->
+    <div id="tab-maintenance" class="tab-pane hidden max-w-xl mx-auto space-y-6">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <span class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">💰</span>
+              费用支出
+            </h2>
+            <p class="text-xs text-slate-500 mt-1">记录保养、维修、保险、洗车、停车等各项用车开销</p>
+          </div>
+          <span class="text-xs bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full font-medium">快捷记账</span>
+        </div>
+
+        <form id="maint-form" onsubmit="App.submitMaintenanceRecord(event)" class="space-y-5">
+          <!-- 所属车辆 -->
+          <div>
+            <label class="form-label">所属车辆</label>
+            <input type="text" id="maint-car-display" readonly class="form-input bg-slate-50 text-slate-600 cursor-not-allowed font-medium">
+          </div>
+
+          <!-- 支出项目 (默认为空，用户输入后才增加至支出项目) -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="form-label">支出项目 <span class="text-rose-500">*</span></label>
+              <span class="text-[11px] text-slate-400">输入新项目后自动加入常用项目列表</span>
+            </div>
+            <!-- 动态标签列表 (默认为空) -->
+            <div id="maint-items-pills" class="flex flex-wrap gap-2 mb-2 min-h-0 hidden">
+              <!-- 用户输入后动态加入标签 -->
+            </div>
+            <div class="flex gap-2">
+              <input type="text" id="maint-item-type" list="maint-items-datalist" required placeholder="请输入支出项目（例如：洗车、停车费、保养等）" class="form-input text-sm flex-1">
+              <datalist id="maint-items-datalist"></datalist>
+              <button type="button" onclick="App.addCustomExpenseItem()" class="px-3.5 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl border border-slate-200 transition shrink-0" title="添加到常用项目列表">
+                + 添加项目
+              </button>
+            </div>
+          </div>
+
+          <!-- 支出金额 与 支出时间 -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="form-label">支出金额 (元) <span class="text-rose-500">*</span> <span class="text-xs text-slate-400 font-normal">(支持负数冲减/退款)</span></label>
+              <div class="relative flex items-center">
+                <input type="text" inputmode="decimal" id="maint-cost" required oninput="App.updateCostSignButton('maint-cost')" placeholder="0.00" class="form-input text-lg font-semibold text-slate-900 pr-28">
+                <button type="button" onclick="App.toggleCostSign('maint-cost')" id="btn-toggle-sign-maint-cost" class="absolute right-1.5 px-2.5 py-1.5 text-xs font-bold rounded-lg border transition shadow-sm bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200 active:scale-95" title="点击切换正负金额 (用于退款/冲减)">
+                  ± 正/负切换
+                </button>
+              </div>
+            </div>
+            <div>
+              <label class="form-label">支出时间 <span class="text-rose-500">*</span></label>
+              <input type="datetime-local" id="maint-date" required class="form-input text-sm">
+            </div>
+          </div>
+
+          <!-- 备注 -->
+          <div>
+            <label class="form-label">备注 (可选)</label>
+            <textarea id="maint-notes" rows="2" placeholder="填写本次支出相关备注、地点或配件规格说明..." class="form-input text-sm"></textarea>
+          </div>
+
+          <!-- 提交按钮 -->
+          <div class="pt-2 flex items-center justify-end">
+            <button type="submit" class="w-full sm:w-auto px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-lg shadow-indigo-600/20 transition">
+              保存支出记录
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 5. TAB: 历史明细流 -->
+    <div id="tab-history" class="tab-pane hidden space-y-6">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4 mb-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">记录明细与台账</h2>
+            <p class="text-xs text-slate-500 mt-1">查看、筛选并管理当前车辆的所有能耗与维保记录</p>
+          </div>
+          <!-- 筛选类别 -->
+          <div class="flex items-center space-x-2">
+            <button onclick="App.filterHistory('all')" id="hist-filter-all" class="pill-btn active">全部</button>
+            <button onclick="App.filterHistory('status')" id="hist-filter-status" class="pill-btn">📊 状态</button>
+            <button onclick="App.filterHistory('fuel')" id="hist-filter-fuel" class="pill-btn">⛽ 油耗</button>
+            <button onclick="App.filterHistory('elec')" id="hist-filter-elec" class="pill-btn">⚡ 电耗</button>
+            <button onclick="App.filterHistory('maint')" id="hist-filter-maint" class="pill-btn">💰 支出</button>
+          </div>
+        </div>
+
+        <div id="history-container" class="overflow-x-auto">
+          <!-- JS 动态注入表格或卡片 -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. TAB: 车辆管理 (满足需求1: 完整录入车辆信息) -->
+    <div id="tab-vehicles" class="tab-pane hidden space-y-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">我的车库与车辆管理</h2>
+          <p class="text-xs text-slate-500 mt-1">管理您名下的多台车辆，可随时添加、修改详细配置或切换激活车</p>
+        </div>
+        <button onclick="App.openVehicleModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-md shadow-blue-500/20 transition flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+          <span>录入新车</span>
+        </button>
+      </div>
+
+      <div id="vehicles-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- JS 动态渲染车辆卡片 -->
+      </div>
+    </div>
+
+  </main>
+
+  <!-- 移动端专属底部 Tab 栏 -->
+  <div class="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 z-50 px-1 py-1 flex justify-around shadow-lg mobile-bottom-nav">
+    <button onclick="App.switchTab('overview')" id="m-tab-overview" class="mobile-nav-item active">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+      <span>概览</span>
+    </button>
+    <button onclick="App.switchTab('energy')" id="m-tab-energy" class="mobile-nav-item">
+      <svg class="text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+      <span>能耗</span>
+    </button>
+    <button onclick="App.switchTab('fuel')" id="m-tab-fuel" class="mobile-nav-item">
+      <svg class="text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+      <span>记油耗</span>
+    </button>
+    <button onclick="App.switchTab('electricity')" id="m-tab-electricity" class="mobile-nav-item">
+      <svg class="text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+      <span>记电耗</span>
+    </button>
+    <button onclick="App.switchTab('maintenance')" id="m-tab-maintenance" class="mobile-nav-item">
+      <svg class="text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+      <span>记支出</span>
+    </button>
+    <button onclick="App.switchTab('history')" id="m-tab-history" class="mobile-nav-item">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+      <span>明细</span>
+    </button>
+    <button onclick="App.switchTab('vehicles')" id="m-tab-vehicles" class="mobile-nav-item">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+      <span>车库</span>
+    </button>
+  </div>
+
+  <!-- 车辆信息录入/编辑模态弹窗 (满足需求1所有字段) -->
+  <div id="vehicle-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+        <h3 id="modal-vehicle-title" class="text-lg font-bold text-slate-900">录入新车辆</h3>
+        <button onclick="App.closeVehicleModal()" class="text-slate-400 hover:text-slate-600 p-1">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <form id="vehicle-form" onsubmit="App.saveVehicle(event)" class="p-6 space-y-4">
+        <input type="hidden" id="vehicle-form-id">
+
+        <!-- 车牌号 (替代车名/昵称) -->
+        <div>
+          <label class="form-label">车牌号 <span class="text-rose-500">*</span></label>
+          <input type="text" id="v-plate" required placeholder="如：粤B 88888 或 京A 00001" class="form-input text-base font-bold uppercase font-mono tracking-wider">
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">汽车品牌 <span class="text-rose-500">*</span></label>
+            <input type="text" id="v-brand" required placeholder="如：比亚迪、特斯拉、丰田" class="form-input text-sm">
+          </div>
+          <div>
+            <label class="form-label">车型号 <span class="text-rose-500">*</span></label>
+            <input type="text" id="v-model" required placeholder="如：汉 EV、Model Y、凯美瑞" class="form-input text-sm">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">动力形式 <span class="text-rose-500">*</span></label>
+            <select id="v-power" required onchange="App.onPowerTypeChange(this.value)" class="form-select text-sm font-medium">
+              <option value="gas">纯燃油车 (汽油/柴油)</option>
+              <option value="ev">纯电动车 (BEV)</option>
+              <option value="phev">插电式混合动力 (PHEV)</option>
+              <option value="erev">增程式电动车 (EREV)</option>
+              <option value="hybrid">油电混动 (HEV)</option>
+            </select>
+          </div>
+          <div id="v-displacement-box">
+            <label class="form-label flex justify-between items-center">
+              <span>发动机排量 (L)</span>
+              <span class="text-[11px] text-slate-400 font-normal">数字 + 涡轮选项</span>
+            </label>
+            <div class="flex items-center gap-2">
+              <div class="relative flex-1">
+                <input type="number" inputmode="decimal" step="0.00001" min="0" max="15" id="v-displacement-val" placeholder="如 2.0" class="form-input text-sm pr-7">
+                <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium pointer-events-none">L</span>
+              </div>
+              <label id="v-turbo-label" class="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-100 transition shrink-0 select-none">
+                <input type="checkbox" id="v-displacement-turbo" class="rounded text-blue-600 focus:ring-blue-500 h-4 w-4">
+                <span class="text-xs font-semibold text-slate-700">带涡轮 (T)</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div id="v-tank-box">
+            <label class="form-label">油箱容量 (升, L)</label>
+            <input type="number" inputmode="decimal" step="0.00001" min="0" id="v-tank" placeholder="如 55" class="form-input text-sm">
+          </div>
+          <div id="v-battery-box">
+            <label class="form-label">电池容量 (度, kWh)</label>
+            <input type="number" inputmode="decimal" step="0.00001" min="0" id="v-battery" placeholder="如 60 或 85.4" class="form-input text-sm">
+          </div>
+        </div>
+
+        <!-- 初始油量与初始电量 (百分比，默认为0) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div id="v-fuel-percent-box">
+            <label class="form-label flex justify-between items-center">
+              <span>初始油量 (%)</span>
+              <span class="text-xs text-slate-400 font-normal">默认为 0%</span>
+            </label>
+            <div class="relative">
+              <input type="number" inputmode="decimal" step="0.00001" min="0" max="100" id="v-fuel-percent" value="0" placeholder="0" class="form-input text-sm font-semibold pr-8">
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold pointer-events-none">%</span>
+            </div>
+          </div>
+          <div id="v-battery-percent-box">
+            <label class="form-label flex justify-between items-center">
+              <span>初始电量 (%)</span>
+              <span class="text-xs text-slate-400 font-normal">默认为 0%</span>
+            </label>
+            <div class="relative">
+              <input type="number" inputmode="decimal" step="0.00001" min="0" max="100" id="v-battery-percent" value="0" placeholder="0" class="form-input text-sm font-semibold pr-8">
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold pointer-events-none">%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">初始里程 (km) <span class="text-rose-500">*</span></label>
+            <input type="number" inputmode="decimal" step="0.00001" id="v-initial-mileage" required placeholder="购车或建档时里程" class="form-input text-sm font-semibold">
+          </div>
+          <div>
+            <label class="form-label flex justify-between items-center">
+              <span>当前里程 (km)</span>
+              <span class="text-[11px] text-slate-400 font-normal">最新表显里程</span>
+            </label>
+            <input type="number" inputmode="decimal" step="0.00001" id="v-current-mileage" placeholder="不小于初始里程" class="form-input text-sm font-semibold">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">购车日期 (可选)</label>
+            <input type="date" id="v-purchase-date" class="form-input text-sm">
+          </div>
+          <div>
+            <label class="form-label">备注说明 (可选)</label>
+            <input type="text" id="v-notes" placeholder="车架号后6位、车身颜色等" class="form-input text-sm">
+          </div>
+        </div>
+
+        <div class="pt-4 border-t border-slate-100 flex items-center justify-end space-x-3">
+          <button type="button" onclick="App.closeVehicleModal()" class="px-5 py-2 text-sm text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition">
+            取消
+          </button>
+          <button type="submit" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-md shadow-blue-500/20 transition">
+            保存车辆
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 统一记录编辑模态弹窗 (油耗 / 电耗 / 费用支出) -->
+  <div id="record-edit-modal" class="modal-overlay hidden">
+    <div class="modal-content max-w-xl max-h-[90vh] overflow-y-auto">
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur z-10">
+        <div class="flex items-center space-x-2.5">
+          <span id="record-edit-icon" class="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-base">✏️</span>
+          <h3 id="record-edit-title" class="text-lg font-bold text-slate-900">编辑记录</h3>
+        </div>
+        <button type="button" onclick="App.closeRecordEditModal()" class="text-slate-400 hover:text-slate-600 p-1">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <form id="record-edit-form" onsubmit="App.saveRecordEdit(event)" class="p-6 space-y-4">
+        <input type="hidden" id="edit-record-id">
+        <input type="hidden" id="edit-record-category">
+        <input type="hidden" id="edit-vehicle-id">
+
+        <!-- 关联车辆与记录时间 -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="form-label text-xs">关联车辆</label>
+            <input type="text" id="edit-car-display" readonly class="form-input bg-slate-50 text-slate-600 cursor-not-allowed font-medium text-sm">
+          </div>
+          <div>
+            <label class="form-label text-xs" id="edit-date-label">记录时间 <span class="text-rose-500">*</span></label>
+            <input type="datetime-local" id="edit-date" class="form-input text-sm">
+          </div>
+        </div>
+
+        <!-- 表显总里程 -->
+        <div id="edit-mileage-box">
+          <label class="form-label flex justify-between items-center text-xs">
+            <span>表显总里程 (km) <span class="text-rose-500" id="edit-mileage-required">*</span></span>
+            <span class="text-xs text-slate-400 font-normal" id="edit-mileage-hint">保存后自动重算车辆最高里程</span>
+          </label>
+          <input type="number" inputmode="decimal" step="0.00001" id="edit-mileage" placeholder="如 35200" class="form-input text-base font-semibold">
+        </div>
+
+        <!-- ================= 1. 油耗字段区 ================= -->
+        <div id="edit-fuel-fields" class="space-y-4 hidden">
+          <!-- 联动计算卡片：实付总价 = 加油量 × 单价 -->
+          <div class="bg-amber-50/60 border border-amber-200/80 rounded-xl p-3.5 space-y-2">
+            <div class="flex items-center justify-between text-xs font-bold text-amber-900">
+              <span>费用核算：实付总价 = 加油量 × 单价</span>
+              <span class="text-[11px] text-amber-700 font-normal">修改总价或油量自动核算单价</span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-11 gap-2 items-center">
+              <div class="sm:col-span-3">
+                <label class="form-label text-xs text-amber-900 font-bold">实付总价 (元)</label>
+                <input type="number" inputmode="decimal" step="0.00001" id="edit-fuel-total-price" oninput="App.handleEditTriInput('fuel', 'total')" placeholder="0.00" class="form-input text-sm font-bold bg-amber-50/80 border-amber-300">
+              </div>
+              <div class="hidden sm:flex sm:col-span-1 justify-center items-center pt-5 text-amber-500 font-black select-none">=</div>
+              <div class="sm:col-span-3">
+                <label class="form-label text-xs">加油量 (L)</label>
+                <input type="number" inputmode="decimal" step="0.00001" id="edit-fuel-amount" oninput="App.handleEditTriInput('fuel', 'amount')" placeholder="0.00" class="form-input text-sm font-semibold">
+              </div>
+              <div class="hidden sm:flex sm:col-span-1 justify-center items-center pt-5 text-amber-500 font-black select-none">×</div>
+              <div class="sm:col-span-3">
+                <label class="form-label text-xs">单价 (元/L)</label>
+                <input type="number" inputmode="decimal" step="0.00001" id="edit-fuel-unit-price" oninput="App.handleEditTriInput('fuel', 'price')" placeholder="0.00" class="form-input text-sm font-semibold">
+              </div>
+            </div>
+          </div>
+
+          <!-- 油品标号 -->
+          <div class="space-y-1.5">
+            <label class="form-label text-xs">油品标号</label>
+            <div class="flex flex-wrap gap-1.5" id="edit-fuel-pills">
+              <button type="button" onclick="App.setEditFuelType('92#')" class="pill-btn text-xs py-1 px-2.5">92# 汽油</button>
+              <button type="button" onclick="App.setEditFuelType('95#')" class="pill-btn text-xs py-1 px-2.5">95# 汽油</button>
+              <button type="button" onclick="App.setEditFuelType('98#')" class="pill-btn text-xs py-1 px-2.5">98# 汽油</button>
+              <button type="button" onclick="App.setEditFuelType('0#柴油')" class="pill-btn text-xs py-1 px-2.5">0# 柴油</button>
+            </div>
+            <input type="text" id="edit-fuel-type" value="92#" class="form-input text-sm">
+          </div>
+
+          <!-- 是否加满 与 油量百分比 -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="form-label text-xs">是否加满</label>
+              <div class="flex items-center space-x-4 mt-2">
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="edit-fuel-is-full" value="1" onchange="App.calcEditFuelPostPercent()" class="text-blue-600 focus:ring-blue-500 h-4 w-4">
+                  <span class="ml-2 text-xs text-slate-700">加满</span>
+                </label>
+                <label class="inline-flex items-center cursor-pointer">
+                  <input type="radio" name="edit-fuel-is-full" value="0" onchange="App.calcEditFuelPostPercent()" class="text-blue-600 focus:ring-blue-500 h-4 w-4">
+                  <span class="ml-2 text-xs text-slate-700">未加满</span>
+                </label>
+              </div>
+            </div>
+            <div>
+              <label class="form-label text-xs">加前初始油量 (%)</label>
+              <div class="relative">
+                <input type="number" inputmode="decimal" step="0.00001" min="0" max="100" id="edit-fuel-start-percent" oninput="App.calcEditFuelPostPercent()" class="form-input text-sm font-semibold pr-8">
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold pointer-events-none">%</span>
+              </div>
+            </div>
+            <div>
+              <label class="form-label text-xs">加后结束油量 (%)</label>
+              <div class="relative">
+                <input type="number" inputmode="decimal" step="0.00001" min="0" max="100" id="edit-fuel-percent" class="form-input text-sm font-semibold pr-8">
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold pointer-events-none">%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 混动/增程电量 -->
+          <div id="edit-fuel-battery-box" class="space-y-1">
+            <label class="form-label text-xs">当前电量 (SOC %)</label>
+            <div class="relative">
+              <input type="number" inputmode="decimal" step="0.00001" min="0" max="100" id="edit-fuel-battery-percent" placeholder="0" class="form-input text-sm font-semibold pr-8">
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-emerald-600 font-bold pointer-events-none">%</span>
+            </div>
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between">
+              <label class="form-label text-xs mb-0 flex items-center gap-1.5">
+                <span>⛽ 加油站名称</span>
+                <span class="text-[11px] font-normal text-slate-400">(可选)</span>
+              </label>
+              <button type="button" id="btn-edit-fuel-nearby-stations" onclick="App.locateNearbyFuelStationsForEdit()" class="px-2 py-0.5 text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition flex items-center gap-1 shadow-sm shadow-amber-500/20 active:scale-95" title="GPS定位获取附近加油站，按距离由近到远列出">
+                <span>📍</span> <span id="btn-edit-fuel-nearby-text">定位附近油站</span>
+              </button>
+            </div>
+
+            <!-- 历史常用油站 (频次排序，点击即选) -->
+            <div id="edit-fuel-history-stations-box" class="p-2 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1 hidden">
+              <div class="flex items-center justify-between text-[10px] text-slate-500">
+                <span class="font-medium flex items-center gap-1 text-slate-600">历史常用油站:</span>
+                <span id="edit-fuel-history-count-badge" class="text-[10px] text-slate-400"></span>
+              </div>
+              <div id="edit-fuel-station-pills" class="flex flex-wrap gap-1 min-h-0"></div>
+            </div>
+
+            <!-- 输入框与下拉浮层 -->
+            <div class="relative">
+              <div class="relative flex gap-2">
+                <div class="relative flex-1">
+                  <input type="text" id="edit-fuel-station" autocomplete="off" placeholder="输入地名/商圈搜索周边油站，或手工输入" class="form-input text-sm w-full pr-8">
+                  <datalist id="edit-fuel-station-datalist"></datalist>
+                  <button type="button" id="edit-fuel-station-clear-btn" onclick="App.clearEditFuelStationInput()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 w-5 h-5 rounded-full flex items-center justify-center text-xs">
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              <!-- 编辑油站下拉菜单 -->
+              <div id="edit-fuel-station-dropdown" class="hidden absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 max-h-60 overflow-y-auto divide-y divide-slate-100 transition-all">
+                <div class="px-3 py-2 bg-slate-50 text-[11px] font-semibold text-slate-500 flex items-center justify-between sticky top-0 backdrop-blur z-10">
+                  <span id="edit-fuel-dropdown-title">附近加油站推荐 (由近到远)</span>
+                  <button type="button" onclick="App.closeEditFuelStationDropdown()" class="text-slate-400 hover:text-slate-700 text-xs font-bold px-1.5 py-0.5 rounded hover:bg-slate-200">关闭</button>
+                </div>
+                <div id="edit-fuel-dropdown-list" class="divide-y divide-slate-100"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ================= 2. 电耗字段区 ================= -->
+        <div id="edit-elec-fields" class="space-y-4 hidden">
+          <!-- 联动计算卡片：实付总价 = 加电量 × 单价 -->
+          <div class="bg-emerald-50/60 border border-emerald-200/80 rounded-xl p-3.5 space-y-2">
+            <div class="flex items-center justify-between text-xs font-bold text-emerald-900">
+              <span>费用核算：实付总价 = 加电量 × 单价</span>
+              <span class="text-[11px] text-emerald-700 font-normal">修改总价或电量自动核算单价</span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-11 gap-2 items-center">
+              <div class="sm:col-span-3">
+                <label class="form-label text-xs text-emerald-900 font-bold">实付总价 (元)</label>
+                <input type="number" inputmode="decimal" step="0.00001" id="edit-elec-total-price" oninput="App.handleEditTriInput('elec', 'total')" placeholder="0.00" class="form-input text-sm font-bold bg-emerald-50/80 border-emerald-300">
+              </div>
+              <div class="hidden sm:flex sm:col-span-1 justify-center items-center pt-5 text-emerald-500 font-black select-none">=</div>
+              <div class="sm:col-span-3">
+                <label class="form-label text-xs">加电量 (kWh)</label>
+                <input type="number" inputmode="decimal" step="0.00001" id="edit-elec-amount" oninput="App.handleEditTriInput('elec', 'amount')" placeholder="0.00" class="form-input text-sm font-semibold">
+              </div>
+              <div class="hidden sm:flex sm:col-span-1 justify-center items-center pt-5 text-emerald-500 font-black select-none">×</div>
+              <div class="sm:col-span-3">
+                <label class="form-label text-xs">单价 (元/度)</label>
+                <input type="number" inputmode="decimal" step="0.00001" id="edit-elec-unit-price" oninput="App.handleEditTriInput('elec', 'price')" placeholder="0.00" class="form-input text-sm font-semibold">
+              </div>
+            </div>
+          </div>
+
+          <!-- 充电类型 -->
+          <div class="space-y-1.5">
+            <label class="form-label text-xs">充电类型</label>
+            <div class="flex flex-wrap gap-1.5" id="edit-elec-pills">
+              <button type="button" onclick="App.setEditChargingType('快充 (DC直流)')" class="pill-btn text-xs py-1 px-2.5">快充</button>
+              <button type="button" onclick="App.setEditChargingType('慢充 (AC交流)')" class="pill-btn text-xs py-1 px-2.5">慢充</button>
+              <button type="button" onclick="App.setEditChargingType('家用私桩 (谷电)')" class="pill-btn text-xs py-1 px-2.5">家用私桩</button>
+              <button type="button" onclick="App.setEditChargingType('品牌超充')" class="pill-btn text-xs py-1 px-2.5">品牌超充</button>
+            </div>
+            <input type="text" id="edit-elec-charging-type" value="快充 (DC直流)" class="form-input text-sm">
+          </div>
+
+          <!-- SOC 电量 -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="form-label text-xs">起始电量 (SOC %)</label>
+              <div class="relative">
+                <input type="number" inputmode="decimal" min="0" max="100" step="0.00001" id="edit-elec-start-soc" oninput="App.calcEditElecEndSoc()" placeholder="0" class="form-input text-sm font-semibold pr-8">
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold pointer-events-none">%</span>
+              </div>
+            </div>
+            <div>
+              <label class="form-label text-xs text-emerald-950 font-bold">结束电量 (SOC %)</label>
+              <div class="relative">
+                <input type="number" inputmode="decimal" min="0" max="100" step="0.00001" id="edit-elec-end-soc" oninput="App.onElecEndSocInput(true)" placeholder="100" class="form-input text-sm font-bold bg-white text-emerald-900 border-emerald-300 pr-8">
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-emerald-600 font-bold pointer-events-none">%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 混动/增程油量 -->
+          <div id="edit-elec-fuel-box" class="space-y-1">
+            <label class="form-label text-xs">当前油量 (%)</label>
+            <div class="relative">
+              <input type="number" inputmode="decimal" step="0.00001" min="0" max="100" id="edit-elec-fuel-percent" placeholder="0" class="form-input text-sm font-semibold pr-8">
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-amber-600 font-bold pointer-events-none">%</span>
+            </div>
+          </div>
+
+          <!-- 编辑弹窗：电池矫正选项 -->
+          <div class="bg-gradient-to-br from-emerald-50/70 to-teal-50/40 border border-emerald-200/90 rounded-xl p-3 space-y-2 transition">
+            <div class="flex items-center justify-between">
+              <label class="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" id="edit-elec-battery-calibrate-toggle" onchange="App.toggleBatteryCalibration(true)" class="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300">
+                <span class="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                  <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                  <span>电池矫正</span>
+                </span>
+              </label>
+              <span class="text-[10px] text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full font-medium">本次标定</span>
+            </div>
+            <div id="edit-elec-calibrate-result-box" class="hidden p-2.5 rounded-lg bg-white/95 border border-emerald-300 shadow-sm text-xs space-y-1">
+              <div class="flex items-center justify-between font-semibold">
+                <span class="text-slate-700 text-[11px]">经本次矫正电池容量:</span>
+                <span id="edit-elec-calibrated-capacity-val" class="text-sm font-extrabold text-emerald-600">-- kWh</span>
+              </div>
+              <div class="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-100">
+                <span>标称/原容量: <span id="edit-elec-current-capacity-val" class="font-medium text-slate-700">--</span> kWh</span>
+                <span id="edit-elec-calibrate-delta-soc" class="font-medium text-emerald-700">ΔSOC: --%</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between">
+              <label class="form-label text-xs mb-0 flex items-center gap-1.5">
+                <span>⚡ 充电场站名称</span>
+                <span class="text-[11px] font-normal text-slate-400">(可选)</span>
+              </label>
+              <button type="button" id="btn-edit-elec-nearby-stations" onclick="App.locateNearbyElecStationsForEdit()" class="px-2 py-0.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition flex items-center gap-1 shadow-sm shadow-emerald-600/20 active:scale-95" title="GPS定位获取附近充电站，按距离由近到远列出">
+                <span>📍</span> <span id="btn-edit-elec-nearby-text">定位附近电站</span>
+              </button>
+            </div>
+
+            <!-- 历史常用电站 (频次排序，点击即选) -->
+            <div id="edit-elec-history-stations-box" class="p-2 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1 hidden">
+              <div class="flex items-center justify-between text-[10px] text-slate-500">
+                <span class="font-medium flex items-center gap-1 text-slate-600">历史常用电站:</span>
+                <span id="edit-elec-history-count-badge" class="text-[10px] text-slate-400"></span>
+              </div>
+              <div id="edit-elec-station-pills" class="flex flex-wrap gap-1 min-h-0"></div>
+            </div>
+
+            <!-- 输入框与下拉浮层 -->
+            <div class="relative">
+              <div class="relative flex gap-2">
+                <div class="relative flex-1">
+                  <input type="text" id="edit-elec-station" autocomplete="off" placeholder="输入地名/商圈搜索周边充电站，或手工输入" class="form-input text-sm w-full pr-8">
+                  <datalist id="edit-elec-station-datalist"></datalist>
+                  <button type="button" id="edit-elec-station-clear-btn" onclick="App.clearEditElecStationInput()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 w-5 h-5 rounded-full flex items-center justify-center text-xs">
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              <!-- 编辑电站下拉菜单 -->
+              <div id="edit-elec-station-dropdown" class="hidden absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 max-h-60 overflow-y-auto divide-y divide-slate-100 transition-all">
+                <div class="px-3 py-2 bg-slate-50 text-[11px] font-semibold text-slate-500 flex items-center justify-between sticky top-0 backdrop-blur z-10">
+                  <span id="edit-elec-dropdown-title">附近充电站推荐 (由近到远)</span>
+                  <button type="button" onclick="App.closeEditElecStationDropdown()" class="text-slate-400 hover:text-slate-700 text-xs font-bold px-1.5 py-0.5 rounded hover:bg-slate-200">关闭</button>
+                </div>
+                <div id="edit-elec-dropdown-list" class="divide-y divide-slate-100"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ================= 3. 费用支出字段区 ================= -->
+        <div id="edit-maint-fields" class="space-y-4 hidden">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="form-label text-xs">支出项目 <span class="text-rose-500">*</span></label>
+              <span class="text-[11px] text-slate-400">点击下方常用标签快速填入</span>
+            </div>
+            <div id="edit-maint-items-pills" class="flex flex-wrap gap-1.5 mb-2 min-h-0 hidden">
+              <!-- JS 动态渲染常用项目胶囊 -->
+            </div>
+            <input type="text" id="edit-maint-item-type" list="edit-maint-items-datalist" placeholder="如 洗车、保养、保险、停车费" class="form-input text-sm font-semibold">
+            <datalist id="edit-maint-items-datalist"></datalist>
+          </div>
+
+          <div>
+            <label class="form-label text-xs">支出金额 (元) <span class="text-rose-500">*</span> <span class="text-xs text-slate-400 font-normal">(支持负数冲减)</span></label>
+            <div class="relative flex items-center">
+              <input type="text" inputmode="decimal" id="edit-maint-cost" oninput="App.updateCostSignButton('edit-maint-cost')" placeholder="0.00" class="form-input text-base font-bold text-indigo-700 pr-28">
+              <button type="button" onclick="App.toggleCostSign('edit-maint-cost')" id="btn-toggle-sign-edit-maint-cost" class="absolute right-1.5 px-2.5 py-1.5 text-xs font-bold rounded-lg border transition shadow-sm bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200 active:scale-95" title="点击切换正负金额 (用于退款/冲减)">
+                ± 正/负切换
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ================= 4. 当前状态快照字段区 ================= -->
+        <div id="edit-status-fields" class="space-y-4 hidden">
+          <div id="edit-status-battery-box">
+            <label class="form-label text-xs font-bold text-slate-700">当前电量百分比 (%)</label>
+            <div class="relative">
+              <input type="number" inputmode="decimal" step="0.00001" min="0" max="100" id="edit-status-battery" placeholder="如 80" class="form-input text-sm font-semibold pr-10">
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">%</span>
+            </div>
+          </div>
+          <div id="edit-status-fuel-box">
+            <label class="form-label text-xs font-bold text-slate-700">当前油量百分比 (%)</label>
+            <div class="relative">
+              <input type="number" inputmode="decimal" step="0.00001" min="0" max="100" id="edit-status-fuel" placeholder="如 90" class="form-input text-sm font-semibold pr-10">
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 备注 (所有类型通用) -->
+        <div>
+          <label class="form-label text-xs">备注说明 (可选)</label>
+          <textarea id="edit-notes" rows="2" placeholder="填写备注说明..." class="form-input text-sm"></textarea>
+        </div>
+
+        <div class="pt-3 border-t border-slate-100 flex items-center justify-end space-x-3">
+          <button type="button" onclick="App.closeRecordEditModal()" class="px-5 py-2 text-sm text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition">
+            取消
+          </button>
+          <button type="submit" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-md shadow-blue-500/20 transition">
+            保存修改
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Cloudflare D1 云端同步与离线管理模态弹窗 -->
+  <div id="sync-modal" class="modal-overlay hidden">
+    <div class="modal-content max-w-lg">
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <span class="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center font-bold">☁️</span>
+          <h3 class="text-lg font-bold text-slate-900">Cloudflare D1 云同步设置</h3>
+        </div>
+        <button onclick="App.closeSyncModal()" class="text-slate-400 hover:text-slate-600 p-1">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-5">
+        <!-- 实时状态面板 -->
+        <div class="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-slate-500 font-medium">当前网络状态:</span>
+            <span id="modal-network-status" class="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600">
+              <span class="w-2 h-2 rounded-full bg-emerald-500"></span> 在线可用
+            </span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-slate-500 font-medium">本地待同步队列 (离线暂存):</span>
+            <span id="modal-pending-count" class="text-xs font-bold text-slate-800 font-mono">0 笔记录</span>
+          </div>
+          <div class="pt-2 border-t border-slate-200 flex items-center justify-between">
+            <button type="button" onclick="App.clearPendingQueue()" class="text-xs text-rose-500 hover:text-rose-700 flex items-center gap-1 transition" title="清空因网络或无效ID卡住的本地待传数据">
+              <span>🗑️ 清空待传队列</span>
+            </button>
+            <button onclick="App.triggerManualSync()" id="btn-manual-sync" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition">
+              <span>🔄 立即双向同步</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Cloudflare Worker 域名配置 -->
+        <div class="space-y-3">
+          <label class="form-label text-xs">
+            <span>Cloudflare Worker 云端服务地址</span>
+            <span class="text-[11px] text-slate-400 block font-normal mt-0.5">部署在 Cloudflare 的 Worker 服务网址，手机端建议配置以支持离线双向推送</span>
+          </label>
+          <div class="flex gap-2">
+            <input type="url" id="cf-worker-url" placeholder="https://car-tracker-api.aubreyhan.workers.dev" class="form-input text-sm font-mono flex-1">
+            <button type="button" onclick="App.fillDefaultWorkerUrl()" class="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 text-xs font-medium rounded-lg whitespace-nowrap transition border border-blue-200">
+              ⚡ 填入默认
+            </button>
+          </div>
+          <div class="flex items-center justify-between pt-1">
+            <button type="button" onclick="App.testCloudflareConnection()" class="text-xs text-blue-600 hover:text-blue-800 font-medium">
+              ⚡ 测试连接
+            </button>
+            <button type="button" onclick="App.saveCloudflareUrl()" class="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-medium rounded-lg transition">
+              保存配置
+            </button>
+          </div>
+        </div>
+
+        <!-- 多端 (iPhone / iPad) 安装提示 -->
+        <div class="bg-blue-50/70 border border-blue-200/80 rounded-xl p-3.5 text-xs text-blue-900 space-y-1.5">
+          <div class="font-bold flex items-center gap-1">
+            <span>📱</span> 在 iPhone / iPad 上享受原生体验：
+          </div>
+          <p class="text-[11px] text-blue-800/90 leading-relaxed">
+            1. 在苹果 Safari 浏览器中打开本站；<br>
+            2. 点击底部工具栏的【分享】按钮 ➔ 选择【添加到主屏幕】；<br>
+            3. 桌面上将出现专属应用图标，点击全屏秒开，地库离线可记、联网自动同步！
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 快速录入/更新当前状态模态弹窗 (当前里程、当前电量%、当前油量%) -->
+  <div id="current-status-modal" class="modal-overlay hidden">
+    <div class="modal-content max-w-md">
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div class="flex items-center space-x-2.5">
+          <span class="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-base">📊</span>
+          <div>
+            <h3 id="curr-status-modal-title" class="text-lg font-bold text-slate-900">录入当前状态</h3>
+            <p id="curr-status-car-name" class="text-xs text-slate-500 font-medium">当前车辆</p>
+          </div>
+        </div>
+        <button type="button" onclick="App.closeCurrentStatusModal()" class="text-slate-400 hover:text-slate-600 p-1">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <form id="current-status-form" onsubmit="App.saveCurrentStatus(event)" class="p-6 space-y-4">
+        <input type="hidden" id="quick-current-status-id">
+
+        <!-- 1. 当前里程 -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <label class="form-label text-xs !mb-0 font-bold text-slate-700">最新表显总里程 (km) <span class="text-rose-500">*</span></label>
+            <span class="text-xs text-slate-400">目前记录: <strong id="curr-status-known-mileage" class="font-mono text-slate-700">0</strong> km</span>
+          </div>
+          <input type="number" inputmode="decimal" step="0.00001" id="quick-current-mileage" required placeholder="如 608" class="form-input text-base font-bold text-slate-900">
+        </div>
+
+        <!-- 2. 当前电量百分比 (纯电/混动/增程展示) -->
+        <div id="curr-status-battery-box">
+          <div class="flex items-center justify-between mb-1.5">
+            <label class="form-label text-xs !mb-0 font-bold text-slate-700">当前电量百分比 (%)</label>
+            <span class="text-xs text-slate-400">目前记录: <strong id="curr-status-known-battery" class="font-mono text-slate-700">--</strong>%</span>
+          </div>
+          <div class="relative">
+            <input type="number" inputmode="decimal" step="0.00001" min="0" max="100" id="quick-current-battery" placeholder="如 20" class="form-input text-base font-bold text-slate-900 pr-10">
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">%</span>
+          </div>
+        </div>
+
+        <!-- 3. 当前油量百分比 (燃油/混动/增程展示) -->
+        <div id="curr-status-fuel-box">
+          <div class="flex items-center justify-between mb-1.5">
+            <label class="form-label text-xs !mb-0 font-bold text-slate-700">当前油量百分比 (%)</label>
+            <span class="text-xs text-slate-400">目前记录: <strong id="curr-status-known-fuel" class="font-mono text-slate-700">--</strong>%</span>
+          </div>
+          <div class="relative">
+            <input type="number" inputmode="decimal" step="0.00001" min="0" max="100" id="quick-current-fuel" placeholder="如 96" class="form-input text-base font-bold text-slate-900 pr-10">
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">%</span>
+          </div>
+        </div>
+
+        <!-- 4. 记录时间 -->
+        <div id="curr-status-date-box">
+          <label class="form-label text-xs !mb-0 font-bold text-slate-700">记录时间</label>
+          <input type="datetime-local" id="quick-current-status-time" class="form-input text-sm">
+        </div>
+
+        <!-- 5. 备注说明 -->
+        <div id="curr-status-notes-box">
+          <label class="form-label text-xs !mb-0 font-bold text-slate-700">备注说明 (可选)</label>
+          <input type="text" id="quick-current-status-notes" placeholder="如：表显打卡、中途休息记录" class="form-input text-sm">
+        </div>
+
+        <p class="text-[11px] text-slate-400 mt-2 leading-relaxed bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+          💡 此状态将作为车辆累计行驶里程、各项百公里能耗、平均每公里费用的最新基准，并自动作为下次加油/加电时的默认起始值。
+        </p>
+
+        <div class="pt-3 border-t border-slate-100 flex items-center justify-end space-x-3">
+          <button type="button" onclick="App.closeCurrentStatusModal()" class="px-5 py-2 text-sm text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition">
+            取消
+          </button>
+          <button type="submit" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-md shadow-blue-500/20 transition">
+            确认保存
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 用户登录模态弹窗 (未登录或主动退出时显示) -->
+  <div id="login-modal" class="modal-overlay hidden z-50">
+    <div class="modal-content max-w-sm p-6 space-y-6">
+      <div class="text-center space-y-2">
+        <div class="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/30 text-2xl font-bold">
+          🚗
+        </div>
+        <h2 class="text-xl font-bold text-slate-900">我的车管家 · 登录</h2>
+        <p class="text-xs text-slate-500">登录后可开启车辆数据管理与云端同步</p>
+      </div>
+
+      <form id="login-form" onsubmit="App.handleLogin(event)" class="space-y-4">
+        <div>
+          <label class="form-label text-xs font-semibold text-slate-700">用户名</label>
+          <input type="text" id="login-username" required value="AubreyHan" placeholder="输入用户名" class="form-input text-sm">
+        </div>
+
+        <div>
+          <label class="form-label text-xs font-semibold text-slate-700">密码</label>
+          <div class="relative flex items-center">
+            <input type="password" id="login-password" required placeholder="输入登录密码" class="form-input text-sm pr-10">
+            <button type="button" onclick="App.togglePasswordVisibility('login-password', this)" class="absolute right-2.5 text-slate-400 hover:text-slate-600 p-1" title="切换显示密码">
+              👁️
+            </button>
+          </div>
+        </div>
+
+        <div id="login-error-msg" class="text-xs text-rose-600 font-medium hidden text-center bg-rose-50 py-1.5 px-2 rounded-lg border border-rose-200">
+        </div>
+
+        <button type="submit" id="btn-login-submit" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm shadow-md shadow-blue-500/20 transition active:scale-[0.99]">
+          立即登录
+        </button>
+
+        <p class="text-[11px] text-slate-400 text-center leading-relaxed">
+          💡 初始账号: <strong class="text-slate-600 font-mono">AubreyHan</strong><br>
+          登录后将永久保持在线，可随时在个人中心修改密码。
+        </p>
+      </form>
+    </div>
+  </div>
+
+  <!-- 用户个人中心与密码修改模态弹窗 -->
+  <div id="user-modal" class="modal-overlay hidden z-40">
+    <div class="modal-content max-w-md">
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div class="flex items-center space-x-2.5">
+          <span class="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-base">👤</span>
+          <div>
+            <h3 class="text-lg font-bold text-slate-900">用户中心</h3>
+            <p class="text-xs text-slate-400">账号管理与密码设置</p>
+          </div>
+        </div>
+        <button onclick="App.closeUserModal()" class="text-slate-400 hover:text-slate-600 p-1">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-6">
+        <!-- 账号基本信息卡片 -->
+        <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-bold shadow-sm">
+              AH
+            </div>
+            <div>
+              <div class="text-sm font-bold text-slate-900" id="user-modal-name">AubreyHan</div>
+              <div class="text-xs text-emerald-600 flex items-center gap-1 font-medium mt-0.5">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span> 永久登录就绪
+              </div>
+            </div>
+          </div>
+          <button type="button" onclick="App.logout()" class="px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg transition font-medium">
+            🚪 退出登录
+          </button>
+        </div>
+
+        <!-- 修改密码表单区 -->
+        <div class="space-y-4">
+          <h4 class="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+            <span>🔒</span> 修改登录密码
+          </h4>
+          <form id="change-pwd-form" onsubmit="App.handleChangePassword(event)" class="space-y-3.5">
+            <div>
+              <label class="form-label text-xs">当前原密码 <span class="text-rose-500">*</span></label>
+              <div class="relative flex items-center">
+                <input type="password" id="change-pwd-old" required placeholder="输入当前使用的原密码" class="form-input text-sm pr-10">
+                <button type="button" onclick="App.togglePasswordVisibility('change-pwd-old', this)" class="absolute right-2.5 text-slate-400 hover:text-slate-600 p-1" title="切换显示密码">
+                  👁️
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label class="form-label text-xs">设置新密码 <span class="text-rose-500">*</span></label>
+              <div class="relative flex items-center">
+                <input type="password" id="change-pwd-new" required placeholder="至少4位字符的新密码" class="form-input text-sm pr-10">
+                <button type="button" onclick="App.togglePasswordVisibility('change-pwd-new', this)" class="absolute right-2.5 text-slate-400 hover:text-slate-600 p-1" title="切换显示密码">
+                  👁️
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label class="form-label text-xs">再次确认新密码 <span class="text-rose-500">*</span></label>
+              <div class="relative flex items-center">
+                <input type="password" id="change-pwd-confirm" required placeholder="再次输入新密码" class="form-input text-sm pr-10">
+                <button type="button" onclick="App.togglePasswordVisibility('change-pwd-confirm', this)" class="absolute right-2.5 text-slate-400 hover:text-slate-600 p-1" title="切换显示密码">
+                  👁️
+                </button>
+              </div>
+            </div>
+
+            <div class="pt-2 flex justify-end">
+              <button type="submit" id="btn-change-pwd-submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-md shadow-blue-500/20 transition">
+                确认修改密码
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 先加载离线 IndexedDB 与同步引擎，再加载业务主控 -->
+  <script src="db.js?v=73"></script>
+  <script src="app.js?v=73"></script>
+</body>
+</html>
+
