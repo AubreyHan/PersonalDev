@@ -105,8 +105,9 @@ GithubSync/
 │           ├── StatusBadgeView.swift# 4色状态徽标与动画指示
 │           ├── SettingsModalView.swift # 偏好设置面板与彻底注销清理
 │           └── PermissionModalView.swift# 首次启动权限引导弹窗
-└── dist/
-    └── GitHubSync.app             # 构建生成的独立可运行 macOS 应用程序
+└── release/
+    ├── GitHubSync.app             # 构建生成的独立可运行 macOS 应用程序
+    └── GitHubSync-1.0.0.dmg       # 独立 DMG 安装包（含高清自定义图标与快捷软链）
 ```
 
 ---
@@ -127,16 +128,16 @@ GithubSync/
 # 2. 一键打包生成与 App 图标一致的 DMG 安装包
 ./package_dmg.sh
 ```
-生成的产物位于 `dist/` 目录：
-* 独立应用程序：`./dist/GitHubSync.app`
-* 独立安装包：`./dist/GitHubSync-1.0.0.dmg`（DMG 卷宗与文件自身均已注入相同高清浅色 AppIcon）
+生成的产物全部存放于项目根目录下的 `release/` 目录：
+* 独立应用程序：`./release/GitHubSync.app`
+* 独立安装包：`./release/GitHubSync-1.0.0.dmg`（DMG 卷宗与文件自身均已注入相同高清浅色 AppIcon）
 
 ### 2. 启动与安装
 * **方式 A（DMG 拖拽安装）**：
-  双击打开 `./dist/GitHubSync-1.0.0.dmg`，将 `GitHubSync.app` 拖入 `Applications` 即可完成安装。
+  双击打开 `./release/GitHubSync-1.0.0.dmg`，将 `GitHubSync.app` 拖入 `Applications` 即可完成安装。
 * **方式 B（直接启动测试）**：
   ```bash
-  open ./dist/GitHubSync.app
+  open ./release/GitHubSync.app
   ```
 
 ### 3. 开发模式调试
