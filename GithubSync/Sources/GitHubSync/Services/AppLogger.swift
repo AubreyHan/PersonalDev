@@ -77,9 +77,9 @@ public final class AppLogger: @unchecked Sendable {
             }
         } else {
             // 2. 检查当前可执行文件同级目录是否存在 GitHubSync.app
-            let distAppLogs = bundleURL.deletingLastPathComponent().appendingPathComponent("GitHubSync.app/Contents/Logs", isDirectory: true)
-            if (try? fm.createDirectory(at: distAppLogs, withIntermediateDirectories: true)) != nil {
-                return distAppLogs.appendingPathComponent("app.log")
+            let releaseAppLogs = bundleURL.deletingLastPathComponent().appendingPathComponent("GitHubSync.app/Contents/Logs", isDirectory: true)
+            if (try? fm.createDirectory(at: releaseAppLogs, withIntermediateDirectories: true)) != nil {
+                return releaseAppLogs.appendingPathComponent("app.log")
             }
 
             // 3. 命令行本地调试开发模式：保存在同级 Logs 目录
