@@ -7,7 +7,6 @@ public struct SettingsModalView: View {
     @State private var debounceSeconds: Int = 5
     @State private var remotePollMinutes: Int = 5
     @State private var launchAtStartup: Bool = false
-    @State private var showConfirmReset: Bool = false
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -79,7 +78,7 @@ public struct SettingsModalView: View {
                     .foregroundColor(.secondary)
 
                 Button(role: .destructive) {
-                    showConfirmReset = true
+                    confirmAndFactoryReset()
                 } label: {
                     HStack {
                         Image(systemName: "trash")
@@ -121,17 +120,18 @@ public struct SettingsModalView: View {
             remotePollMinutes = appState.settings.remotePollIntervalMinutes
             launchAtStartup = AutoStartManager.shared.isEnabled
         }
-        .confirmationDialog(
-            "确定要彻底注销并退出吗？",
-            isPresented: $showConfirmReset,
-            titleVisibility: .visible
-        ) {
-            Button("彻底注销并退出", role: .destructive) {
-                appState.factoryResetAndExit()
-            }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("此操作将注销开机自启动项、停止所有 Git 同步服务并清除所有监控配置。本地代码文件不会受到任何影响。")
+    }
+
+    private func confirmAndFactoryReset() {
+        let alert = NSAlert()
+        alert.messageText = "确定要彻底注销并退出吗？"
+        alert.informativeText = "此操作将注销开机自启动项、停止所有 Git 同步服务并清除所有监控配置。本地代码文件不会受到任何影响。"
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "彻底注销并退出")
+        alert.addButton(withTitle: "取消")
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            appState.factoryResetAndExit()
         }
     }
 }

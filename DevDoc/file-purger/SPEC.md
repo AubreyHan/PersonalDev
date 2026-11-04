@@ -2,212 +2,197 @@
 
 ---
 
-## 1. 核心数据模型 (Core Data Models)
+## 1. 核心数据契约模型 (Core Data Models)
 
-为了保持前端 React (TypeScript) 与后端 Rust 结构的一致性与高序列化性能，所有模型通过 Serde 在 IPC 通信中透明编解码。
+所有数据结构在前端 React (TypeScript) 与后端 Rust 中保持类型镜像，采用 `camelCase` 风格在 IPC 中进行无缝序列化。
 
-### 1.1 文件元数据模型 (`FileItem`)
+### 1.1 文件夹与规则模型 (`FolderItem`, `FolderRule`)
 
-#### TypeScript 定义 (`src/types/index.ts`)
+#### TypeScript 类型定义 (`src/types/index.ts`)
 ```typescript
-export interface FileItem {
-  id: string;                     // 唯一标识 (通常采用 SHA-256 或路径哈希)
-  path: string;                   // 文件的绝对路径，如 /Users/username/Downloads/installer.dmg
-  filename: string;               // 文件名，如 installer.dmg
-  extension: string;              // 扩展名 (无点小写)，如 dmg
-  sizeBytes: number;              // 文件大小 (字节)
-  sizeFormatted: string;          // 友好可读格式，如 "1.84 GB"
-  modifiedAt: number;             // 最后修改时间戳 (毫秒)
-  accessedAt: number;             // 最后访问时间戳 (毫秒)
-  daysSinceModified: number;      // 距今天数 (向下取整)
-  selected: boolean;              // 前端是否勾选待清理
+export type TimeUnit = 'minutes' | 'hours' | 'days';
+
+export type RuleAction = 
+  | 'list'          // 列出：仅在匹配清单中展示，不做删除移动
+  | 'keep'          // 保留：命中后锁定保留，短路终止后续规则
+  | 'direct_trash'  // 直接删除：直接移入系统废纸篓
+  | 'ask_trash';    // 询问后删除：应用内逐一弹窗询问确认
+
+export interface DateAddedCondition {
+  value: number;        // 填 0 或选 Any 表示不限时间
+  unit: TimeUnit;       // 'minutes' | 'hours' | 'days'
+  isAny: boolean;       // 是否不限制时间
+}
+
+export interface FolderRule {
+  id: string;           // 规则唯一 UUID
+  name: string;         // 规则友好名称，如 "Archive PDFs"
+  enabled: boolean;     // 启用/停用开关 Toggle (默认 true)
+  dateAdded: DateAddedCondition; // 添加到该文件夹的时间条件
+  pattern: string;      // 通配符路径表达式 (如 "*.dmg, a*.j*, **/temp*")
+  action: RuleAction;   // 处置动作 (4 选 1)
+  order: number;        // 从上到下的优先匹配序号 (0, 1, 2...)
+}
+
+export interface FolderItem {
+  id: string;           // 文件夹唯一 UUID
+  name: string;         // 文件夹显示名称，如 "Downloads"
+  path: string;         // 文件夹绝对物理路径，如 "/Users/aubreyhan/Downloads"
+  isTrash: boolean;     // 是否为左侧顶部常驻废纸篓项 (如果是，右侧使用 TrashRuleConfig)
+  isPreset: boolean;    // 是否为预置文件夹 (如默认预置 Downloads)
+  topWhitelist: string; // 置顶保留规则内容 (逗号分隔的通配符表达式)
+  rules: FolderRule[];  // 属于该文件夹的普通规则列表 (严格按 order 升序排列)
+  createdAt: number;
 }
 ```
 
-#### Rust 定义 (`src-tauri/src/models/file_item.rs`)
+---
+
+### 1.2 回收站专属配置模型 (`TrashRuleConfig`)
+
+```typescript
+export interface TrashRuleConfig {
+  // 规则 1：超龄天数清理 (填 0 表示不执行)
+  daysThreshold: number; // 默认初始值 0
+  // 规则 2：容量上限清理 (填 0 表示不执行)
+  maxCapacityGB: number; // 默认初始值 0，单位 GB
+}
+```
+
+---
+
+### 1.3 逐一询问项模型 (`AskItem`) 与 匹配结果清单模型 (`MatchListItem`)
+
+```typescript
+export interface AskItem {
+  id: string;           // 唯一任务 ID
+  folderId: string;     // 来源文件夹 ID
+  filePath: string;     // 文件的绝对路径
+  fileName: string;     // 文件名
+  sizeBytes: number;    // 文件大小
+  dateAdded: number;    // 添加时间戳 (毫秒)
+  ruleName: string;     // 触发的规则名称
+}
+
+export interface MatchListItem {
+  filePath: string;     // 文件路径
+  fileName: string;     // 文件名
+  sizeBytes: number;    // 文件大小
+  dateAdded: number;    // 添加时间戳
+  ruleName: string;     // 命中的"列出"规则名称
+}
+```
+
+---
+
+### 1.4 Rust 契约模型映射 (`src-tauri/src/models/mod.rs`)
+
 ```rust
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FileItem {
+pub struct FolderItem {
     pub id: String,
+    pub name: String,
     pub path: String,
-    pub filename: String,
-    pub extension: String,
-    pub size_bytes: u64,
-    pub size_formatted: String,
-    pub modified_at: i64,
-    pub accessed_at: i64,
-    pub days_since_modified: u32,
-    pub selected: bool,
+    pub is_trash: bool,
+    pub is_preset: bool,
+    pub top_whitelist: String,
+    pub rules: Vec<FolderRule>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderRule {
+    pub id: String,
+    pub name: String,
+    pub enabled: bool,
+    pub date_added: DateAddedCondition,
+    pub pattern: String,
+    pub action: String, // "list" | "keep" | "direct_trash" | "ask_trash"
+    pub order: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DateAddedCondition {
+    pub value: u32,
+    pub unit: String, // "minutes" | "hours" | "days"
+    pub is_any: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashRuleConfig {
+    pub days_threshold: u32,
+    pub max_capacity_gb: u32,
 }
 ```
 
 ---
 
-### 1.2 复合清理规则模型 (`PurgeRule` & `PurgePreset`)
+## 2. Tauri IPC 通信协议接口 (Commands & Events)
 
-#### TypeScript 定义
-```typescript
-export type TimeUnit = 'days' | 'months' | 'years';
-export type TimeFilterField = 'modified' | 'accessed';
-
-export interface PurgeRule {
-  // 时间维度
-  timeFilterEnabled: boolean;
-  timeFilterField: TimeFilterField; // 'modified' (推荐) 或 'accessed'
-  olderThanValue: number;           // 阈值数值，如 30, 90
-  olderThanUnit: TimeUnit;          // 单位，默认 'days'
-
-  // 大小维度
-  sizeFilterEnabled: boolean;
-  minSizeBytes: number;             // 最小文件大小 (字节，如 50 * 1024 * 1024 代表 50MB)
-
-  // 扩展名/类型维度
-  extensionFilterEnabled: boolean;
-  targetExtensions: string[];       // 目标扩展名列表，如 ["dmg", "pkg", "zip", "iso"]
-  isExtensionExcludeMode: boolean;  // false 为仅匹配列表；true 为排除列表
-
-  // 路径与黑名单维度
-  excludeHiddenFiles: boolean;      // 是否排除隐藏文件/点开头文件 (默认 true)
-  excludeSystemDirs: boolean;       // 是否自动排除 .git, node_modules 等 (默认 true)
-  customExcludePatterns: string[];  // 自定义忽略通配符列表，如 ["*.keep", "archive/*"]
-}
-
-export interface PurgePreset {
-  id: string;
-  name: string;                     // 预设名称，如 "下载目录大瘦身"
-  description: string;              // 预设描述
-  targetDirectories: string[];      // 关联的默认扫描目录
-  rule: PurgeRule;                  // 关联的具体规则
-  isBuiltin: boolean;               // 是否为系统内置只读预设
-}
-```
-
----
-
-### 1.3 审计与历史记录模型 (`HistoryRecord`)
-
-#### TypeScript 定义
-```typescript
-export interface HistoryRecord {
-  id: string;                       // 批次 UUID
-  timestamp: number;                // 清理时间戳 (毫秒)
-  targetDirectories: string[];      // 扫描来源目录
-  totalItemsPurged: number;         // 成功移入废纸篓文件数
-  totalBytesFreed: number;          // 释放总字节数
-  freedFormatted: string;           // 友好可读格式，如 "14.2 GB"
-  durationMs: number;               // 耗时 (毫秒)
-  purgedItems: PurgedItemSummary[]; // 清理文件摘要列表 (前 100 项，防止过大)
-}
-
-export interface PurgedItemSummary {
-  path: string;
-  filename: string;
-  sizeBytes: number;
-  sizeFormatted: string;
-}
-```
-
----
-
-## 2. Tauri IPC 通信协议接口 (IPC Commands & Events)
-
-### 2.1 双向指令接口 (Commands: `invoke`)
+### 2.1 双向调用指令 (Tauri Commands)
 
 | 指令名称 | 输入参数 (Payload) | 返回值 (Result) | 说明 |
 | :--- | :--- | :--- | :--- |
-| `start_scan` | `{ targetDirs: string[], rules: PurgeRule }` | `Result<string, string>` | 发起异步多线程扫描任务，成功返回 session_id |
-| `cancel_scan` | `{ sessionId?: string }` | `Result<boolean, string>` | 取消正在执行的扫描任务 |
-| `purge_files` | `{ filePaths: string[] }` | `Result<PurgeResultSummary, string>` | 批量将指定文件移动至系统原生废纸篓 |
-| `reveal_in_folder` | `{ filePath: string }` | `Result<boolean, string>` | 在操作系统文件管理器 (Finder/Explorer) 中高亮定位指定文件 |
-| `get_system_paths` | `None` | `Result<SystemPathRecommendation, string>` | 获取用户当前操作系统的常用目录（下载、桌面、缓存等） |
-| `load_presets` | `None` | `Result<PurgePreset[], string>` | 获取所有预设规则（包含内置推荐与用户自定义） |
-| `save_preset` | `{ preset: PurgePreset }` | `Result<boolean, string>` | 新增或保存用户自定义规则预设 |
-| `delete_preset` | `{ presetId: string }` | `Result<boolean, string>` | 删除指定用户自定义预设（内置预设不可删） |
-| `get_history` | `None` | `Result<HistoryRecord[], string>` | 获取历史清理审计日志列表 |
-| `clear_history` | `None` | `Result<boolean, string>` | 清空本地历史审计记录 |
+| `get_all_folders` | `None` | `Result<Vec<FolderItem>, String>` | 获取左侧全部文件夹列表（包含首项常驻废纸篓） |
+| `add_folder` | `{ path: String }` | `Result<FolderItem, String>` | 添加新监控文件夹（执行父子重叠检测与系统路径检测） |
+| `remove_folder` | `{ folderId: String }` | `Result<bool, String>` | 从监控列表中移除文件夹（物理文件夹不受影响） |
+| `update_top_whitelist` | `{ folderId: String, whitelist: String }` | `Result<bool, String>` | 更新选中文件夹的置顶保留规则 |
+| `save_rule` | `{ folderId: String, rule: FolderRule }` | `Result<FolderRule, String>` | 新增或编辑修改单条普通规则 |
+| `delete_rule` | `{ folderId: String, ruleId: String }` | `Result<bool, String>` | 删除指定普通规则 |
+| `reorder_rules` | `{ folderId: String, ruleIds: Vec<String> }` | `Result<bool, String>` | 按前端拖拽后的 ID 列表重新设定所有规则的 order |
+| `get_trash_config` | `None` | `Result<TrashRuleConfig, String>` | 获取废纸篓双规则配置 |
+| `save_trash_config` | `{ config: TrashRuleConfig }` | `Result<bool, String>` | 保存废纸篓双规则配置 |
+| `trigger_scan_now` | `{ folderId?: Option<String> }` | `Result<bool, String>` | 立即手动触发全量或单个文件夹的规则执行与扫描 |
+| `respond_ask_item` | `{ itemId: String, decision: "trash" \| "keep" }` | `Result<bool, String>` | 用户对“询问后删除”单项做出手动决策 |
+| `get_autostart_status`| `None` | `Result<bool, String>` | 查询当前开机自启动是否已在 macOS 激活 |
+| `set_autostart` | `{ enabled: bool }` | `Result<bool, String>` | 切换 macOS 开机自启动注册状态 (`SMAppService`) |
+| `clean_uninstall` | `None` | `Result<bool, String>` | 执行彻底卸载：注销自启、清除全部本地配置、移至废纸篓自杀 |
 
 ---
 
-### 2.2 流式事件接口 (Event Channels: `listen`)
+### 2.2 流式事件接口 (Event Channels)
 
-后端扫描与清理属于高频长时间任务，通过 Tauri Event 机制进行流式分批派发，防止单次数据过大导致 IPC 序列化卡顿：
-
-#### 1. `scan:batch`
-- **触发时机**: 扫描引擎累积匹配到 50 个文件或每隔 100ms 派发一次。
-- **Payload**:
-  ```json
-  {
-    "sessionId": "sess_1730000000",
-    "batchItems": [ ...FileItem ],
-    "scannedCount": 35200,
-    "hitCount": 142,
-    "hitSizeBytes": 4580210000,
-    "currentScanningDir": "/Users/aubreyhan/Downloads/Software"
-  }
-  ```
-
-#### 2. `scan:completed`
-- **触发时机**: 全量遍历完成。
-- **Payload**:
-  ```json
-  {
-    "sessionId": "sess_1730000000",
-    "totalScannedFiles": 84210,
-    "totalHitFiles": 328,
-    "totalHitSizeBytes": 15420000000,
-    "durationMs": 1480
-  }
-  ```
-
-#### 3. `purge:progress`
-- **触发时机**: 正在批量移动至废纸篓时，每处理 1 个文件派发。
-- **Payload**:
-  ```json
-  {
-    "total": 50,
-    "current": 23,
-    "percentage": 46.0,
-    "currentPath": "/Users/aubreyhan/Downloads/large_video.mov"
-  }
-  ```
+- `app:ask_queue_update`: 当后台扫描命中“询问后删除”时向前端派发待确认项队列，唤起前端逐一询问弹窗。
+- `app:match_list_update`: 派发当前文件夹最新命中的“列出”结果集给前端更新下方表格。
+- `app:trash_status_changed`: 广播废纸篓当前总大小与清理统计。
 
 ---
 
-## 3. 前端状态机模型 (Frontend State Machine)
+## 3. 通配符与组合路径语法规范 (Pattern Grammar)
 
-```mermaid
-stateDiagram-v2
-    [*] --> Idle: 启动就绪
+系统使用严格大小写敏感的通配符语法，支持单层、多层与多文件组合：
 
-    Idle --> Scanning: 用户点击「开始扫描」
-    Scanning --> Scanning: 接收 scan:batch 流式更新
-    Scanning --> ScanCompleted: 扫描完成 (scan:completed)
-    Scanning --> Idle: 用户主动取消 (cancel_scan)
+### 3.1 语法对照表
 
-    ScanCompleted --> Reviewing: 用户勾选/反选文件、排序、按类型过滤
-    Reviewing --> Purging: 点击「移至废纸篓」并确认
-    Reviewing --> Idle: 清空重置或重新选择目录
-
-    Purging --> Purging: 接收 purge:progress 更新进度条
-    Purging --> PurgeSuccess: 全部或大部分文件移入废纸篓成功
-    Purging --> PurgePartialError: 部分受保护或占用文件跳过
-
-    PurgeSuccess --> Idle: 弹窗查看释放成果后点击完成
-    PurgePartialError --> Idle: 审阅跳过明细后点击完成
-```
-
----
-
-## 4. 边界条件与异常处理矩阵 (Edge Cases & Fault Tolerance)
-
-| 场景序号 | 边界/异常场景 | 发生原因 | 系统的处理与防御机制 |
+| 语法符号 | 语义说明 | 典型示例 | 匹配结果示例 |
 | :--- | :--- | :--- | :--- |
-| **EC-01** | 用户选择根目录或系统核心路径 | 误操作添加 `/` 或 `C:\Windows` | `PathGuard` 在前端提交与后端接收两端均强制拦截，提示“该目录属于受保护系统区域，为保障系统安全禁止扫描”。 |
-| **EC-02** | 符号链接 (Symlinks) 循环引用 | 目录中存在指向父目录的软链 | 扫描器默认**禁用追随软链 (Follow Symlinks = false)**，仅将软链本身当作普通文件评估，绝不陷入无限递归。 |
-| **EC-03** | 文件正被其他应用独占打开 (In-Use) | 用户正在播放视频或写入文件 | `trash::delete` 会返回 OS 拒绝错误。系统捕获错误后将其记录为 `Skipped (File Locked)`，进度条继续推进，不打断整体批次。 |
-| **EC-04** | 文件在扫描后被外部删除 (Stale Path) | 用户在扫描完成后手动在访达中删除了该文件 | 清理执行前调用 `std::path::Path::exists()` 验证，若已不存在直接优雅跳过，统计为“无需处理”。 |
-| **EC-05** | 单个目录扫描出超 50 万个匹配文件 | 目标目录极其庞大 | 前端集成虚拟列表滚动 (`@tanstack/react-virtual`)，仅渲染当前可视区域的 30 个 DOM 节点，避免 DOM 节点过多导致浏览器崩溃。 |
-| **EC-06** | 跨卷移动至废纸篓 (External Drives) | 待删除文件位于挂载的外置移动硬盘或 U 盘 | Rust `trash` crate 原生适配外置卷，将文件安全移动到外置盘的 `.Trashes` 隐藏回收区，保证外置盘可安全移入。 |
+| `*` | 匹配当前层级所有文件 | `*` | 匹配当前文件夹下的所有文件 |
+| `a*` | 以 `a` 开头的所有文件 | `a*` | `apple.dmg`, `abc.pdf` |
+| `*a` | 以 `a` 结尾的文件（**不含扩展名**） | `*a` | `banana.txt` (主干以 a 结尾), `data.log` (不匹配) |
+| `a*.j*` | 文件名以 `a` 开头且扩展名以 `j` 开头 | `a*.j*` | `app.jpeg`, `apple.jpg` |
+| `*/` 或 `a*/` | 匹配一级单层子文件夹 | `*/temp*` | 任意一级子目录下的 `temp*` 文件 |
+| `**` | 递归所有子文件夹（多层） | `**/*.dmg` | 无论多深子目录下的所有 `.dmg` 文件 |
+| `,` 或 `，` | 多个表达式分隔符（**OR 逻辑**） | `*.dmg, *.pkg, **/test*` | 命中这 3 项中任意 1 项即算命中 |
+
+---
+
+## 4. 边界条件与异常处理矩阵 (Edge Cases Matrix)
+
+| 场景编号 | 异常/边界情形 | 发生原因 | 系统处理机制与防御策略 |
+| :--- | :--- | :--- | :--- |
+| **EC-01** | 用户尝试添加现有文件夹的父级 | 已有 `~/Downloads/code`，尝试添加 `~/Downloads` | `PathHierarchyGuard` 检测到父子重叠，前端弹出明确警告对话框并直接拒绝添加。 |
+| **EC-02** | 用户尝试添加现有文件夹的子级 | 已有 `~/Downloads`，尝试添加 `~/Downloads/temp` | `PathHierarchyGuard` 识别为子级重叠，弹出警告并直接拒绝添加。 |
+| **EC-03** | 尝试添加 macOS 核心系统目录 | 误选 `/System`, `/Library`, `/Applications` 等 | 后端直接拦截阻断，拒绝加入监控列表。 |
+| **EC-04** | 目录中存在以 `.` 开头的隐藏文件 | 目录中有 `.DS_Store`, `.localized`, `.git/` | 扫描层自动忽略，通配符永远无法单独命中隐藏文件。 |
+| **EC-05** | 子文件夹整体被规则命中移入废纸篓 | 规则为 `**/temp*/`，匹配了整份子文件夹 | 允许连带将该子文件夹内部的 `.DS_Store` 等隐藏文件一并移入废纸篓，确保目录整洁。 |
+| **EC-06** | 目标文件正被其他应用程序占用独占写入 | 浏览器正在向 Downloads 写入未完成的文件 | 捕获 OS 文件独占锁定错误，优雅跳过，等待下一个防抖周期或下次巡检处理。 |
+| **EC-07** | 大文件写入触发频繁变动通知 | 用户解压一个 10GB 包含上千文件的压缩包 | 防抖队列设定 3 秒窗口，写入期间不断重置倒计时，直至全部写入完毕静止 3 秒后仅触发 1 次扫描。 |
+| **EC-08** | 用户对“询问后删除”弹窗长期不操作 | 弹窗唤起后用户未进行确认 | 状态保持挂起等待，文件依然保持在原处，绝不擅自删除；只有用户手动点击【移至废纸篓】才执行。 |
+| **EC-09** | 废纸篓容量设置了 0 或天数设置了 0 | 用户只希望做普通文件夹清理，不碰废纸篓 | 值为 0 判定为规则关闭，后台绝不主动清倒系统废纸篓。 |
+| **EC-10** | 彻底卸载应用 (Clean Uninstall) | 用户选择彻底清除 | 调用 macOS `SMAppService.unregister` 注销自启，抹除全部本地配置，将自身移入废纸篓并正常退出，0 垃圾残留。 |

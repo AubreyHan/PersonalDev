@@ -237,13 +237,17 @@ public final class AppState: ObservableObject {
     public func factoryResetAndExit() {
         // 1. 注销系统自启
         AutoStartManager.shared.disableCompletely()
-        // 2. 停掉所有后台服务
+        // 2. 停掉所有后台服务与定时器
         watcher.stopWatching()
         scheduler.stopAll()
-        // 3. 删除本地配置目录
+        // 3. 删除本地配置目录与日志缓存
         storage.factoryReset()
-        // 4. 退出进程
-        NSApp.terminate(nil)
+        AppLogger.shared.clear()
+        // 4. 彻底退出应用进程
+        DispatchQueue.main.async {
+            NSApp.terminate(nil)
+            exit(0)
+        }
     }
 
     @objc private func handleScheduledPoll() {

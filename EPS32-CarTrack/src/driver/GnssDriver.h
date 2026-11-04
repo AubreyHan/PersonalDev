@@ -1,10 +1,17 @@
 #pragma once
 #include <Arduino.h>
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
+#include <TinyGPSPlus.h>
 #include "model/SystemState.h"
 
 class GnssDriver {
 public:
+    GnssDriver()
+        : _gsvGps(_gps, "GPGSV", 3)
+        , _gsvBds(_gps, "GBGSV", 3)
+        , _gsvGlo(_gps, "GLGSV", 3)
+        , _gsvGal(_gps, "GAGSV", 3) {}
+
     bool init();
     void update();
     bool configureAutomotiveParams();
@@ -14,7 +21,12 @@ public:
     bool injectUtcTime(uint16_t year, uint8_t month, uint8_t day, uint8_t hour, uint8_t minute, uint8_t second, uint32_t accuracyNs = 50000000);
     bool injectPosition(int32_t latE7, int32_t lonE7, int32_t altCm, uint32_t posAccCm = 50000);
     bool isOnline() const { return _isOnline; }
+    int getActiveRxPin() const { return _activeRxPin; }
+    int getActiveTxPin() const { return _activeTxPin; }
+    void feedNmeaChar(char c);
     void processNavSatData(UBX_NAV_SAT_data_t* satData);
+    void processNavPvtData(UBX_NAV_PVT_data_t* pvtData);
+    void processNavDopData(UBX_NAV_DOP_data_t* dopData);
     bool consumeReinjectRequest() {
         bool r = _needAssistReinject;
         _needAssistReinject = false;
@@ -26,6 +38,11 @@ private:
     void executeHotStartReacquisition();
 
     SFE_UBLOX_GNSS    _myGNSS;
+    TinyGPSPlus       _gps;
+    TinyGPSCustom     _gsvGps;
+    TinyGPSCustom     _gsvBds;
+    TinyGPSCustom     _gsvGlo;
+    TinyGPSCustom     _gsvGal;
     SemaphoreHandle_t _uartMutex           = nullptr;
     volatile bool     _requestHotRestart   = false;
     bool              _isInitialized       = false;

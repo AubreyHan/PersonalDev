@@ -93,10 +93,14 @@ void PowerMonitorService::update() {
     if (socPct > 100.0f) socPct = 100.0f;
     if (socPct < 0.0f)   socPct = 0.0f;
 
-    I2cBusManager::instance().lockBus();
-    bool m5Chg  = M5.Power.isCharging();
-    int  vbusMv = M5.Power.getVBUSVoltage();
-    I2cBusManager::instance().unlockBus();
+    bool m5Chg = false;
+    int vbusMv = 0;
+    if (!inaOk) {
+        I2cBusManager::instance().lockBus();
+        m5Chg  = M5.Power.isCharging();
+        vbusMv = M5.Power.getVBUSVoltage();
+        I2cBusManager::instance().unlockBus();
+    }
 
     bool isCharging = (curMa > 15.0f) || m5Chg;
     bool hasExtPwr  = isCharging || (curMa >= -5.0f) || (vbusMv > 4400);

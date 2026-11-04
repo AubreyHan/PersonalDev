@@ -6,9 +6,13 @@
 #include <math.h>
 
 void UiManager::init() {
-    M5.Display.setRotation(1); // 1280 x 720 Standard Widescreen Landscape
+    M5.Display.setRotation(3); // 1280 x 720 Standard Widescreen Landscape (180 deg flipped)
     M5.Display.setBrightness(200);
     M5.Display.fillScreen(UiColors::COLOR_BG);
+    M5.Display.setTextDatum(textdatum_t::middle_center);
+    M5.Display.setTextColor(UiColors::COLOR_PRIMARY);
+    M5.Display.setTextSize(2);
+    M5.Display.drawString("M5Track-Tab5 Initializing...", Viewport::SCREEN_W / 2, Viewport::SCREEN_H / 2);
 
     // Allocate 1280x720 16-bit double-buffer canvas in 32MB PSRAM (~1.84MB)
     _canvas = new M5Canvas(&M5.Display);
@@ -61,100 +65,204 @@ void UiManager::applyDockAction(DockTouchAction act, SystemContext& ctx) {
 
 void UiManager::handleTouchAndGestures() {
     I2cBusManager::instance().lockBus();
-    M5.update();
+    M5.update(); // M5Unified hardware touch update with I2C bus lock protection
     I2cBusManager::instance().unlockBus();
-    HapticDriver::instance().update();
 
-    auto count = M5.Touch.getCount();
-    if (count > 0) {
-        auto det = M5.Touch.getDetail(0);
-        int16_t tx = det.x;
-        int16_t ty = det.y;
+    auto detail = M5.Touch.getDetail();
+    size_t touchCount = M5.Touch.getCount();
+    bool isDown = (touchCount > 0);
 
+    uint32_t now = millis();
+
+    if (isDown) {
         if (!_touchDown) {
-            _touchDown   = true;
-            _touchStartX = tx;
-            _touchStartY = ty;
-            _touchLastX  = tx;
-            _touchLastY  = ty;
-            _touchDownMs = millis();
+            _touchDown        = true;
+            _gestureTriggered = false;
+            _touchStartX      = detail.x;
+            _touchStartY      = detail.y;
+            _touchLastX       = detail.x;
+            _touchLastY       = detail.y;
+            _touchDownMs      = now;
             _indicator.notifyInteraction();
+            if (Serial) {
+                Serial.printf("[TOUCH] Down at (%d, %d)\n", detail.x, detail.y);
+            }
         } else {
-            _touchLastX = tx;
-            _touchLastY = ty;
-            uint32_t holdDuration = millis() - _touchDownMs;
+            _touchLastX = detail.x;
+            _touchLastY = detail.y;
+            int16_t curDx = _touchLastX - _touchStartX;
+            int16_t curDy = _touchLastY - _touchStartY;
 
-            SystemState& state = SystemState::instance();
-            state.lock();
-            SystemContext& ctx = state.getContextUnsafe();
-            BasePage* page = getActivePage(ctx.currentPage);
-            if (page) {
-                page->onTouchHold(tx, ty, holdDuration, ctx);
-            }
-            state.unlock();
-        }
-    } else if (_touchDown) {
-        _touchDown = false;
-        int16_t dx = _touchLastX - _touchStartX;
-        int16_t dy = _touchLastY - _touchStartY;
-        uint32_t duration = millis() - _touchDownMs;
-        _indicator.notifyInteraction();
+            // 1. REAL-TIME SWIPE: Trigger immediately when displacement exceeds 16px
+            if (!_gestureTriggered && abs(curDx) >= 16 && abs(curDx) > (abs(curDy) * 3 / 4)) {
+                _gestureTriggered = true;
+                _indicator.notifyInteraction();
+                HapticDriver::instance().triggerShortPulse(35);
 
-        SystemState& state = SystemState::instance();
-        state.lock();
-        SystemContext& ctx = state.getContextUnsafe();
+                SystemState& state = SystemState::instance();
+                state.lock();
+                SystemContext& ctx = state.getContextUnsafe();
 
-        // Check horizontal swipe gesture between Main Pages (Pages 1 .. 8)
-        if (abs(dx) >= GestureConfig::SWIPE_HORIZ_THRESHOLD_PX &&
-            abs(dx) > abs(dy) * GestureConfig::DIRECTION_RATIO &&
-            ctx.currentPage >= PAGE_1_DASHBOARD && ctx.currentPage <= PAGE_8_TOOLS) {
-            int p = (int)ctx.currentPage;
-            if (dx < 0) {
-                // Swipe left -> next page
-                p++;
-                if (p > (int)PAGE_8_TOOLS) p = (int)PAGE_1_DASHBOARD;
-            } else {
-                // Swipe right -> previous page
-                p--;
-                if (p < (int)PAGE_1_DASHBOARD) p = (int)PAGE_8_TOOLS;
-            }
-            ctx.currentPage = (AppPageId)p;
-            state.unlock();
-            return;
-        }
-
-        // Short tap (< 1200ms)
-        if (duration < 1200 && abs(dx) < 35 && abs(dy) < 35) {
-            if (ctx.currentPage != PAGE_INIT && ctx.currentPage != PAGE_WIFI_CONFIG && _touchLastX < Viewport::DOCK_W) {
-                DockTouchAction act = _dock.handleTouchTap(_touchLastX, _touchLastY);
-                applyDockAction(act, ctx);
+                if (ctx.currentPage == PAGE_INIT || ctx.currentPage == PAGE_WIFI_CONFIG) {
+                    ctx.currentPage = PAGE_1_DASHBOARD;
+                    if (Serial) Serial.println("[TOUCH] Active Swipe -> PAGE_1_DASHBOARD");
+                } else if (ctx.currentPage >= PAGE_1_DASHBOARD && ctx.currentPage <= PAGE_8_TOOLS) {
+                    int p = (int)ctx.currentPage;
+                    if (curDx < 0) {
+                        // Swipe Left -> Next Page (1 -> 2 -> ... -> 8 -> 1)
+                        p = (p >= (int)PAGE_8_TOOLS) ? (int)PAGE_1_DASHBOARD : (p + 1);
+                    } else {
+                        // Swipe Right -> Prev Page (1 -> 8 -> ... -> 2 -> 1)
+                        p = (p <= (int)PAGE_1_DASHBOARD) ? (int)PAGE_8_TOOLS : (p - 1);
+                    }
+                    ctx.currentPage = (AppPageId)p;
+                    if (Serial) Serial.printf("[TOUCH] Active Swipe Page -> %d\n", p);
+                } else if (ctx.currentPage > PAGE_8_TOOLS && curDx > 0) {
+                    // Subpage Swipe Right -> return to parent page
+                    if (ctx.currentPage == SUBPAGE_EDIT_CLOCK) {
+                        ctx.currentPage = PAGE_7_WORLD_CLOCK;
+                    } else {
+                        ctx.currentPage = PAGE_8_TOOLS;
+                    }
+                    if (Serial) Serial.printf("[TOUCH] Active Subpage Return -> %d\n", (int)ctx.currentPage);
+                }
                 state.unlock();
-                return;
             }
 
-            BasePage* page = getActivePage(ctx.currentPage);
-            if (page) {
-                page->onTouchTap(_touchLastX, _touchLastY, ctx);
+            // 2. Continuous Hold (e.g. long press TRIP reset on Dashboard)
+            if (!_gestureTriggered) {
+                uint32_t holdDuration = now - _touchDownMs;
+                SystemState& state = SystemState::instance();
+                state.lock();
+                SystemContext& ctx = state.getContextUnsafe();
+                BasePage* page = getActivePage(ctx.currentPage);
+                if (page) {
+                    page->onTouchHold(detail.x, detail.y, holdDuration, ctx);
+                }
+                state.unlock();
             }
         }
-        state.unlock();
+    } else {
+        // Finger lifted from screen
+        if (_touchDown) {
+            _touchDown = false;
+            int16_t endX = _touchLastX;
+            int16_t endY = _touchLastY;
+            int16_t startX = _touchStartX;
+            int16_t startY = _touchStartY;
+            uint32_t duration = (now >= _touchDownMs && _touchDownMs > 0) ? (now - _touchDownMs) : 50;
+            int16_t finalDx = endX - startX;
+            int16_t finalDy = endY - startY;
+
+            _touchStartX = 0;
+            _touchStartY = 0;
+            _touchLastX  = 0;
+            _touchLastY  = 0;
+            _touchDownMs = 0;
+
+            if (Serial) {
+                Serial.printf("[TOUCH] Release at (%d,%d) start=(%d,%d) dx=%d dy=%d dur=%ums trig=%d\n",
+                              endX, endY, startX, startY, finalDx, finalDy, duration, (int)_gestureTriggered);
+            }
+
+            // If gesture was NOT already triggered during active drag:
+            if (!_gestureTriggered) {
+                // Check if quick flick release qualifies as a swipe
+                if (abs(finalDx) >= 14 && abs(finalDx) > (abs(finalDy) * 3 / 4)) {
+                    _gestureTriggered = true;
+                    _indicator.notifyInteraction();
+                    HapticDriver::instance().triggerShortPulse(35);
+
+                    SystemState& state = SystemState::instance();
+                    state.lock();
+                    SystemContext& ctx = state.getContextUnsafe();
+
+                    if (ctx.currentPage == PAGE_INIT || ctx.currentPage == PAGE_WIFI_CONFIG) {
+                        ctx.currentPage = PAGE_1_DASHBOARD;
+                    } else if (ctx.currentPage >= PAGE_1_DASHBOARD && ctx.currentPage <= PAGE_8_TOOLS) {
+                        int p = (int)ctx.currentPage;
+                        if (finalDx < 0) {
+                            p = (p >= (int)PAGE_8_TOOLS) ? (int)PAGE_1_DASHBOARD : (p + 1);
+                        } else {
+                            p = (p <= (int)PAGE_1_DASHBOARD) ? (int)PAGE_8_TOOLS : (p - 1);
+                        }
+                        ctx.currentPage = (AppPageId)p;
+                        if (Serial) Serial.printf("[TOUCH] Release Swipe Page -> %d\n", p);
+                    } else if (ctx.currentPage > PAGE_8_TOOLS && finalDx > 0) {
+                        if (ctx.currentPage == SUBPAGE_EDIT_CLOCK) {
+                            ctx.currentPage = PAGE_7_WORLD_CLOCK;
+                        } else {
+                            ctx.currentPage = PAGE_8_TOOLS;
+                        }
+                    }
+                    state.unlock();
+                } else if (duration < 1000 && abs(finalDx) < 35 && abs(finalDy) < 35) {
+                    // Tap Event!
+                    _indicator.notifyInteraction();
+                    HapticDriver::instance().triggerShortPulse(35);
+
+                    SystemState& state = SystemState::instance();
+                    state.lock();
+                    SystemContext& ctx = state.getContextUnsafe();
+
+                    // Bottom Page Indicator Dots direct jump:
+                    if (endY >= 660 && endX >= 590 && endX <= 850 &&
+                        ctx.currentPage >= PAGE_1_DASHBOARD && ctx.currentPage <= PAGE_8_TOOLS) {
+                        int dotIdx = (endX - 610) / 24;
+                        if (dotIdx >= 0 && dotIdx < 8) {
+                            ctx.currentPage = (AppPageId)(PAGE_1_DASHBOARD + dotIdx);
+                            if (Serial) Serial.printf("[TOUCH] Dot Direct Jump -> %d\n", (int)ctx.currentPage);
+                            state.unlock();
+                            _gestureTriggered = false;
+                            return;
+                        }
+                    }
+
+                    // Left Dock Tap (X: 0..160)
+                    if (ctx.currentPage != PAGE_INIT && ctx.currentPage != PAGE_WIFI_CONFIG && endX < Viewport::DOCK_W) {
+                        DockTouchAction act = _dock.handleTouchTap(endX, endY);
+                        if (Serial) Serial.printf("[TOUCH] Dock Action -> %d\n", (int)act);
+                        applyDockAction(act, ctx);
+                        state.unlock();
+                        _gestureTriggered = false;
+                        return;
+                    }
+
+                    // Active Page Tap
+                    BasePage* page = getActivePage(ctx.currentPage);
+                    if (page) {
+                        bool handled = page->onTouchTap(endX, endY, ctx);
+                        if (Serial) {
+                            Serial.printf("[TOUCH] Page %d TouchTap(%d, %d) -> handled=%d, current=%d\n",
+                                          (int)ctx.currentPage, endX, endY, handled, (int)ctx.currentPage);
+                        }
+                    }
+                    state.unlock();
+                }
+            }
+            _gestureTriggered = false;
+        }
     }
 }
 
 extern PowerMonitorService g_powerService;
 
-void UiManager::update() {
+void UiManager::handleTouch() {
     // If system is in low-power standby with display sleeping, check for screen touch to wake
     if (g_powerService.isSleeping()) {
+        I2cBusManager::instance().lockBus();
         M5.update();
+        I2cBusManager::instance().unlockBus();
         if (M5.Touch.getCount() > 0) {
             g_powerService.wakeFromStandby("Screen touch detected");
         }
-        vTaskDelay(pdMS_TO_TICKS(100));
         return;
     }
 
     handleTouchAndGestures();
+}
+
+void UiManager::render() {
     if (!_canvas) return;
 
     SystemState::instance().copySnapshotTo(_snapBuf);
@@ -170,5 +278,30 @@ void UiManager::update() {
         _indicator.render(*_canvas, _snapBuf.currentPage);
     }
 
+    // Real-Time Touch Visualizer & Diagnostic Capsule (Aids hardware touch verification)
+    if (_touchDown || (millis() - _touchVisualMs < 1000)) {
+        int16_t curX = _touchLastX;
+        int16_t curY = _touchLastY;
+        if (curX > 0 && curY > 0) {
+            _touchVisualMs = millis();
+            _canvas->fillCircle(curX, curY, 14, UiColors::COLOR_PRIMARY);
+            _canvas->drawCircle(curX, curY, 22, UiColors::COLOR_WHITE);
+        }
+    }
+
+    // On-screen touch diagnostic status at top-right
+    _canvas->setTextDatum(top_right);
+    _canvas->setTextSize(1);
+    _canvas->setTextColor(UiColors::COLOR_MUTED);
+    char dbgBuf[64];
+    snprintf(dbgBuf, sizeof(dbgBuf), "T: cnt=%u down=%d x=%d y=%d P=%d",
+             (unsigned)M5.Touch.getCount(), (int)_touchDown, (int)_touchLastX, (int)_touchLastY, (int)_snapBuf.currentPage);
+    _canvas->drawString(dbgBuf, 1260, 8);
+
     _canvas->pushSprite(0, 0);
+}
+
+void UiManager::update() {
+    handleTouch();
+    render();
 }

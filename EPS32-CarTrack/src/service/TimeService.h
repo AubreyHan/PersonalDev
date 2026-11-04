@@ -23,4 +23,5 @@ private:
     int32_t     _lastSavedLatE7       = 0;
     int32_t     _lastSavedLonE7       = 0;
     uint32_t    _lastTripSaveMs       = 0;
+    uint32_t    _lastEpochSaveMs      = 0;
 };

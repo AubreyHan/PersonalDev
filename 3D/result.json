@@ -1,10 +1,91 @@
 {
     "error_string": "Success.",
     "export_time": 0,
-    "layer_height": 0.0,
+    "layer_height": 0.1599999964237213,
     "plate_index": 0,
-    "prepare_time": 5,
+    "prepare_time": 15,
     "return_code": 0,
-    "sparse_infill_density": 0.0,
-    "wall_loops": 0
+    "sliced_plates": [
+        {
+            "feature_type_times": {
+                "Bottom surface": 124.91026306152344,
+                "Bridge": 424.6854248046875,
+                "Custom": 2.775672674179077,
+                "Inner wall": 1616.0692138671875,
+                "Internal solid infill": 1346.6708984375,
+                "Outer wall": 920.9382934570313,
+                "Overhang wall": 130.56724548339844,
+                "Skirt": 10.846394538879395,
+                "Sparse infill": 1294.9833984375,
+                "Top surface": 245.35487365722656,
+                "Travel": 792.3086547851563,
+                "Undefined": 790.9966430664063
+            },
+            "filament_change_times": 0,
+            "filaments": [
+                {
+                    "filament_id": "",
+                    "id": 1,
+                    "main_used_g": 0.0,
+                    "total_used_g": 0.0
+                }
+            ],
+            "generate_support_material_time": 8,
+            "id": 1,
+            "infill_time": 92,
+            "layer_filament_change": 0,
+            "main_predication": 6907.6982421875,
+            "make_perimeters_time": 114,
+            "obj_cached_cnt": 0,
+            "objects": [
+                {
+                    "bbox": {
+                        "depth": 78.5,
+                        "height": 13.0,
+                        "width": 54.999996185302734,
+                        "x": 99.13094329833984,
+                        "y": 60.75,
+                        "z": 0.0
+                    },
+                    "id": 5,
+                    "name": "ESP32_S3_AMOLED_Body_Threaded.stl",
+                    "triangle_count": 2788
+                },
+                {
+                    "bbox": {
+                        "depth": 55.70000076293945,
+                        "height": 6.0,
+                        "width": 55.70000076293945,
+                        "x": 45.869049072265625,
+                        "y": 83.5499496459961,
+                        "z": 0.0
+                    },
+                    "id": 9,
+                    "name": "ESP32_S3_AMOLED_Lid_Threaded.stl",
+                    "triangle_count": 5040
+                }
+            ],
+            "sliced_time": 360,
+            "sliced_time_with_cache": 126,
+            "total_predication": 6909.162109375,
+            "triangle_count": 7828,
+            "warning_message": "It seems object ESP32_S3_AMOLED_Body_Threaded.stl has floating cantilever. Please re-orient the object or enable support generation."
+        }
+    ],
+    "sparse_infill_density": 25.0,
+    "upward_compatible_machine": [
+        "Bambu Lab P1S 0.4 nozzle",
+        "Bambu Lab P1P 0.4 nozzle",
+        "Bambu Lab X1 0.4 nozzle",
+        "Bambu Lab X1E 0.4 nozzle",
+        "Bambu Lab A1 0.4 nozzle",
+        "Bambu Lab H2D 0.4 nozzle",
+        "Bambu Lab H2D Pro 0.4 nozzle",
+        "Bambu Lab H2S 0.4 nozzle",
+        "Bambu Lab P2S 0.4 nozzle",
+        "Bambu Lab H2C 0.4 nozzle",
+        "Bambu Lab X2D 0.4 nozzle",
+        "Bambu Lab A2L 0.4 nozzle"
+    ],
+    "wall_loops": 4
 }

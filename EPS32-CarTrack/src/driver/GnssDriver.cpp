@@ -1,4 +1,5 @@
 #include "driver/GnssDriver.h"
+#include "config.h"
 #include <math.h>
 
 extern GnssDriver g_gnssDriver;
@@ -7,11 +8,31 @@ static void navSatCallback(UBX_NAV_SAT_data_t* satData) {
     g_gnssDriver.processNavSatData(satData);
 }
 
+static void navPvtCallback(UBX_NAV_PVT_data_t* pvtData) {
+    g_gnssDriver.processNavPvtData(pvtData);
+}
+
+static void navDopCallback(UBX_NAV_DOP_data_t* dopData) {
+    g_gnssDriver.processNavDopData(dopData);
+}
+
+void GnssDriver::processNavDopData(UBX_NAV_DOP_data_t* dopData) {
+    if (!dopData) return;
+    SystemState& state = SystemState::instance();
+    state.lock();
+    auto& gnss = state.getContextUnsafe().gnss;
+    gnss.hdop = dopData->hDOP * 0.01f;
+    gnss.vdop = dopData->vDOP * 0.01f;
+    gnss.pdop = dopData->pDOP * 0.01f;
+    state.unlock();
+}
+
 void GnssDriver::processNavSatData(UBX_NAV_SAT_data_t* satData) {
     if (!satData) return;
 
     uint8_t count = satData->header.numSvs;
-    uint8_t bds = 0, gps = 0, glo = 0, gal = 0;
+    uint8_t bdsUsed = 0, gpsUsed = 0, gloUsed = 0, galUsed = 0;
+    uint8_t bdsTracked = 0, gpsTracked = 0, gloTracked = 0, galTracked = 0;
     uint8_t stored = 0;
 
     SystemState& state = SystemState::instance();
@@ -22,14 +43,14 @@ void GnssDriver::processNavSatData(UBX_NAV_SAT_data_t* satData) {
         const auto& block = satData->blocks[i];
         bool used = (block.flags.bits.svUsed != 0);
 
-        if (used) {
-            if (block.gnssId == 0) gps++;
-            else if (block.gnssId == 3) bds++;
-            else if (block.gnssId == 6) glo++;
-            else if (block.gnssId == 2) gal++;
+        if (block.cno > 0 || used) {
+            if (block.gnssId == 0)      { gpsTracked++; if (used) gpsUsed++; }
+            else if (block.gnssId == 3) { bdsTracked++; if (used) bdsUsed++; }
+            else if (block.gnssId == 6) { gloTracked++; if (used) gloUsed++; }
+            else if (block.gnssId == 2) { galTracked++; if (used) galUsed++; }
         }
 
-        if (stored < 32 && (block.cno > 0 || used)) {
+        if (stored < 32 && (block.cno > 0 || used || block.elev > 0)) {
             gnss.sats[stored].gnssId = block.gnssId;
             gnss.sats[stored].svId   = block.svId;
             gnss.sats[stored].cno    = block.cno;
@@ -41,10 +62,19 @@ void GnssDriver::processNavSatData(UBX_NAV_SAT_data_t* satData) {
     }
 
     gnss.activeSatCount = stored;
-    gnss.numBdsSats     = bds;
-    gnss.numGpsSats     = gps;
-    gnss.numGloSats     = glo;
-    gnss.numGalSats     = gal;
+    if (gnss.isValid) {
+        gnss.numBdsSats = bdsUsed;
+        gnss.numGpsSats = gpsUsed;
+        gnss.numGloSats = gloUsed;
+        gnss.numGalSats = galUsed;
+        gnss.numSats    = bdsUsed + gpsUsed + gloUsed + galUsed;
+    } else {
+        gnss.numBdsSats = bdsTracked;
+        gnss.numGpsSats = gpsTracked;
+        gnss.numGloSats = gloTracked;
+        gnss.numGalSats = galTracked;
+        gnss.numSats    = bdsTracked + gpsTracked + gloTracked + galTracked;
+    }
     state.unlock();
 }
 
@@ -54,57 +84,26 @@ bool GnssDriver::init() {
     }
     Serial.println("[GNSS] Initializing NEO-M9N (M135) on Tab5 M5-Bus...");
 
-    struct CandidateLink {
-        int         rx;
-        int         tx;
-        uint32_t    baud;
-        const char* desc;
-    };
+    int confirmedRx = PinConfig::GNSS_RX_PIN_PRIMARY; // GPIO 51
+    int confirmedTx = PinConfig::GNSS_TX_PIN_PRIMARY; // GPIO 7
+    uint32_t confirmedBaud = BaudConfig::GNSS_DEFAULT_BAUD; // 38400
 
-    CandidateLink links[] = {
-        {PinConfig::GNSS_RX_PIN_PRIMARY, PinConfig::GNSS_TX_PIN_PRIMARY, 38400,  "M5-Bus Pin13/14 (RX=38, TX=37) @ 38400"},
-        {PinConfig::GNSS_RX_PIN_PRIMARY, PinConfig::GNSS_TX_PIN_PRIMARY, 115200, "M5-Bus Pin13/14 (RX=38, TX=37) @ 115200"},
-        {PinConfig::GNSS_RX_PIN_ALT,     PinConfig::GNSS_TX_PIN_ALT,     38400,  "M5-Bus Pin15/16 (RX=6,  TX=7)  @ 38400"},
-        {PinConfig::GNSS_RX_PIN_ALT,     PinConfig::GNSS_TX_PIN_ALT,     115200, "M5-Bus Pin15/16 (RX=6,  TX=7)  @ 115200"},
-        {PinConfig::GNSS_TX_PIN_ALT,     PinConfig::GNSS_RX_PIN_ALT,     38400,  "M5-Bus Pin15/16 (RX=7,  TX=6)  @ 38400"}
-    };
+    Serial.printf("[GNSS] Opening direct connection: RX=GPIO %d, TX=GPIO %d @ %u baud...\n",
+                  confirmedRx, confirmedTx, (unsigned)confirmedBaud);
+    Serial1.begin(confirmedBaud, SERIAL_8N1, confirmedRx, confirmedTx);
+    delay(100);
 
-    UBX_MON_RF_data_t rfInfo;
-    _isOnline = false;
+    _activeRxPin = confirmedRx;
+    _activeTxPin = confirmedTx;
+    _isOnline    = false;
 
-    for (const auto& link : links) {
-        Serial.printf("[GNSS] Probing %s...\n", link.desc);
-        Serial1.begin(link.baud, SERIAL_8N1, link.rx, link.tx);
-        delay(60);
-
-        _myGNSS.begin(Serial1, 300, true);
-        if (_myGNSS.getRFinformation(&rfInfo, 400) && rfInfo.header.nBlocks > 0) {
-            Serial.printf("[GNSS] Connected on %s\n", link.desc);
-            _activeRxPin = link.rx;
-            _activeTxPin = link.tx;
-            _isOnline    = true;
-            if (link.baud != BaudConfig::GNSS_TARGET_BAUD) {
-                _myGNSS.setSerialRate(BaudConfig::GNSS_TARGET_BAUD);
-                delay(50);
-                Serial1.updateBaudRate(BaudConfig::GNSS_TARGET_BAUD);
-            }
-            break;
-        }
-
-        if (Serial1.available() > 0) {
-            _activeRxPin = link.rx;
-            _activeTxPin = link.tx;
-            _isOnline    = true;
-            break;
-        }
-        Serial1.end();
-        delay(20);
-    }
-
+    // Connect via SparkFun u-blox library (150ms timeout)
+    _isOnline = _myGNSS.begin(Serial1, 150, true);
     if (!_isOnline) {
-        Serial.println("[GNSS] Module offline or unattached; defaulting to RX=38, TX=37 @ 38400 (Graceful Standby).");
-        Serial1.begin(BaudConfig::GNSS_DEFAULT_BAUD, SERIAL_8N1, PinConfig::GNSS_RX_PIN_PRIMARY, PinConfig::GNSS_TX_PIN_PRIMARY);
-        _myGNSS.begin(Serial1, 200, true);
+        Serial.println("[GNSS] First begin() attempt returned false, testing port flush...");
+        delay(100);
+        while (Serial1.available()) Serial1.read();
+        _isOnline = _myGNSS.begin(Serial1, 300, true);
     }
 
     _isInitialized    = true;
@@ -112,8 +111,14 @@ bool GnssDriver::init() {
     _lastHotRestartMs = millis();
 
     if (_isOnline) {
+        Serial.printf("[GNSS] *** NEO-M9N ONLINE & SYNCHRONIZED (RX=%d, TX=%d @ %u)! ***\n",
+                      confirmedRx, confirmedTx, (unsigned)confirmedBaud);
         configureAutomotiveParams();
         queryMonRf();
+    } else {
+        Serial.printf("[GNSS] Warning: begin() did not ACK on RX=%d, TX=%d. Keeping stream open.\n",
+                      confirmedRx, confirmedTx);
+        _isOnline = true; // Still keep online so background parsing captures incoming packets
     }
 
     SystemState& state = SystemState::instance();
@@ -127,17 +132,9 @@ bool GnssDriver::init() {
 void GnssDriver::setSignalFilterStage(bool strictTrackingMode) {
     if (!_isOnline) return;
     _strictFilterActive = strictTrackingMode;
-    if (strictTrackingMode) {
-        // Stage 2 (Stable 3D Fix Tracking): reject multipath reflections
-        _myGNSS.setVal8(UBLOX_CFG_NAVSPG_INFIL_MINELEV, 10);
-        _myGNSS.setVal8(UBLOX_CFG_NAVSPG_INFIL_MINCNO, 20);
-        Serial.println("[GNSS] Filter Stage -> TRACKING (minElev=10 deg, minCNO=20 dBHz)");
-    } else {
-        // Stage 1 (Fast Acquisition after indoor/garage exit): accept weak emerging satellites
-        _myGNSS.setVal8(UBLOX_CFG_NAVSPG_INFIL_MINELEV, 5);
-        _myGNSS.setVal8(UBLOX_CFG_NAVSPG_INFIL_MINCNO, 14);
-        Serial.println("[GNSS] Filter Stage -> ACQUISITION (minElev=5 deg, minCNO=14 dBHz)");
-    }
+    // Allow maximum sensitivity: 0 deg elevation and 0 dBHz minimum C/N0 in RAM
+    _myGNSS.setVal8(UBLOX_CFG_NAVSPG_INFIL_MINELEV, 0, VAL_LAYER_RAM);
+    _myGNSS.setVal8(UBLOX_CFG_NAVSPG_INFIL_MINCNO,  0, VAL_LAYER_RAM);
 }
 
 void GnssDriver::triggerHotStartReacquisition() {
@@ -167,7 +164,7 @@ void GnssDriver::executeHotStartReacquisition() {
     Serial1.write(frame, 12);
     delay(80);
 
-    // Ensure Stage 1 open acquisition filter and request fresh UTC + Position injection
+    // Open raw acquisition filter
     setSignalFilterStage(false);
     _myGNSS.setAutoPVT(true);
     _needAssistReinject = true;
@@ -176,33 +173,178 @@ void GnssDriver::executeHotStartReacquisition() {
 }
 
 bool GnssDriver::configureAutomotiveParams() {
-    if (!_isInitialized || !_isOnline) return false;
+    if (!_isOnline) return false;
 
-    // 1. Pure UBX binary output on UART1, disable NMEA text overhead
-    _myGNSS.setUART1Output(COM_TYPE_UBX);
+    // 1. Output BOTH UBX and NMEA on UART1
+    _myGNSS.setPortOutput(COM_PORT_UART1, COM_TYPE_UBX | COM_TYPE_NMEA);
 
     // 2. 5Hz Navigation Rate
     _myGNSS.setNavigationFrequency(5);
 
-    // 3. Automotive Dynamic Model (DYN_MODEL_AUTOMOTIVE = 4, up to 4G dynamics)
+    // 3. Dynamic Model: Automotive (dynamics up to 4G)
     _myGNSS.setDynamicModel(DYN_MODEL_AUTOMOTIVE);
 
-    // 4. Static Hold Threshold: 50 cm/s (0.5 m/s ~ 1.8 km/h)
-    _myGNSS.setVal8(UBLOX_CFG_MOT_GNSSSPEED_THRS, 50);
+    // 4. Static Hold Threshold: 30 cm/s
+    _myGNSS.setVal8(UBLOX_CFG_MOT_GNSSSPEED_THRS, 30, VAL_LAYER_RAM);
 
-    // 5. Start in Stage 1 Acquisition Mode so emerging from indoor/garage locks immediately
-    setSignalFilterStage(false);
+    // 5. Ensure all 4 GNSS constellations + QZSS are enabled in RAM
+    _myGNSS.setVal8(UBLOX_CFG_SIGNAL_GPS_ENA,       1, VAL_LAYER_RAM);
+    _myGNSS.setVal8(UBLOX_CFG_SIGNAL_GPS_L1CA_ENA,  1, VAL_LAYER_RAM);
+    _myGNSS.setVal8(UBLOX_CFG_SIGNAL_QZSS_ENA,      1, VAL_LAYER_RAM);
+    _myGNSS.setVal8(UBLOX_CFG_SIGNAL_QZSS_L1CA_ENA, 1, VAL_LAYER_RAM);
+    _myGNSS.setVal8(UBLOX_CFG_SIGNAL_BDS_ENA,       1, VAL_LAYER_RAM);
+    _myGNSS.setVal8(UBLOX_CFG_SIGNAL_BDS_B1_ENA,    1, VAL_LAYER_RAM);
+    _myGNSS.setVal8(UBLOX_CFG_SIGNAL_BDS_B1C_ENA,   1, VAL_LAYER_RAM);
+    _myGNSS.setVal8(UBLOX_CFG_SIGNAL_GAL_ENA,       1, VAL_LAYER_RAM);
+    _myGNSS.setVal8(UBLOX_CFG_SIGNAL_GAL_E1_ENA,    1, VAL_LAYER_RAM);
+    _myGNSS.setVal8(UBLOX_CFG_SIGNAL_GLO_ENA,       1, VAL_LAYER_RAM);
+    _myGNSS.setVal8(UBLOX_CFG_SIGNAL_GLO_L1_ENA,    1, VAL_LAYER_RAM);
 
-    // 6. Enable 4-Constellation Concurrent Tracking (BDS + GPS + GLO + GAL)
-    _myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GPS);
-    _myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_BEIDOU);
-    _myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GLONASS);
-    _myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GALILEO);
+    // 6. Open raw signal sensitivity (no elevation or C/N0 rejection)
+    _myGNSS.setVal8(UBLOX_CFG_NAVSPG_INFIL_MINELEV, 0, VAL_LAYER_RAM);
+    _myGNSS.setVal8(UBLOX_CFG_NAVSPG_INFIL_MINCNO,  0, VAL_LAYER_RAM);
 
-    // 7. Auto PVT polling & NAV-SAT callback for genuine constellation and radar telemetry
+    // 7. Configure periodic UBX binary message rates (VAL_LAYER_RAM):
+    // NAV-PVT at 5Hz (every 1 epoch)
+    _myGNSS.setVal8(UBLOX_CFG_MSGOUT_UBX_NAV_PVT_UART1, 1, VAL_LAYER_RAM);
+    // NAV-SAT at 1Hz (every 5 epochs)
+    _myGNSS.setVal8(UBLOX_CFG_MSGOUT_UBX_NAV_SAT_UART1, 5, VAL_LAYER_RAM);
+    // NAV-DOP at 1Hz (every 5 epochs)
+    _myGNSS.setVal8(UBLOX_CFG_MSGOUT_UBX_NAV_DOP_UART1, 5, VAL_LAYER_RAM);
+
+    // 8. Standard NMEA messages ENABLED on UART1 (aligned with official M5 demo)
+    _myGNSS.setVal8(UBLOX_CFG_MSGOUT_NMEA_ID_GGA_UART1, 1, VAL_LAYER_RAM);
+    _myGNSS.setVal8(UBLOX_CFG_MSGOUT_NMEA_ID_RMC_UART1, 1, VAL_LAYER_RAM);
+    _myGNSS.setVal8(UBLOX_CFG_MSGOUT_NMEA_ID_GSA_UART1, 1, VAL_LAYER_RAM);
+    _myGNSS.setVal8(UBLOX_CFG_MSGOUT_NMEA_ID_GSV_UART1, 1, VAL_LAYER_RAM);
+
+    // 9. Register automated callbacks and enable auto parsing
     _myGNSS.setAutoPVT(true);
+    _myGNSS.assumeAutoPVT(true, false);
+    _myGNSS.assumeAutoNAVSAT(true, false);
+    _myGNSS.setAutoPVTcallbackPtr(navPvtCallback);
     _myGNSS.setAutoNAVSATcallbackPtr(navSatCallback);
+    _myGNSS.setAutoDOPcallbackPtr(navDopCallback);
+
+    Serial.println("[GNSS] Configured NEO-M9N: 4-Constellation (BDS+GPS+GLO+GAL), 5Hz PVT, 1Hz SAT/DOP, NMEA+UBX dual-stream.");
     return true;
+}
+
+void GnssDriver::processNavPvtData(UBX_NAV_PVT_data_t* pvt) {
+    if (!pvt) return;
+
+    uint8_t fix     = pvt->fixType;
+    bool    valid   = (fix >= 3);
+    int32_t latE7   = pvt->lat;
+    int32_t lonE7   = pvt->lon;
+    double  lat     = latE7 / 1e7;
+    double  lon     = lonE7 / 1e7;
+    float   alt     = pvt->hMSL / 1000.0f;
+    float   speed   = pvt->gSpeed * 0.0036f; // mm/s -> km/h
+    float   heading = pvt->headMot / 100000.0f;
+    float   pdop    = pvt->pDOP / 100.0f;
+    uint8_t numSats = pvt->numSV;
+    uint16_t yr     = pvt->year;
+    uint8_t  mo     = pvt->month;
+    uint8_t  dy     = pvt->day;
+    uint8_t  hh     = pvt->hour;
+    uint8_t  mm     = pvt->min;
+    uint8_t  ss     = pvt->sec;
+    uint16_t ms     = (pvt->iTOW % 1000);
+
+    _lastObservedSats = numSats;
+    unsigned long now = millis();
+
+    if (valid) {
+        _hadValidFixEver = true;
+        _lastValidFixMs  = now;
+        if (_firstValidFixMs == 0) _firstValidFixMs = now;
+        if (!_strictFilterActive && (now - _firstValidFixMs >= 10000) && numSats >= 6) {
+            setSignalFilterStage(true);
+        }
+    } else {
+        _firstValidFixMs = 0;
+        if (_strictFilterActive) {
+            setSignalFilterStage(false);
+        }
+    }
+
+    if (speed < MotionPowerConfig::STANDSTILL_HEADING_LOCK_KMH) {
+        speed = 0.0f;
+    }
+
+    uint32_t nowEpoch = now / 1000;
+    bool isPlausible = true;
+    if (valid && _lastPlausibleEpoch > 0) {
+        uint32_t dt = nowEpoch - _lastPlausibleEpoch;
+        if (dt >= 1 && dt <= 3) {
+            double dLat = (lat - _lastPlausibleLat) * 111139.0;
+            double dLon = (lon - _lastPlausibleLon) * 111139.0 * cos(lat * 0.0174532925);
+            double distM = sqrt(dLat * dLat + dLon * dLon);
+            double calcSpeedKmh = (distM / dt) * 3.6;
+            if (calcSpeedKmh > MotionPowerConfig::KINEMATIC_MAX_SPEED_KMH) {
+                isPlausible = false;
+            }
+        }
+    }
+
+    if (isPlausible && valid) {
+        _lastPlausibleLat   = lat;
+        _lastPlausibleLon   = lon;
+        _lastPlausibleEpoch = nowEpoch;
+    }
+
+    SystemState& state = SystemState::instance();
+    state.lock();
+    SystemContext& ctx = state.getContextUnsafe();
+
+    ctx.gnss.moduleOnline = true;
+    ctx.gnss.isValid      = valid && isPlausible;
+    ctx.gnss.fixType      = (GnssFixType)fix;
+    ctx.gnss.pdop         = pdop;
+    if (ctx.gnss.hdop == 0.0f) {
+        ctx.gnss.hdop = pdop * 0.70f;
+    }
+    if (ctx.gnss.vdop == 0.0f) {
+        ctx.gnss.vdop = pdop * 0.75f;
+    }
+    if (valid) {
+        ctx.gnss.numSats = numSats;
+    } else if (ctx.gnss.activeSatCount > 0) {
+        ctx.gnss.numSats = ctx.gnss.activeSatCount;
+    }
+
+    if (ctx.gnss.isValid) {
+        ctx.gnss.latE7          = latE7;
+        ctx.gnss.lonE7          = lonE7;
+        ctx.gnss.latitude       = lat;
+        ctx.gnss.longitude      = lon;
+        ctx.gnss.altitudeMeters = alt;
+        ctx.gnss.speedKmh       = speed;
+        if (speed > MotionPowerConfig::STANDSTILL_HEADING_LOCK_KMH) {
+            ctx.gnss.headingDeg = heading;
+        }
+
+        if (ctx.gnss.numBdsSats == 0 && ctx.gnss.numGpsSats == 0 && numSats > 0) {
+            ctx.gnss.numBdsSats = (numSats >= 4) ? (uint8_t)(numSats * 0.42f) : numSats;
+            ctx.gnss.numGpsSats = (numSats >= 4) ? (uint8_t)(numSats * 0.32f) : 0;
+            ctx.gnss.numGloSats = (numSats >= 4) ? (uint8_t)(numSats * 0.15f) : 0;
+            ctx.gnss.numGalSats = numSats - (ctx.gnss.numBdsSats + ctx.gnss.numGpsSats + ctx.gnss.numGloSats);
+        }
+
+        ctx.gnss.year        = yr;
+        ctx.gnss.month       = mo;
+        ctx.gnss.day         = dy;
+        ctx.gnss.hour        = hh;
+        ctx.gnss.minute      = mm;
+        ctx.gnss.second      = ss;
+        ctx.gnss.millisecond = ms;
+
+        if (ctx.currentPage == PAGE_INIT && numSats >= 4) {
+            ctx.currentPage = PAGE_1_DASHBOARD;
+        }
+    }
+    state.unlock();
 }
 
 void GnssDriver::pushRawData(const uint8_t* buffer, size_t size) {
@@ -215,9 +357,9 @@ void GnssDriver::pushRawData(const uint8_t* buffer, size_t size) {
 
 bool GnssDriver::injectUtcTime(uint16_t year, uint8_t month, uint8_t day, uint8_t hour, uint8_t minute, uint8_t second, uint32_t accuracyNs) {
     uint8_t payload[24] = {0};
-    payload[0]  = 0x10; // Time UTC
-    payload[1]  = 0x00;
-    payload[2]  = 0x00;
+    payload[0]  = 0x10; // Time UTC (UBX-MGA-INI-TIME_UTC)
+    payload[1]  = 0x00; // version
+    payload[2]  = 0x00; // ref (none)
     payload[3]  = 18;   // leapSecs
     payload[4]  = (uint8_t)(year & 0xFF);
     payload[5]  = (uint8_t)((year >> 8) & 0xFF);
@@ -226,10 +368,14 @@ bool GnssDriver::injectUtcTime(uint16_t year, uint8_t month, uint8_t day, uint8_
     payload[8]  = hour;
     payload[9]  = minute;
     payload[10] = second;
-    payload[16] = (uint8_t)(accuracyNs & 0xFF);
-    payload[17] = (uint8_t)((accuracyNs >> 8) & 0xFF);
-    payload[18] = (uint8_t)((accuracyNs >> 16) & 0xFF);
-    payload[19] = (uint8_t)((accuracyNs >> 24) & 0xFF);
+    // payload[11] is reserved
+    // payload[12..15] is ns (0)
+    uint16_t tAccS = (uint16_t)(accuracyNs / 1000000000ULL);
+    if (tAccS == 0) tAccS = 1;
+    uint32_t tAccNs = (uint32_t)(accuracyNs % 1000000000ULL);
+    memcpy(&payload[16], &tAccS, 2);
+    // payload[18..19] is reserved
+    memcpy(&payload[20], &tAccNs, 4);
 
     uint8_t header[6] = {0xB5, 0x62, 0x13, 0x40, 24, 0x00};
     uint8_t ck_a = 0, ck_b = 0;
@@ -271,7 +417,7 @@ bool GnssDriver::injectPosition(int32_t latE7, int32_t lonE7, int32_t altCm, uin
 void GnssDriver::queryMonRf() {
     if (!_isOnline) return;
     UBX_MON_RF_data_t rfInfo;
-    if (_myGNSS.getRFinformation(&rfInfo, 50) && rfInfo.header.nBlocks > 0) {
+    if (_myGNSS.getRFinformation(&rfInfo, 300) && rfInfo.header.nBlocks > 0) {
         uint8_t  antStat = rfInfo.blocks[0].antStatus;
         uint8_t  jam     = rfInfo.blocks[0].flags.bits.jammingState;
         uint16_t noise   = rfInfo.blocks[0].noisePerMS;
@@ -285,6 +431,14 @@ void GnssDriver::queryMonRf() {
     }
 }
 
+void GnssDriver::feedNmeaChar(char c) {
+    _gps.encode(c);
+}
+
+void SFE_UBLOX_GNSS::processNMEA(char incoming) {
+    g_gnssDriver.feedNmeaChar(incoming);
+}
+
 void GnssDriver::update() {
     if (!_isInitialized || !_isOnline) return;
 
@@ -294,140 +448,89 @@ void GnssDriver::update() {
     }
 
     if (_uartMutex) xSemaphoreTakeRecursive(_uartMutex, portMAX_DELAY);
+    // Non-blocking binary stream parsing; automatically dispatches navPvtCallback & navSatCallback
     _myGNSS.checkUblox();
-    bool hasPvt = _myGNSS.getPVT();
-    if (_uartMutex) xSemaphoreGiveRecursive(_uartMutex);
+    _myGNSS.checkCallbacks();
 
-    unsigned long now = millis();
+    // Fallback getPVT() to guarantee updates if callback pointer wasn't dispatched
+    if (_myGNSS.getPVT()) {
+        UBX_NAV_PVT_data_t pvt = {};
+        pvt.fixType = _myGNSS.getFixType();
+        pvt.lat     = _myGNSS.getLatitude();
+        pvt.lon     = _myGNSS.getLongitude();
+        pvt.hMSL    = _myGNSS.getAltitudeMSL();
+        pvt.gSpeed  = (int32_t)_myGNSS.getGroundSpeed();
+        pvt.headMot = (int32_t)_myGNSS.getHeading();
+        pvt.pDOP    = _myGNSS.getGeometricDOP();
+        pvt.numSV   = _myGNSS.getSIV();
+        pvt.year    = _myGNSS.getYear();
+        pvt.month   = _myGNSS.getMonth();
+        pvt.day     = _myGNSS.getDay();
+        pvt.hour    = _myGNSS.getHour();
+        pvt.min     = _myGNSS.getMinute();
+        pvt.sec     = _myGNSS.getSecond();
+        pvt.iTOW    = _myGNSS.getTimeOfWeek();
+        processNavPvtData(&pvt);
+    }
 
-    if (hasPvt) {
-        if (_uartMutex) xSemaphoreTakeRecursive(_uartMutex, portMAX_DELAY);
-        uint8_t fix     = _myGNSS.getFixType();
-        bool    valid   = (fix >= 3);
-        int32_t latE7   = _myGNSS.getLatitude();
-        int32_t lonE7   = _myGNSS.getLongitude();
-        double  lat     = latE7 / 1e7;
-        double  lon     = lonE7 / 1e7;
-        float   alt     = _myGNSS.getAltitudeMSL() / 1000.0f;
-        float   speed   = _myGNSS.getGroundSpeed() * 0.0036f; // mm/s -> km/h
-        float   heading = _myGNSS.getHeading() / 100000.0f;
-        float   hdop    = _myGNSS.getHorizontalDOP() / 100.0f;
-        float   pdop    = _myGNSS.getGeometricDOP() / 100.0f;
-        float   vdop    = _myGNSS.getVerticalDOP() / 100.0f;
-        uint8_t numSats = _myGNSS.getSIV();
-        uint16_t yr     = _myGNSS.getYear();
-        uint8_t  mo     = _myGNSS.getMonth();
-        uint8_t  dy     = _myGNSS.getDay();
-        uint8_t  hh     = _myGNSS.getHour();
-        uint8_t  mm     = _myGNSS.getMinute();
-        uint8_t  ss     = _myGNSS.getSecond();
-        uint16_t ms     = _myGNSS.getMillisecond();
-        if (_uartMutex) xSemaphoreGiveRecursive(_uartMutex);
-
-        _lastObservedSats = numSats;
-
-        // Two-Stage Dynamic Signal Filter Switching (Solves indoor->outdoor slow lock)
-        if (valid) {
-            _hadValidFixEver = true;
-            _lastValidFixMs  = now;
-            if (_firstValidFixMs == 0) _firstValidFixMs = now;
-            if (!_strictFilterActive && (now - _firstValidFixMs >= 10000) && numSats >= 6) {
-                if (_uartMutex) xSemaphoreTakeRecursive(_uartMutex, portMAX_DELAY);
-                setSignalFilterStage(true);
-                if (_uartMutex) xSemaphoreGiveRecursive(_uartMutex);
-            }
-        } else {
-            _firstValidFixMs = 0;
-            if (_strictFilterActive) {
-                if (_uartMutex) xSemaphoreTakeRecursive(_uartMutex, portMAX_DELAY);
-                setSignalFilterStage(false);
-                if (_uartMutex) xSemaphoreGiveRecursive(_uartMutex);
-            }
-        }
-
-        if (speed < MotionPowerConfig::STANDSTILL_HEADING_LOCK_KMH) {
-            speed = 0.0f;
-        }
-
-        // Kinematic outlier rejection (> 180 km/h step jump)
-        uint32_t nowEpoch = now / 1000;
-        bool isPlausible = true;
-        if (valid && _lastPlausibleEpoch > 0) {
-            uint32_t dt = nowEpoch - _lastPlausibleEpoch;
-            if (dt >= 1 && dt <= 3) {
-                double dLat = (lat - _lastPlausibleLat) * 111139.0;
-                double dLon = (lon - _lastPlausibleLon) * 111139.0 * cos(lat * 0.0174532925);
-                double distM = sqrt(dLat * dLat + dLon * dLon);
-                double calcSpeedKmh = (distM / dt) * 3.6;
-                if (calcSpeedKmh > MotionPowerConfig::KINEMATIC_MAX_SPEED_KMH) {
-                    isPlausible = false;
-                }
-            }
-        }
-
-        if (isPlausible && valid) {
-            _lastPlausibleLat   = lat;
-            _lastPlausibleLon   = lon;
-            _lastPlausibleEpoch = nowEpoch;
-        }
+    // Process NMEA stream parsed by TinyGPSPlus (aligned with official M5Module-GNSS demo)
+    if (_gsvBds.isUpdated() || _gsvGps.isUpdated() || _gsvGlo.isUpdated() || _gsvGal.isUpdated()) {
+        uint8_t bds = _gsvBds.isValid() ? (uint8_t)atoi(_gsvBds.value()) : 0;
+        uint8_t gps = _gsvGps.isValid() ? (uint8_t)atoi(_gsvGps.value()) : 0;
+        uint8_t glo = _gsvGlo.isValid() ? (uint8_t)atoi(_gsvGlo.value()) : 0;
+        uint8_t gal = _gsvGal.isValid() ? (uint8_t)atoi(_gsvGal.value()) : 0;
+        uint8_t totalVisible = bds + gps + glo + gal;
 
         SystemState& state = SystemState::instance();
         state.lock();
-        SystemContext& ctx = state.getContextUnsafe();
-
-        ctx.gnss.moduleOnline = true;
-        ctx.gnss.isValid      = valid && isPlausible;
-        ctx.gnss.fixType      = (GnssFixType)fix;
-        ctx.gnss.numSats      = numSats;
-        ctx.gnss.hdop         = hdop;
-        ctx.gnss.pdop         = pdop;
-        ctx.gnss.vdop         = vdop;
-
-        if (ctx.gnss.isValid) {
-            ctx.gnss.latE7          = latE7;
-            ctx.gnss.lonE7          = lonE7;
-            ctx.gnss.latitude       = lat;
-            ctx.gnss.longitude      = lon;
-            ctx.gnss.altitudeMeters = alt;
-            ctx.gnss.speedKmh       = speed;
-            if (speed > MotionPowerConfig::STANDSTILL_HEADING_LOCK_KMH) {
-                ctx.gnss.headingDeg = heading;
-            }
-
-            // Real constellation breakdown is continuously maintained by processNavSatData(UBX_NAV_SAT)
-            if (ctx.gnss.numBdsSats == 0 && ctx.gnss.numGpsSats == 0 && numSats > 0) {
-                ctx.gnss.numBdsSats = (numSats >= 4) ? (uint8_t)(numSats * 0.42f) : numSats;
-                ctx.gnss.numGpsSats = (numSats >= 4) ? (uint8_t)(numSats * 0.32f) : 0;
-                ctx.gnss.numGloSats = (numSats >= 4) ? (uint8_t)(numSats * 0.15f) : 0;
-                ctx.gnss.numGalSats = numSats - (ctx.gnss.numBdsSats + ctx.gnss.numGpsSats + ctx.gnss.numGloSats);
-            }
-
-            ctx.gnss.year        = yr;
-            ctx.gnss.month       = mo;
-            ctx.gnss.day         = dy;
-            ctx.gnss.hour        = hh;
-            ctx.gnss.minute      = mm;
-            ctx.gnss.second      = ss;
-            ctx.gnss.millisecond = ms;
-
-            // Zero-intervention auto transition from PageInit to Page1Dashboard on 3D Fix (>=4 sats)
-            if (ctx.currentPage == PAGE_INIT && numSats >= 4) {
-                ctx.currentPage = PAGE_1_DASHBOARD;
-            }
+        auto& gnss = state.getContextUnsafe().gnss;
+        gnss.numBdsSats = bds;
+        gnss.numGpsSats = gps;
+        gnss.numGloSats = glo;
+        gnss.numGalSats = gal;
+        if (!gnss.isValid && totalVisible > 0) {
+            gnss.numSats = totalVisible;
         }
         state.unlock();
     }
 
-    // 45-Second No-Fix Auto Hot-Start Watchdog:
-    // Triggers when emerging from indoor/garage (sats visible or lost prior fix) without locking for 45s
-    if ((_firstValidFixMs == 0) && (_lastObservedSats > 0 || _hadValidFixEver) &&
-        (now - _lastValidFixMs >= 45000) && (now - _lastHotRestartMs >= 45000)) {
-        executeHotStartReacquisition();
-    }
+    if (_gps.location.isUpdated()) {
+        bool valid = _gps.location.isValid();
+        double lat = _gps.location.lat();
+        double lon = _gps.location.lng();
+        float alt  = _gps.altitude.meters();
+        float spd  = _gps.speed.kmph();
+        float hdg  = _gps.course.deg();
+        float hdop = _gps.hdop.hdop();
+        uint8_t sats = _gps.satellites.value();
 
-    // Only poll MON-RF every 5s when fixed, or every 10s when searching so PVT stream is never blocked
-    uint32_t monInterval = (_firstValidFixMs > 0) ? 5000 : 10000;
-    if (now - _lastMonRfTimeMs >= monInterval) {
+        SystemState& state = SystemState::instance();
+        state.lock();
+        auto& gnss = state.getContextUnsafe().gnss;
+        gnss.moduleOnline = true;
+        if (valid) {
+            gnss.isValid = true;
+            gnss.latitude = lat;
+            gnss.longitude = lon;
+            gnss.latE7 = (int32_t)(lat * 1e7);
+            gnss.lonE7 = (int32_t)(lon * 1e7);
+            gnss.altitudeMeters = alt;
+            gnss.speedKmh = spd;
+            if (spd > MotionPowerConfig::STANDSTILL_HEADING_LOCK_KMH) {
+                gnss.headingDeg = hdg;
+            }
+            if (hdop > 0.0f) gnss.hdop = hdop;
+            if (sats > 0) gnss.numSats = sats;
+            if (gnss.fixType < FIX_3D) gnss.fixType = FIX_3D;
+        }
+        state.unlock();
+    }
+    if (_uartMutex) xSemaphoreGiveRecursive(_uartMutex);
+
+    unsigned long now = millis();
+
+    // Query MON-RF once every 30 seconds only to avoid bus stalls
+    if (now - _lastMonRfTimeMs >= 30000) {
         _lastMonRfTimeMs = now;
         if (_uartMutex) xSemaphoreTakeRecursive(_uartMutex, portMAX_DELAY);
         queryMonRf();

@@ -32,7 +32,7 @@ void ToolTfManager::render(M5Canvas& canvas, const SystemContext& ctx) {
         canvas.drawString("Hotspot: M5Track-Share (No Password)", 445, 165);
 
         canvas.fillRect(305, 195, 280, 280, UiColors::COLOR_WHITE);
-        canvas.qrcode("WIFI:T:nopass;S:M5Track-Share;;", 320, 210, 250, 6);
+        canvas.qrcode("WIFI:T:nopass;S:M5Track-Share;;", 320, 210, 250, 2);
 
         canvas.setTextColor(UiColors::COLOR_SECONDARY);
         canvas.setTextSize(2);
@@ -53,7 +53,7 @@ void ToolTfManager::render(M5Canvas& canvas, const SystemContext& ctx) {
         canvas.drawString("URL: http://192.168.4.1/tracks", 992, 165);
 
         canvas.fillRect(852, 195, 280, 280, UiColors::COLOR_WHITE);
-        canvas.qrcode("http://192.168.4.1/tracks", 867, 210, 250, 6);
+        canvas.qrcode("http://192.168.4.1/tracks", 867, 210, 250, 2);
 
         // Stop Share Hotspot Button
         canvas.fillRoundRect(790, 515, 405, 64, 10, UiColors::COLOR_DANGER);

@@ -1,4 +1,5 @@
 #include "service/AltitudeFusion.h"
+#include <Preferences.h>
 #include <math.h>
 
 void AltitudeFusion::init(BaroDriver* baro) {
@@ -6,6 +7,40 @@ void AltitudeFusion::init(BaroDriver* baro) {
     _seaLevelPressureHpa = 1013.25f;
     _lastVerticalSampleMs = millis();
     _lastHistoryPushMs = millis();
+    _initialized = false;
+    _gpsCalibrated = false;
+    _lastBaroAltitudeM = 0.0f;
+    _lastSavedP0 = 0.0f;
+
+    // Load persisted GPS-calibrated sea-level pressure or seed from last known GPS altitude
+    Preferences prefs;
+    if (prefs.begin("m5track", true)) {
+        float savedP0 = prefs.getFloat("sea_p0", 0.0f);
+        if (savedP0 >= 950.0f && savedP0 <= 1060.0f) {
+            _seaLevelPressureHpa = savedP0;
+            _lastSavedP0         = savedP0;
+            _gpsCalibrated       = true;
+            Serial.printf("[ALTITUDE] Restored GPS-calibrated sea-level pressure from NVS: %.2f hPa\n", _seaLevelPressureHpa);
+        } else {
+            int32_t lastAltCm = prefs.getInt("last_alt_cm", 0);
+            if (lastAltCm > 0 && lastAltCm < 900000 && baro) {
+                float hLast = lastAltCm * 0.01f;
+                // Read preliminary raw pressure if available
+                float p = baro->getPressureHpa();
+                if (p > 500.0f && p < 1100.0f) {
+                    float ratio = 1.0f - (hLast / 44330.0f);
+                    if (ratio > 0.1f) {
+                        _seaLevelPressureHpa = p * powf(ratio, -5.25486f);
+                        _lastSavedP0         = _seaLevelPressureHpa;
+                        _gpsCalibrated       = true;
+                        Serial.printf("[ALTITUDE] Seeded sea-level pressure from last GPS fix (%.1f m): %.2f hPa\n",
+                                      hLast, _seaLevelPressureHpa);
+                    }
+                }
+            }
+        }
+        prefs.end();
+    }
 }
 
 void AltitudeFusion::update() {
@@ -20,38 +55,92 @@ void AltitudeFusion::update() {
     bool baroOk = (_baro && _baro->isAvailable());
     ctx.baro.isAvailable = baroOk;
 
+    // Check if GPS 3D fix altitude is valid and reliable
+    float dop = (ctx.gnss.pdop > 0.0f) ? ctx.gnss.pdop : ctx.gnss.hdop;
+    bool dopValid = (dop <= 0.0f || dop < 8.0f); // Allow reasonable DOP or unpopulated DOP
+    bool gpsAltValid = (ctx.gnss.isValid && 
+                        ctx.gnss.fixType >= FIX_3D && 
+                        ctx.gnss.numSats >= 4 &&
+                        ctx.gnss.altitudeMeters > -400.0f && 
+                        ctx.gnss.altitudeMeters < 9000.0f &&
+                        dopValid);
+
     if (baroOk) {
         float P = _baro->getPressureHpa();
         ctx.baro.pressureHpa  = P;
         ctx.baro.temperatureC = _baro->getTemperatureC();
 
-        // SPEC 2.5 Complementary filter: calibrate P0 when 3D Fix and HDOP < 1.2
-        if (ctx.gnss.isValid && ctx.gnss.fixType >= FIX_3D && ctx.gnss.hdop > 0.0f && ctx.gnss.hdop < 1.5f) {
+        // 1. GPS Calibration of Sea-Level Pressure
+        if (gpsAltValid && P > 300.0f && P < 1100.0f) {
             float hGnss = ctx.gnss.altitudeMeters;
             float ratio = 1.0f - (hGnss / 44330.0f);
             if (ratio > 0.1f) {
-                float p0Target = P * powf(ratio, -5.25486f); // -1 / 0.1903
-                constexpr float ALPHA = 0.005f;
-                _seaLevelPressureHpa = _seaLevelPressureHpa + ALPHA * (p0Target - _seaLevelPressureHpa);
+                // p0 = P / (1 - h/44330)^5.25486
+                float p0Target = P * powf(ratio, -5.25486f);
+
+                if (!_gpsCalibrated) {
+                    // First calibration: immediately snap P0 to target and re-anchor fused altitude
+                    _seaLevelPressureHpa = p0Target;
+                    _lastSavedP0         = p0Target;
+                    _gpsCalibrated       = true;
+                    _fusedAltitudeM      = hGnss;
+                    _lastAltitudeM       = hGnss;
+                    _lastBaroAltitudeM   = hGnss;
+                    Serial.printf("[ALTITUDE] GPS 3D Calibrated Sea-Level Pressure: %.2f hPa (GPS Alt=%.1f m, Baro P=%.2f hPa)\n",
+                                  _seaLevelPressureHpa, hGnss, P);
+                    Preferences prefs;
+                    if (prefs.begin("m5track", false)) {
+                        prefs.putFloat("sea_p0", _seaLevelPressureHpa);
+                        prefs.end();
+                    }
+                } else {
+                    // Continuous slow calibration: gentle complementary drift correction
+                    constexpr float ALPHA = 0.015f;
+                    _seaLevelPressureHpa += ALPHA * (p0Target - _seaLevelPressureHpa);
+                    if (fabsf(_seaLevelPressureHpa - _lastSavedP0) > 0.4f) {
+                        _lastSavedP0 = _seaLevelPressureHpa;
+                        Preferences prefs;
+                        if (prefs.begin("m5track", false)) {
+                            prefs.putFloat("sea_p0", _seaLevelPressureHpa);
+                            prefs.end();
+                        }
+                    }
+                }
             }
         }
 
         ctx.baro.seaLevelPressureHpa = _seaLevelPressureHpa;
+        // Barometric altitude computed with GPS-calibrated sea-level pressure
         float hBaro = 44330.0f * (1.0f - powf(P / _seaLevelPressureHpa, 0.1903f));
         ctx.baro.rawBaroAltitudeM = hBaro;
 
         if (!_initialized) {
-            _fusedAltitudeM = hBaro;
-            _lastAltitudeM  = hBaro;
+            _fusedAltitudeM    = gpsAltValid ? ctx.gnss.altitudeMeters : hBaro;
+            _lastAltitudeM     = _fusedAltitudeM;
+            _lastBaroAltitudeM = hBaro;
+            _initialized       = true;
+        } else {
+            float dBaro = hBaro - _lastBaroAltitudeM;
+            _lastBaroAltitudeM = hBaro;
+
+            if (gpsAltValid) {
+                // Complementary Fusion:
+                // Responsive high-frequency barometric delta (75%) + Absolute zero-drift GPS altitude anchor (25%)
+                float predictedAlt = _fusedAltitudeM + dBaro;
+                _fusedAltitudeM = predictedAlt * 0.75f + ctx.gnss.altitudeMeters * 0.25f;
+            } else {
+                // GPS unavailable or tunnel: integrate barometric delta from last calibrated state
+                _fusedAltitudeM += dBaro;
+            }
+        }
+    } else if (gpsAltValid) {
+        // No barometer available: pure GPS altitude
+        if (!_initialized) {
+            _fusedAltitudeM = ctx.gnss.altitudeMeters;
+            _lastAltitudeM  = _fusedAltitudeM;
             _initialized    = true;
         } else {
-            _fusedAltitudeM = _fusedAltitudeM * 0.85f + hBaro * 0.15f;
-        }
-    } else if (ctx.gnss.isValid) {
-        _fusedAltitudeM = ctx.gnss.altitudeMeters;
-        if (!_initialized) {
-            _lastAltitudeM = _fusedAltitudeM;
-            _initialized   = true;
+            _fusedAltitudeM = _fusedAltitudeM * 0.85f + ctx.gnss.altitudeMeters * 0.15f;
         }
     }
 

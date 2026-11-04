@@ -210,39 +210,44 @@ void TrackLogger::enforceStorageQuota50Percent() {
     }
 }
 
-void TrackLogger::refreshStorageStats() {
+void TrackLogger::refreshStorageStats(bool fullScan) {
     if (!_mounted) return;
 
-    uint64_t totalBytes = (uint64_t)_sd.clusterCount() * _sd.bytesPerCluster();
-    uint64_t freeBytes  = (uint64_t)_sd.freeClusterCount() * _sd.bytesPerCluster();
-    uint64_t usedBytes  = (totalBytes >= freeBytes) ? (totalBytes - freeBytes) : 0;
-
+    uint64_t totalBytes  = 0;
+    uint64_t freeBytes   = 0;
+    uint64_t usedBytes   = 0;
     uint64_t tracksBytes = 0;
     uint32_t wgsCount    = 0;
 
-    const char* dirsToScan[] = {
-        StorageConfig::TRACKS_SINGLE_DIR,
-        StorageConfig::TRACKS_DAILY_DIR,
-        StorageConfig::TRACKS_SUB_DIR,
-        StorageConfig::TRACKS_DIR
-    };
+    if (fullScan) {
+        totalBytes = (uint64_t)_sd.clusterCount() * _sd.bytesPerCluster();
+        freeBytes  = (uint64_t)_sd.freeClusterCount() * _sd.bytesPerCluster();
+        usedBytes  = (totalBytes >= freeBytes) ? (totalBytes - freeBytes) : 0;
 
-    for (const char* dPath : dirsToScan) {
-        FsFile dir;
-        if (dir.open(dPath)) {
-            FsFile entry;
-            char fname[48];
-            while (entry.openNext(&dir, O_RDONLY)) {
-                if (!entry.isDir()) {
-                    tracksBytes += entry.fileSize();
-                    entry.getName(fname, sizeof(fname));
-                    if (fname[0] == 'W' && strstr(fname, ".gpx")) {
-                        wgsCount++;
+        const char* dirsToScan[] = {
+            StorageConfig::TRACKS_SINGLE_DIR,
+            StorageConfig::TRACKS_DAILY_DIR,
+            StorageConfig::TRACKS_SUB_DIR,
+            StorageConfig::TRACKS_DIR
+        };
+
+        for (const char* dPath : dirsToScan) {
+            FsFile dir;
+            if (dir.open(dPath)) {
+                FsFile entry;
+                char fname[48];
+                while (entry.openNext(&dir, O_RDONLY)) {
+                    if (!entry.isDir()) {
+                        tracksBytes += entry.fileSize();
+                        entry.getName(fname, sizeof(fname));
+                        if (fname[0] == 'W' && strstr(fname, ".gpx")) {
+                            wgsCount++;
+                        }
                     }
+                    entry.close();
                 }
-                entry.close();
+                dir.close();
             }
-            dir.close();
         }
     }
 
@@ -251,10 +256,12 @@ void TrackLogger::refreshStorageStats() {
     auto& st = state.getContextUnsafe().storage;
     st.isMounted           = _mounted;
     st.isRecording         = (_singleRecording || _dailyRecording || _subRecording);
-    st.totalBytes          = totalBytes;
-    st.usedBytes           = usedBytes;
-    st.tracksDirBytes      = tracksBytes;
-    st.trackFilePairsCount = wgsCount;
+    if (fullScan) {
+        st.totalBytes          = totalBytes;
+        st.usedBytes           = usedBytes;
+        st.tracksDirBytes      = tracksBytes;
+        st.trackFilePairsCount = wgsCount;
+    }
     st.currentSegmentPoints= _singlePoints;
     state.unlock();
 }
@@ -627,7 +634,7 @@ void TrackLogger::update() {
         if (_fileWgsSingle.isOpen()) { _fileWgsSingle.sync(); _fileGcjSingle.sync(); }
         if (_fileWgsDaily.isOpen())  { _fileWgsDaily.sync();  _fileGcjDaily.sync();  }
         if (_fileWgsSub.isOpen())    { _fileWgsSub.sync();    _fileGcjSub.sync();    }
-        refreshStorageStats();
+        refreshStorageStats(false); // Fast update without blocking FAT cluster scan
     }
     unlockSd();
 }

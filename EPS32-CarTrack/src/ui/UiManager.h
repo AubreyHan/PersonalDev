@@ -24,7 +24,9 @@
 class UiManager {
 public:
     void init();
-    void update();
+    void update();      // Combined touch + render fallback
+    void handleTouch(); // Dedicated 100 Hz hardware touch polling
+    void render();      // Dedicated 30-40 FPS UI display renderer
 
 private:
     BasePage* getActivePage(AppPageId id);
@@ -53,10 +55,12 @@ private:
     ToolSettings     _toolSys;
     ToolOneDrive     _toolOneDrive;
 
-    bool     _touchDown     = false;
-    int16_t  _touchStartX   = 0;
-    int16_t  _touchStartY   = 0;
-    int16_t  _touchLastX    = 0;
-    int16_t  _touchLastY    = 0;
-    uint32_t _touchDownMs   = 0;
+    volatile bool     _touchDown         = false;
+    volatile bool     _gestureTriggered  = false;
+    volatile int16_t  _touchStartX       = 0;
+    volatile int16_t  _touchStartY       = 0;
+    volatile int16_t  _touchLastX        = 0;
+    volatile int16_t  _touchLastY        = 0;
+    volatile uint32_t _touchDownMs       = 0;
+    volatile uint32_t _touchVisualMs     = 0;
 };

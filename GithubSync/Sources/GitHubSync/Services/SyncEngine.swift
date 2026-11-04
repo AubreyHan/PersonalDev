@@ -44,7 +44,7 @@ public final class SyncEngine {
             if !filteredStatus.isEmpty {
                 let commitMessage = commitFormatter.format(statusLines: filteredStatus)
                 _ = try await gitRunner.run(args: ["add", "-A"], at: repoURL)
-                _ = try await gitRunner.run(args: ["commit", "-m", commitMessage], at: repoURL)
+                _ = try await gitRunner.run(args: ["commit", "-q", "-m", commitMessage], at: repoURL)
             }
         }
 
@@ -79,7 +79,7 @@ public final class SyncEngine {
             if !filteredStatus.isEmpty {
                 let msg = commitFormatter.format(statusLines: filteredStatus)
                 _ = try await gitRunner.run(args: ["add", "-A"], at: repoURL)
-                _ = try await gitRunner.run(args: ["commit", "-m", msg], at: repoURL)
+                _ = try await gitRunner.run(args: ["commit", "-q", "-m", msg], at: repoURL)
             }
         }
 
@@ -153,7 +153,7 @@ public final class SyncEngine {
                 let stillMerging = FileManager.default.fileExists(atPath: gitDir.appendingPathComponent("MERGE_HEAD").path)
                 if !statusAfterResolve.isEmpty || stillMerging {
                     _ = try await gitRunner.run(
-                        args: ["commit", "-m", "auto-sync: resolve conflict by newer timestamp", "--allow-empty"],
+                        args: ["commit", "-q", "-m", "auto-sync: resolve conflict by newer timestamp", "--allow-empty"],
                         at: repoURL
                     )
                 }

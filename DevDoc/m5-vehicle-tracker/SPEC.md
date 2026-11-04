@@ -498,10 +498,11 @@ struct DualImuStatus {
 ## 4. Web 配网与文件管理 API 及二维码规范 (Captive Portal, QR Codes & SoftAP)
 
 系统所有 Web 交互均以按需启动的独立 SoftAP 热点模式提供，并配合 **DNS Captive Portal (端口 53 全域名解析至 `192.168.4.1`)** 与 **`M5GFX` 原生屏幕二维码 (`canvas.qrcode()`)**：
-- **配网模式 (`PageWifiConfig`)**：
+- **单次扫码一体化配网模式 (`PageWifiConfig`)**：
   - AP SSID：`M5Track-Setup`，IP：`192.168.4.1`；
-  - **二维码 1（扫码自动连热点）**：`WIFI:T:nopass;S:M5Track-Setup;;`
-  - **二维码 2（扫码直达配网界面）**：`http://192.168.4.1/setup`（连上热点后手机 Captive Portal 也会自动唤起该界面）。
+  - **一体化二维码（单次扫码直连与自动弹窗）**：`WIFI:T:nopass;S:M5Track-Setup;;`
+  - **自动弹窗机制**：手机（iOS / Android / 鸿蒙 / 微信）扫码并点击「加入网络」后，DNS 端口 53 劫持全域名并重定向 OS 联网探测（`/hotspot-detect.html`, `/generate_204`, `/library/test/success.html` 等），手机端 1 秒内自动唤起系统 Captive Portal Web 配网页，彻底消除二次扫码；
+  - **智能状态闭环**：屏幕实时反馈手机连入状态与 Wi-Fi 验证进度，配网成功 3 秒后自动关闭 SoftAP 并无缝返回主仪表盘。
 - **TF 卡文件下载模式 (`ToolTfManager`)**：
   - AP SSID：`M5Track-Share`，IP：`192.168.4.1`（仅在触发“通过 Wi-Fi 下载”时开启，退出菜单即关闭）；
   - **二维码 1（扫码自动连热点）**：`WIFI:T:nopass;S:M5Track-Share;;`
@@ -732,3 +733,38 @@ enum TripCategory : uint8_t {
    ├─ M5.Display.sleep()
    └─ setCpuFrequencyMhz(80) 进入待机监视态 (IMU/触控/外接电源唤醒)
 ```
+
+### 10.5 M5Stack Tab5 (ESP32-P4) 硬件与底层驱动专项规范 (Hardware & SDIO Host Configuration)
+- **ESP-Hosted SDIO Wi-Fi 6 引脚映射**：
+  ESP32-P4 片上无 Wi-Fi 射频，Tab5 搭载板载 ESP32-C6 协处理器作为从机，通过 SDIO 4-bit 接口通讯。ESP-IDF 默认引脚（CLK=18, CMD=19, D0=14~D3=17）与 Tab5 物理走线不匹配，必须通过编译宏与 `hostedSetPins` 弱符号重定向到专用引脚：
+  - `CONFIG_ESP_SDIO_PIN_CLK` = 12
+  - `CONFIG_ESP_SDIO_PIN_CMD` = 13
+  - `CONFIG_ESP_SDIO_PIN_D0`  = 11
+  - `CONFIG_ESP_SDIO_PIN_D1`  = 10
+  - `CONFIG_ESP_SDIO_PIN_D2`  = 9
+  - `CONFIG_ESP_SDIO_PIN_D3`  = 8
+  - 复位引脚 `pin_rst` = 15
+- **Task Watchdog Timer (TWDT) 调度准则**：
+  ESP-IDF 5.x / Arduino-esp32 3.x 已在核心层维护 TWDT，应用层避免强制覆盖 `idle_core_mask` 以防 Core 1 渲染突发耗时触发意外看门狗重启。
+- **USB-Serial/JTAG 烧录与启动规范**：
+  - 编译选项必须启用 `-DARDUINO_USB_CDC_ON_BOOT=1 -DARDUINO_USB_MODE=1`，以保证打印日志直接定向到原生 USB-Serial/JTAG 虚拟串口；
+  - 烧录后若因驱动锁存保持在 Download 模式，向寄存器 `0x50110008` (RTC_CNTL_OPTION1_REG) 写入 `0` 清除 `RTC_CNTL_FORCE_DOWNLOAD_BOOT` 标志以正常引导 SPI Flash。
+
+### 10.6 硬件时间、GNSS 星历注入与高程融合规范 (Time, GNSS & Elevation Architecture)
+- **RX8130CE RTC 星期寄存器 (0x13) 校验陷阱**：
+  M5Unified 库中 `RX8130_Class.inl` 对读出的星期数据有严格的一热码 (1-hot) 校验：`if (wd == 0 || (wd & (wd - 1)) != 0) return false;`。若寄存器 0x13 写入 0 或全 0 默认值，`M5.Rtc.getDateTime` 将永久拒绝返回时间。底层直写驱动必须按照 `(1u << (wday % 7))` 格式写入 0x13，并在开机探测地址 0x32 时探测 0x10 (秒寄存器) 而非空寄存器 0x00。
+- **UBX-MGA-INI-TIME_UTC 辅助星历时间注入协议规范**：
+  - u-blox NEO-M9N 协议中，`UBX-MGA-INI-TIME_UTC` 负载的 `tAccS` (秒精度) 位于偏移 16..17 (uint16_t)，`tAccNs` (纳秒精度) 位于偏移 20..23 (uint32_t)；
+  - 严禁向偏移 16 写入 32 位纳秒数值，否则高 16 位会溢出污染 `tAccS` 达数万秒（导致高达十余小时的时间不确定度，严重拖慢 TTFF 冷启动）；
+  - 开机自动从系统 RTC/NVS 获取 UTC 时间注入，同时严禁将大于 2 小时的陈旧地理坐标以高置信度（如 500m）注入，防止多普勒频移窗口被带偏至错误搜索区间。
+- **海平面基准气压 ($P_0$) 动态校准、持久化与高程互补滤波**：
+  - 传统固定 $1013.25\text{ hPa}$ 假定会导致海拔偏差达数十至数百米；
+  - 首次捕获有效 GNSS 3D 定位（且 $DOP < 8.0$）瞬间，通过气压计实测值与 GPS 大地高瞬时反演当前微气候的海平面气压：
+    $$P_0 = P \times \left(1 - \frac{h_{\text{GPS}}}{44330}\right)^{-5.25486}$$
+  - 并持久化至 NVS (`m5track:sea_p0`)。开机或室内搜星期间，自动从 NVS 恢复校准海平面气压（或由最近一次 GPS 历史大地高结合当前气压反算初始 $P_0$），彻底消除开机显示 9m 假高度的缺陷；
+  - 运行期间采用互补滤波融合高频气压微气压差分与低频 GPS 绝对高度针脚（75% 气压差分积分 + 25% GPS 绝对高度锚定），既平滑抑制了 GPS 的多径垂直跳变，又消除了气压计的天气气压漂移。
+- **u-blox NMEA GSV 与 UBX 双引擎可视星提取**：
+  - `UBX-NAV-PVT` 中 `numSV` 仅代表**参与导航解算定位的卫星数**（在搜星未锁定期间恒等于 0）；
+  - 必须保持 NMEA `$GPGSV` / `$GBGSV` 输出并通过 `TinyGPSPlus` 实时解析 Satellites in View，以保证搜星阶段界面能实时展示天空中可视卫星数（如 26~27 颗），避免用户误判为硬件脱机或死锁。
+
+
