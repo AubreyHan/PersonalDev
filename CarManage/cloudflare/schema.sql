@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS vehicles (
     purchase_date TEXT,                     -- 购车日期
     notes TEXT,                             -- 备注
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    sync_version INTEGER DEFAULT 1
 );
 
 -- 2. 油耗录入表
@@ -42,6 +43,8 @@ CREATE TABLE IF NOT EXISTS fuel_records (
     record_date TEXT NOT NULL,              -- 记录时间
     notes TEXT,                             -- 备注
     created_at TEXT NOT NULL,
+    updated_at TEXT,
+    sync_version INTEGER DEFAULT 1,
     FOREIGN KEY (vehicle_id) REFERENCES vehicles (id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_fuel_vehicle_mileage ON fuel_records (vehicle_id, mileage ASC);
@@ -64,6 +67,8 @@ CREATE TABLE IF NOT EXISTS electricity_records (
     record_date TEXT NOT NULL,              -- 记录时间
     notes TEXT,                             -- 备注
     created_at TEXT NOT NULL,
+    updated_at TEXT,
+    sync_version INTEGER DEFAULT 1,
     FOREIGN KEY (vehicle_id) REFERENCES vehicles (id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_elec_vehicle_mileage ON electricity_records (vehicle_id, mileage ASC);
@@ -81,6 +86,8 @@ CREATE TABLE IF NOT EXISTS maintenance_records (
     next_date_reminder TEXT,                -- 下次建议日期
     notes TEXT,                             -- 备注
     created_at TEXT NOT NULL,
+    updated_at TEXT,
+    sync_version INTEGER DEFAULT 1,
     FOREIGN KEY (vehicle_id) REFERENCES vehicles (id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_maint_vehicle_date ON maintenance_records (vehicle_id, record_date DESC);
@@ -95,6 +102,8 @@ CREATE TABLE IF NOT EXISTS status_records (
     record_date TEXT NOT NULL,              -- 记录时间
     notes TEXT DEFAULT '',                  -- 备注
     created_at TEXT NOT NULL,
+    updated_at TEXT,
+    sync_version INTEGER DEFAULT 1,
     FOREIGN KEY (vehicle_id) REFERENCES vehicles (id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_status_vehicle_date ON status_records (vehicle_id, mileage DESC, record_date DESC);
