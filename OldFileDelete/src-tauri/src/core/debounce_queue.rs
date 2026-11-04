@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
+use tauri::async_runtime::JoinHandle;
 use tokio::sync::{mpsc, Mutex};
-use tokio::task::JoinHandle;
 
 pub struct DebounceQueue {
     debounce_duration: Duration,
