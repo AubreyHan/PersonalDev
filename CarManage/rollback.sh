@@ -20,8 +20,8 @@ case "${1:-status}" in
     echo "📌 当前 HEAD 提交: $(git log -1 --oneline)"
     echo "🔒 基准稳定版备份: $BACKUP_TAG ($(git rev-parse --short "$BACKUP_TAG" 2>/dev/null || echo '未找到'))"
     echo ""
-    echo "📊 距基准稳定版变更统计:"
-    git diff --stat "$BACKUP_TAG" || true
+    echo "📊 距基准稳定版变更统计 (仅限本项目 CarManage):"
+    git diff --stat "$BACKUP_TAG" -- . || true
     echo ""
     echo "💡 如需一键无损回滚至优化前版本，请执行:"
     echo "   ./rollback.sh restore"
