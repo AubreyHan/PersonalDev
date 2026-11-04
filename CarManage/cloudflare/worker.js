@@ -230,10 +230,43 @@ export default {
             fuel_percent REAL DEFAULT NULL,
             record_date TEXT NOT NULL,
             notes TEXT DEFAULT '',
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            updated_at TEXT,
+            sync_version INTEGER DEFAULT 1
           )
         `).run();
       } catch (e) {}
+
+      // 平滑补齐五大业务表的乐观锁 sync_version 与 updated_at 字段
+      for (const tbl of ['vehicles', 'fuel_records', 'electricity_records', 'maintenance_records', 'status_records']) {
+        try { await env.DB.prepare(`ALTER TABLE ${tbl} ADD COLUMN updated_at TEXT`).run(); } catch (e) {}
+        try { await env.DB.prepare(`ALTER TABLE ${tbl} ADD COLUMN sync_version INTEGER DEFAULT 1`).run(); } catch (e) {}
+      }
+
+      const checkOptimisticLock = async (tableName, recordId, body) => {
+        if (!body || body._force_overwrite === true || body._force_overwrite === 1 || body._force_overwrite === '1') {
+          return null;
+        }
+        if (!body._check_conflict || body._base_version === undefined || body._base_version === null) {
+          return null;
+        }
+        const baseVer = parseInt(body._base_version);
+        if (isNaN(baseVer)) return null;
+        const row = await env.DB.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).bind(recordId).first();
+        if (!row) return null;
+        const currVer = parseInt(row.sync_version || 1);
+        if (currVer > baseVer) {
+          return {
+            conflict: true,
+            entity_table: tableName,
+            record_id: recordId,
+            client_base_version: baseVer,
+            server_version: currVer,
+            server_record: row
+          };
+        }
+        return null;
+      };
 
       // 用户认证表与初始账号 AubreyHan 自动初始化
       try {
@@ -376,13 +409,16 @@ export default {
       if (path.startsWith('/api/vehicles/') && method === 'PUT') {
         const id = parseInt(path.split('/')[3]);
         const body = await request.json();
+        const conflict = await checkOptimisticLock('vehicles', id, body);
+        if (conflict) return json({ error: true, message: '检测到多端并发修改冲突', ...conflict }, 409);
         const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
         const sets = [
           'name = ?', 'brand = ?', 'model = ?', 'power_type = ?', 'displacement = ?',
           'fuel_tank_capacity = ?', 'battery_capacity = ?', 'plate_number = ?',
           'initial_mileage = ?', 'purchase_date = ?', 'notes = ?',
-          'initial_fuel_percent = ?', 'initial_battery_percent = ?', 'updated_at = ?'
+          'initial_fuel_percent = ?', 'initial_battery_percent = ?', 'updated_at = ?',
+          'sync_version = COALESCE(sync_version, 1) + 1'
         ];
         const vals = [
           body.name,
@@ -483,15 +519,18 @@ export default {
       if (path.startsWith('/api/records/fuel/') && method === 'PUT') {
         const id = parseInt(path.split('/')[4]);
         const b = await request.json();
+        const conflict = await checkOptimisticLock('fuel_records', id, b);
+        if (conflict) return json({ error: true, message: '检测到多端并发修改冲突', ...conflict }, 409);
         const rec = await env.DB.prepare('SELECT vehicle_id FROM fuel_records WHERE id = ?').bind(id).first();
         if (!rec) return err('记录不存在', 404);
         const vid = rec.vehicle_id;
+        const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
         await env.DB.prepare(`
           UPDATE fuel_records SET
             mileage = ?, fuel_amount = ?, unit_price = ?, total_price = ?,
             fuel_type = ?, is_full = ?, start_fuel_percent = ?, fuel_percent = ?, battery_percent = ?, station = ?,
-            record_date = ?, notes = ?
+            record_date = ?, notes = ?, updated_at = ?, sync_version = COALESCE(sync_version, 1) + 1
           WHERE id = ?
         `).bind(
           parseFloat(b.mileage),
@@ -506,6 +545,7 @@ export default {
           b.station || '',
           b.record_date || '',
           b.notes || '',
+          now,
           id
         ).run();
 
@@ -593,9 +633,12 @@ export default {
       if (path.startsWith('/api/records/electricity/') && method === 'PUT') {
         const id = parseInt(path.split('/')[4]);
         const b = await request.json();
+        const conflict = await checkOptimisticLock('electricity_records', id, b);
+        if (conflict) return json({ error: true, message: '检测到多端并发修改冲突', ...conflict }, 409);
         const rec = await env.DB.prepare('SELECT vehicle_id FROM electricity_records WHERE id = ?').bind(id).first();
         if (!rec) return err('记录不存在', 404);
         const vid = rec.vehicle_id;
+        const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
         const amount = parseFloat(b.electricity_amount);
         const startSoc = b.start_soc !== null && b.start_soc !== '' ? parseFloat(b.start_soc) : null;
         const endSoc = b.end_soc !== null && b.end_soc !== '' ? parseFloat(b.end_soc) : null;
@@ -615,7 +658,8 @@ export default {
           UPDATE electricity_records SET
             mileage = ?, electricity_amount = ?, unit_price = ?, total_price = ?,
             charging_type = ?, start_soc = ?, end_soc = ?, fuel_percent = ?, station = ?,
-            is_calibrated = ?, calibrated_capacity = ?, record_date = ?, notes = ?
+            is_calibrated = ?, calibrated_capacity = ?, record_date = ?, notes = ?,
+            updated_at = ?, sync_version = COALESCE(sync_version, 1) + 1
           WHERE id = ?
         `).bind(
           parseFloat(b.mileage),
@@ -631,6 +675,7 @@ export default {
           calibratedCapacity,
           b.record_date || '',
           b.notes || '',
+          now,
           id
         ).run();
 
@@ -692,14 +737,18 @@ export default {
       if (path.startsWith('/api/records/maintenance/') && method === 'PUT') {
         const id = parseInt(path.split('/')[4]);
         const b = await request.json();
+        const conflict = await checkOptimisticLock('maintenance_records', id, b);
+        if (conflict) return json({ error: true, message: '检测到多端并发修改冲突', ...conflict }, 409);
         const rec = await env.DB.prepare('SELECT vehicle_id FROM maintenance_records WHERE id = ?').bind(id).first();
         if (!rec) return err('记录不存在', 404);
         const vid = rec.vehicle_id;
+        const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
         await env.DB.prepare(`
           UPDATE maintenance_records SET
             mileage = ?, item_type = ?, cost = ?, provider = ?,
-            record_date = ?, next_mileage_reminder = ?, next_date_reminder = ?, notes = ?
+            record_date = ?, next_mileage_reminder = ?, next_date_reminder = ?, notes = ?,
+            updated_at = ?, sync_version = COALESCE(sync_version, 1) + 1
           WHERE id = ?
         `).bind(
           parseFloat(b.mileage || 0),
@@ -710,6 +759,7 @@ export default {
           b.next_mileage_reminder ? parseFloat(b.next_mileage_reminder) : null,
           b.next_date_reminder || '',
           b.notes || '',
+          now,
           id
         ).run();
 
@@ -771,16 +821,20 @@ export default {
       if (path.startsWith('/api/records/status/') && method === 'PUT') {
         const id = parseInt(path.split('/')[4]);
         const b = await request.json();
+        const conflict = await checkOptimisticLock('status_records', id, b);
+        if (conflict) return json({ error: true, message: '检测到多端并发修改冲突', ...conflict }, 409);
         const rec = await env.DB.prepare('SELECT * FROM status_records WHERE id = ?').bind(id).first();
         if (!rec) return err('记录不存在', 404);
         const vid = rec.vehicle_id;
+        const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
         const m = b.mileage !== undefined && b.mileage !== null ? parseFloat(b.mileage) : rec.mileage;
         const batPct = b.battery_percent !== undefined && b.battery_percent !== null && b.battery_percent !== '' ? parseFloat(b.battery_percent) : (b.battery_percent === null ? null : rec.battery_percent);
         const fuelPct = b.fuel_percent !== undefined && b.fuel_percent !== null && b.fuel_percent !== '' ? parseFloat(b.fuel_percent) : (b.fuel_percent === null ? null : rec.fuel_percent);
 
         await env.DB.prepare(`
           UPDATE status_records SET
-            mileage = ?, battery_percent = ?, fuel_percent = ?, record_date = ?, notes = ?
+            mileage = ?, battery_percent = ?, fuel_percent = ?, record_date = ?, notes = ?,
+            updated_at = ?, sync_version = COALESCE(sync_version, 1) + 1
           WHERE id = ?
         `).bind(
           m,
@@ -788,6 +842,7 @@ export default {
           fuelPct,
           b.record_date || rec.record_date,
           b.notes !== undefined ? b.notes : rec.notes,
+          now,
           id
         ).run();
 
