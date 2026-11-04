@@ -49,6 +49,14 @@ if fm.fileExists(atPath: srcApp) {
     p.arguments = [srcApp, destApp]
     try? p.run()
     p.waitUntilExit()
-    print("Copied FilePurger.app to reliease/ via ditto (exit: \(p.terminationStatus))")
+    
+    // Ad-hoc sign for local execution
+    let cs = Process()
+    cs.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+    cs.arguments = ["--force", "--deep", "-s", "-", destApp]
+    try? cs.run()
+    cs.waitUntilExit()
+    
+    print("Copied and ad-hoc signed FilePurger.app in reliease/")
 }
 
