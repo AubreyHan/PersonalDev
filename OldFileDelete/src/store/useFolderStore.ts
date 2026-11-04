@@ -23,15 +23,21 @@ interface FolderState {
 export const useFolderStore = create<FolderState>((set, get) => ({
   folders: [],
   selectedFolderId: "preset_downloads",
-  trashConfig: { daysThreshold: 0, maxCapacityGB: 0 },
+  trashConfig: { daysThreshold: 0, maxCapacityGb: 0, maxCapacityGB: 0 },
   isLoading: true,
 
   loadInitialData: async () => {
     try {
-      const [folders, trashConfig] = await Promise.all([
+      const [folders, rawTrashConfig] = await Promise.all([
         api.getAllFolders(),
         api.getTrashConfig(),
       ]);
+      const maxCap = rawTrashConfig.maxCapacityGb ?? rawTrashConfig.maxCapacityGB ?? 0;
+      const trashConfig: TrashRuleConfig = {
+        daysThreshold: rawTrashConfig.daysThreshold || 0,
+        maxCapacityGb: maxCap,
+        maxCapacityGB: maxCap,
+      };
       set({ folders, trashConfig, isLoading: false });
       if (folders.length > 0 && !folders.some((f) => f.id === get().selectedFolderId)) {
         set({ selectedFolderId: folders[0].id });
