@@ -673,16 +673,17 @@ def update_fuel_record(record_id: int, data: Dict[str, Any]) -> bool:
     record_date = data.get('record_date', '')
     notes = data.get('notes', '')
 
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     cursor.execute('''
         UPDATE fuel_records SET
             mileage = ?, fuel_amount = ?, unit_price = ?, total_price = ?,
             fuel_type = ?, is_full = ?, start_fuel_percent = ?, fuel_percent = ?, battery_percent = ?, station = ?,
-            record_date = ?, notes = ?
+            record_date = ?, notes = ?, updated_at = ?, sync_version = COALESCE(sync_version, 1) + 1
         WHERE id = ?
     ''', (
         mileage, fuel_amount, unit_price, total_price,
         fuel_type, is_full, start_fuel_percent, fuel_percent, battery_percent, station,
-        record_date, notes, record_id
+        record_date, notes, now, record_id
     ))
     updated = cursor.rowcount > 0
     conn.commit()
@@ -839,16 +840,18 @@ def update_electricity_record(record_id: int, data: Dict[str, Any]) -> bool:
         except (ValueError, TypeError, ZeroDivisionError):
             calibrated_capacity = None
 
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     cursor.execute('''
         UPDATE electricity_records SET
             mileage = ?, electricity_amount = ?, unit_price = ?, total_price = ?,
             charging_type = ?, start_soc = ?, end_soc = ?, fuel_percent = ?,
-            station = ?, is_calibrated = ?, calibrated_capacity = ?, record_date = ?, notes = ?
+            station = ?, is_calibrated = ?, calibrated_capacity = ?, record_date = ?, notes = ?,
+            updated_at = ?, sync_version = COALESCE(sync_version, 1) + 1
         WHERE id = ?
     ''', (
         mileage, electricity_amount, unit_price, total_price,
         charging_type, start_soc, end_soc, fuel_pct,
-        station, is_calibrated, calibrated_capacity, record_date, notes, record_id
+        station, is_calibrated, calibrated_capacity, record_date, notes, now, record_id
     ))
     updated = cursor.rowcount > 0
 
@@ -925,14 +928,16 @@ def update_maintenance_record(record_id: int, data: Dict[str, Any]) -> bool:
     next_d = data.get('next_date_reminder', '')
     notes = data.get('notes', '')
 
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     cursor.execute('''
         UPDATE maintenance_records SET
             mileage = ?, item_type = ?, cost = ?, provider = ?,
-            record_date = ?, next_mileage_reminder = ?, next_date_reminder = ?, notes = ?
+            record_date = ?, next_mileage_reminder = ?, next_date_reminder = ?, notes = ?,
+            updated_at = ?, sync_version = COALESCE(sync_version, 1) + 1
         WHERE id = ?
     ''', (
         mileage, item_type, cost, provider,
-        record_date, next_m, next_d, notes, record_id
+        record_date, next_m, next_d, notes, now, record_id
     ))
     updated = cursor.rowcount > 0
     conn.commit()
@@ -1062,12 +1067,13 @@ def update_status_record(record_id: int, data: Dict[str, Any]) -> bool:
     rec_date = data.get('record_date', rec['record_date'])
     notes = data.get('notes', rec['notes'])
 
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     cursor.execute('''
         UPDATE status_records SET
             vehicle_id = ?, mileage = ?, battery_percent = ?, fuel_percent = ?,
-            record_date = ?, notes = ?
+            record_date = ?, notes = ?, updated_at = ?, sync_version = COALESCE(sync_version, 1) + 1
         WHERE id = ?
-    ''', (vehicle_id, mileage, bat_pct, fuel_pct, rec_date, notes, record_id))
+    ''', (vehicle_id, mileage, bat_pct, fuel_pct, rec_date, notes, now, record_id))
     updated = cursor.rowcount > 0
     conn.commit()
     conn.close()
