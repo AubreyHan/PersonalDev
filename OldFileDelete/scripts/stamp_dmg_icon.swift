@@ -7,7 +7,7 @@ let repoRoot = URL(fileURLWithPath: #file)
 
 let dmgDir = repoRoot.appendingPathComponent("src-tauri/target/release/bundle/dmg").path
 let macosDir = repoRoot.appendingPathComponent("src-tauri/target/release/bundle/macos").path
-let relieaseDir = repoRoot.appendingPathComponent("reliease").path
+let releaseDir = repoRoot.appendingPathComponent("release").path
 let iconPath = repoRoot.appendingPathComponent("src-tauri/icons/icon.icns").path
 
 guard let icon = NSImage(contentsOfFile: iconPath) else {
