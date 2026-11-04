@@ -437,5 +437,112 @@ class TestServerHandlerDirect(unittest.TestCase):
         })
         print("🎉 用户登录与修改密码 RESTful API (POST /api/auth/login, verify, change-password) 单元测试通过！")
 
+    def test_10_modular_architecture_and_static_serving(self):
+        """测试第一阶段前端模块化拆分后的 6 大子模块静态路由与内容完整性"""
+        module_paths = [
+            '/modules/auth.js',
+            '/modules/sync_ui.js',
+            '/modules/tri_calc.js',
+            '/modules/stations.js',
+            '/modules/records.js',
+            '/modules/energy_charts.js'
+        ]
+        for mod_path in module_paths:
+            status, content, headers = self.call_handler('GET', mod_path)
+            self.assertEqual(status, 200, f"Module {mod_path} should return HTTP 200")
+            self.assertIn('application/javascript', headers.get('Content-Type', ''))
+            self.assertIn('global.AppModules', content)
+        print("🎉 前端 6 大模块化子系统静态服务与结构完整性测试通过！")
+
+    def test_11_optimistic_locking_and_conflict_resolution(self):
+        """测试第一阶段乐观锁版本递增、HTTP 409 多端冲突检测与强制合并裁决"""
+        # 1. 创建测试车辆与油耗记录 (初始 sync_version = 1)
+        status, v_res, _ = self.call_handler('POST', '/api/vehicles', {
+            "name": "问界M5",
+            "brand": "AITO",
+            "model": "M5 增程版",
+            "power_type": "erev",
+            "fuel_tank_capacity": 56.0,
+            "battery_capacity": 40.0,
+            "initial_mileage": 1000.0
+        })
+        self.assertEqual(status, 201)
+        vid = v_res['id']
+
+        status, f_add, _ = self.call_handler('POST', '/api/records/fuel', {
+            "vehicle_id": vid,
+            "mileage": 1500.0,
+            "fuel_amount": 40.0,
+            "unit_price": 8.0,
+            "total_price": 320.0,
+            "fuel_type": "95#",
+            "is_full": 1,
+            "fuel_percent": 100.0,
+            "station": "中石化一号站",
+            "record_date": "2026-10-01 10:00"
+        })
+        self.assertEqual(status, 201)
+        fid = f_add['id']
+
+        # 2. 设备 A 正常提交修改 (基于版本 1 -> 更新后 sync_version 变为 2)
+        status, put_a, _ = self.call_handler('PUT', f'/api/records/fuel/{fid}', {
+            "vehicle_id": vid,
+            "mileage": 1500.0,
+            "fuel_amount": 42.0,
+            "unit_price": 8.0,
+            "total_price": 336.0,
+            "fuel_type": "95#",
+            "is_full": 1,
+            "fuel_percent": 100.0,
+            "station": "中石化一号站(设备A修改)",
+            "record_date": "2026-10-01 10:00",
+            "_base_version": 1,
+            "_check_conflict": True
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(put_a['record']['sync_version'], 2)
+
+        # 3. 设备 B 离线时仍持有旧基准 _base_version=1，联网推送时触发 409 Conflict 乐观锁保护
+        status, put_b_conflict, _ = self.call_handler('PUT', f'/api/records/fuel/{fid}', {
+            "vehicle_id": vid,
+            "mileage": 1500.0,
+            "fuel_amount": 45.0,
+            "unit_price": 8.0,
+            "total_price": 360.0,
+            "fuel_type": "95#",
+            "is_full": 1,
+            "fuel_percent": 100.0,
+            "station": "中石化一号站(设备B并发修改)",
+            "record_date": "2026-10-01 10:05",
+            "_base_version": 1,
+            "_check_conflict": True
+        })
+        self.assertEqual(status, 409)
+        self.assertTrue(put_b_conflict.get('conflict'))
+        self.assertEqual(put_b_conflict.get('client_base_version'), 1)
+        self.assertEqual(put_b_conflict.get('server_version'), 2)
+        self.assertEqual(put_b_conflict['server_record']['station'], "中石化一号站(设备A修改)")
+
+        # 4. 设备 B 归档冲突快照后执行裁决覆盖 (_force_overwrite=True)，版本递增至 3
+        status, put_b_resolve, _ = self.call_handler('PUT', f'/api/records/fuel/{fid}', {
+            "vehicle_id": vid,
+            "mileage": 1500.0,
+            "fuel_amount": 45.0,
+            "unit_price": 8.0,
+            "total_price": 360.0,
+            "fuel_type": "95#",
+            "is_full": 1,
+            "fuel_percent": 100.0,
+            "station": "中石化一号站(设备B并发修改)",
+            "record_date": "2026-10-01 10:05",
+            "_base_version": 1,
+            "_check_conflict": True,
+            "_force_overwrite": True
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(put_b_resolve['record']['sync_version'], 3)
+        self.assertEqual(put_b_resolve['record']['station'], "中石化一号站(设备B并发修改)")
+        print("🎉 乐观锁版本控制 (sync_version)、HTTP 409 冲突检测与裁决合并测试通过！")
+
 if __name__ == '__main__':
     unittest.main()

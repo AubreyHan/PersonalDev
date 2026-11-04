@@ -350,6 +350,18 @@ pub async fn handle_large_files(repo_path: &Path, changed_files: &[String]) -> R
 ### 3.4 模式四：停止同步 - `stopped`
 * Watcher 接收到文件变动事件后，匹配到该 Repo 为 `stopped` 模式，直接无视并丢弃事件，不执行任何 Git 指令。
 
+### 3.5 Git 执行管道防死锁与超时熔断规范 (Anti-deadlock & Timeout)
+1. **管道缓冲区死锁防护 (Pipe Buffer Concurrency)**：
+   * macOS 内核匿名管道（Pipe）的默认缓冲区容量为 **64 KB (65,536 字节)**；
+   * 在执行产生海量输出的命令（如一次性提交上千个文件的 `git commit`）时，若主进程先调用 `process.waitUntilExit()` 再读取 Pipe，子进程写满 64KB 管道即会永久阻塞在 `write()` 系统调用，造成父子进程死锁；
+   * **规范要求**：在 `process.run()` 后，必须使用后台并发异步任务立即持续读取并排空 `stdoutPipe` 与 `stderrPipe`，读取完成（EOF）后再等待进程退出。
+2. **命令执行超时熔断机制 (Process Timeout Protection)**：
+   * 底层所有 Git 命令执行均受超时保护（默认超时时间设定为 **120 秒**）；
+   * 启动子进程时挂载 `DispatchSourceTimer`；一旦超过 120 秒子进程未返回，强制调用 `process.terminate()` 杀掉僵尸子进程，并向外抛出 `GitError.timedOut`；
+   * 确保 `Scheduler` 的 `activeSyncTasks` 防重入锁必然在 `defer` 中被释放，防止后续同步全量跳过。
+3. **提交命令静默化 (-q)**：
+   * 自动同步生成的 `git commit` 默认携带 `-q`（quiet）参数，抑制不必要的 `create mode 100644 ...` 文件行输出，降低 I/O 开销。
+
 ---
 
 ## 4. Commit Message 自动生成规范 (Commit Formatter)
