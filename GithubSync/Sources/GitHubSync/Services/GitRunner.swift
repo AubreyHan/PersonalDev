@@ -45,7 +45,7 @@ public final class GitRunner: @unchecked Sendable {
         }
     }
 
-    public func run(args: [String], at directory: URL, timeout: TimeInterval = 120.0, maxRetries: Int = 1) async throws -> String {
+    public func run(args: [String], at directory: URL, timeout: TimeInterval = 120.0, maxRetries: Int = 2) async throws -> String {
         var lastResult: GitResult?
         let isNetworkOp = ["fetch", "push", "pull", "clone", "ls-remote"].contains(args.first ?? "")
         let attempts = isNetworkOp ? (1 + maxRetries) : 1
@@ -57,8 +57,9 @@ public final class GitRunner: @unchecked Sendable {
             }
             lastResult = result
             if attempt < attempts {
-                AppLogger.shared.warn("Git 网络操作重试 [\(args.joined(separator: " "))]，将在 2 秒后进行第 \(attempt) 次重试...", tag: "Git")
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                let delay = UInt64(attempt * 2) * 1_000_000_000
+                AppLogger.shared.warn("Git 网络操作重试 [\(args.joined(separator: " "))]，将在 \(attempt * 2) 秒后进行第 \(attempt) 次重试...", tag: "Git")
+                try? await Task.sleep(nanoseconds: delay)
             }
         }
 
@@ -91,7 +92,13 @@ public final class GitRunner: @unchecked Sendable {
                     env["USER"] = NSUserName()
                 }
                 env["GIT_TERMINAL_PROMPT"] = "0"
-                env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+                let home = env["HOME"] ?? NSHomeDirectory()
+                let githubKey = "\(home)/.ssh/github"
+                var sshCmd = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
+                if FileManager.default.fileExists(atPath: githubKey) {
+                    sshCmd += " -i \(githubKey) -o IdentitiesOnly=yes"
+                }
+                env["GIT_SSH_COMMAND"] = sshCmd
                 process.environment = env
 
                 let stdoutPipe = Pipe()
