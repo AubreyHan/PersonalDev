@@ -4,13 +4,13 @@ set -e
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"
 
-APP_PATH="$PROJECT_DIR/dist/GitHubSync.app"
+APP_PATH="$PROJECT_DIR/release/GitHubSync.app"
 ICON_PATH="$PROJECT_DIR/Resources/AppIcon.icns"
 VERSION="1.0.0"
 DMG_NAME="GitHubSync-${VERSION}.dmg"
-DMG_PATH="$PROJECT_DIR/dist/${DMG_NAME}"
+DMG_PATH="$PROJECT_DIR/release/${DMG_NAME}"
 VOL_NAME="GitHub Auto Sync"
-STAGING_DIR="$PROJECT_DIR/dist/dmg_staging"
+STAGING_DIR="$PROJECT_DIR/release/dmg_staging"
 
 echo "===> [1/4] 检查 App 构建产物..."
 if [ ! -d "$APP_PATH" ]; then

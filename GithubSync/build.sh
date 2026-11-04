@@ -13,9 +13,9 @@ if [ ! -f "$BIN_PATH" ]; then
     exit 1
 fi
 
-DIST_DIR="$PROJECT_DIR/dist"
+RELEASE_DIR="$PROJECT_DIR/release"
 APP_NAME="GitHubSync.app"
-APP_BUNDLE="$DIST_DIR/$APP_NAME"
+APP_BUNDLE="$RELEASE_DIR/$APP_NAME"
 
 echo "===> [2/4] 构建 macOS Application Bundle: $APP_BUNDLE..."
 rm -rf "$APP_BUNDLE"
