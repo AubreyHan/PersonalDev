@@ -12,6 +12,7 @@ public struct GitResult {
 
 public enum GitError: LocalizedError {
     case commandFailed(command: String, exitCode: Int32, stderr: String)
+    case timedOut(command: String, timeout: TimeInterval)
     case custom(String)
 
     public var errorDescription: String? {
@@ -19,6 +20,8 @@ public enum GitError: LocalizedError {
         case .commandFailed(let command, let exitCode, let stderr):
             let msg = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
             return "Git命令执行失败 (\(command), code \(exitCode)): \(msg)"
+        case .timedOut(let command, let timeout):
+            return "Git命令执行超时 (\(command), 超过 \(Int(timeout)) 秒)"
         case .custom(let str):
             return str
         }

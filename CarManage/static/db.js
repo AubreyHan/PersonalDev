@@ -678,6 +678,58 @@ const CarSync = {
     this.setStatus('synced');
   },
 
+  // 将尚未同步成功的本地挂起队列重放保护至本地 IndexedDB
+  async applyPendingQueueToLocalStores() {
+    const queue = await CarDB.getSyncQueue();
+    if (!queue || queue.length === 0) return;
+    for (const item of queue) {
+      const storeName = CarDB.entityStoreMap[item.entity];
+      if (!storeName || !item.data) continue;
+      try {
+        if (item.action === 'DELETE' && item.data.id !== undefined) {
+          await CarDB.delete(storeName, item.data.id);
+        } else if (item.action === 'CREATE' || item.action === 'UPDATE') {
+          const existing = item.data.id !== undefined ? await CarDB.get(storeName, item.data.id) : null;
+          await CarDB.put(storeName, { ...(existing || {}), ...item.data });
+        }
+      } catch (e) {
+        console.warn('[CarSync] 本地挂起项重放保护忽略:', e);
+      }
+    }
+  },
+
+  // 手动或自动裁决多端并发冲突：strategy = 'use_local' (强制采用本地版本) | 'use_server' (恢复为云端版本)
+  async resolveConflict(cid, strategy = 'use_local') {
+    const conflicts = await CarDB.getConflicts();
+    const conflict = conflicts.find(c => c.cid == cid);
+    if (!conflict) return false;
+
+    const baseUrl = await this.getApiBaseUrl();
+    let endpoint = '';
+    if (conflict.entity === 'vehicles') endpoint = '/api/vehicles';
+    else if (conflict.entity === 'fuel') endpoint = '/api/records/fuel';
+    else if (conflict.entity === 'electricity') endpoint = '/api/records/electricity';
+    else if (conflict.entity === 'maintenance') endpoint = '/api/records/maintenance';
+    else if (conflict.entity === 'status') endpoint = '/api/records/status';
+
+    const targetPayload = strategy === 'use_server'
+      ? { ...conflict.server_data, _force_overwrite: true }
+      : { ...conflict.local_data, _force_overwrite: true };
+
+    const res = await fetch(`${baseUrl}${endpoint}/${conflict.record_id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(targetPayload)
+    });
+
+    if (res.ok) {
+      await CarDB.removeConflict(cid);
+      await this.sync(false, true);
+      return true;
+    }
+    return false;
+  },
+
   async pushItem(baseUrl, item) {
     const { action, entity, data } = item;
     let endpoint = '';
@@ -708,6 +760,35 @@ const CarSync = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     });
+
+    // 捕获 HTTP 409 乐观锁并发冲突：自动归档双端完整快照并按最新变更闭环完成同步
+    if (res.status === 409) {
+      let conflictInfo = {};
+      try {
+        conflictInfo = await res.json();
+      } catch (e) {}
+      console.warn('[CarSync] 检测到多端并发修改冲突 (HTTP 409)，正在归档冲突快照并执行智能合并:', conflictInfo);
+      await CarDB.recordConflict({
+        entity,
+        record_id: data.id,
+        local_data: data,
+        server_data: conflictInfo.server_record || {},
+        client_base_version: conflictInfo.client_base_version || data._base_version || 1,
+        server_version: conflictInfo.server_version || 2,
+        resolution: 'auto_lww_with_backup'
+      });
+
+      // 以强制合并方式提交最新改动，同时冲突快照已安全保存在 sync_conflicts 供用户随时一键回退至云端版本
+      const forceRes = await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...data, _force_overwrite: true })
+      });
+      if (!forceRes.ok && forceRes.status !== 404) {
+        throw new Error(`冲突合并提交失败: ${forceRes.status}`);
+      }
+      return;
+    }
 
     if (!res.ok) {
       if (res.status === 404 || res.status === 400) {
