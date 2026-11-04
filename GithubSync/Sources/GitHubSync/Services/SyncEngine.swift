@@ -44,7 +44,7 @@ public final class SyncEngine {
             if !filteredStatus.isEmpty {
                 let commitMessage = commitFormatter.format(statusLines: filteredStatus)
                 _ = try await gitRunner.run(args: ["add", "-A"], at: repoURL)
-                _ = try await gitRunner.run(args: ["commit", "-m", commitMessage], at: repoURL)
+                _ = try await gitRunner.run(args: ["commit", "-q", "-m", commitMessage], at: repoURL)
             }
         }
 
@@ -79,7 +79,7 @@ public final class SyncEngine {
             if !filteredStatus.isEmpty {
                 let msg = commitFormatter.format(statusLines: filteredStatus)
                 _ = try await gitRunner.run(args: ["add", "-A"], at: repoURL)
-                _ = try await gitRunner.run(args: ["commit", "-m", msg], at: repoURL)
+                _ = try await gitRunner.run(args: ["commit", "-q", "-m", msg], at: repoURL)
             }
         }
 
