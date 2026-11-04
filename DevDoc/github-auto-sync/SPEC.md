@@ -478,3 +478,19 @@ fn prune_fifo(path: &str) {
     atomic_write(path, &new_data);
 }
 ```
+
+---
+
+## 10. SSH 网络认证与弹性能量规范 (SSH & Network Resilience Spec)
+
+### 10.1 SSH 多密钥与钥匙串对齐
+- **IdentitiesOnly 强制过滤**：在 `~/.ssh/config` 中配置 `IdentitiesOnly yes`，杜绝系统默认尝试非 GitHub 密钥（如 `id_ed25519` 等）导致密钥认证超限遭远端 RST/拒绝。
+- **macOS Keychain 集成**：配置 `UseKeychain yes` 与 `AddKeysToAgent yes`，自动解密并在登录后将指定公私钥对加载至 `ssh-agent`。
+
+### 10.2 Git 进程环境变量注入 (`GitRunner`)
+- **非交互式批处理保证**：通过 `GIT_TERMINAL_PROMPT=0` 与 `GIT_SSH_COMMAND` 注入 `-o BatchMode=yes`，防止后台守护进程因终端输入请求永久挂起。
+- **超时与连接探测**：配置 `-o ConnectTimeout=15`、`-o ServerAliveInterval=15` 与 `-o ServerAliveCountMax=3`，在弱网或网络阻断时快速失败，释放调度器锁。
+- **主动密钥绑定**：若检测到本地存在对应 GitHub 密钥（如 `~/.ssh/github`），显式在 `GIT_SSH_COMMAND` 挂载 `-i <key_path> -o IdentitiesOnly=yes`，杜绝环境变量丢失引发认证偏差。
+
+### 10.3 网络操作自动重试机制
+- 对高频网络 I/O 命令（`fetch`、`push`、`pull`、`ls-remote`）提供至多 2 次自动容错重试（递增重试等待：`attempt * 2` 秒），平滑吸收公网抖动与偶发丢包。
