@@ -17,8 +17,8 @@ guard let icon = NSImage(contentsOfFile: iconPath) else {
 
 let fm = FileManager.default
 
-// Ensure reliease directory exists
-try? fm.createDirectory(atPath: relieaseDir, withIntermediateDirectories: true, attributes: nil)
+// Ensure release directory exists
+try? fm.createDirectory(atPath: releaseDir, withIntermediateDirectories: true, attributes: nil)
 
 // Stamp icon on original DMGs
 if let files = try? fm.contentsOfDirectory(atPath: dmgDir) {
@@ -27,22 +27,22 @@ if let files = try? fm.contentsOfDirectory(atPath: dmgDir) {
         let ok = NSWorkspace.shared.setIcon(icon, forFile: fullPath, options: [])
         print("Stamped icon onto \(f): \(ok)")
         
-        // Copy DMG to reliease directory
-        let destDmg = "\(relieaseDir)/\(f)"
+        // Copy DMG to release directory
+        let destDmg = "\(releaseDir)/\(f)"
         try? fm.removeItem(atPath: destDmg)
         do {
             try fm.copyItem(atPath: fullPath, toPath: destDmg)
             let destOk = NSWorkspace.shared.setIcon(icon, forFile: destDmg, options: [])
-            print("Copied \(f) to reliease/ (stamped: \(destOk))")
+            print("Copied \(f) to release/ (stamped: \(destOk))")
         } catch {
-            print("Failed to copy \(f) to reliease: \(error)")
+            print("Failed to copy \(f) to release: \(error)")
         }
     }
 }
 
-// Copy FilePurger.app to reliease directory
+// Copy FilePurger.app to release directory
 let srcApp = "\(macosDir)/FilePurger.app"
-let destApp = "\(relieaseDir)/FilePurger.app"
+let destApp = "\(releaseDir)/FilePurger.app"
 if fm.fileExists(atPath: srcApp) {
     let p = Process()
     p.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
@@ -57,6 +57,6 @@ if fm.fileExists(atPath: srcApp) {
     try? cs.run()
     cs.waitUntilExit()
     
-    print("Copied and ad-hoc signed FilePurger.app in reliease/")
+    print("Copied and ad-hoc signed FilePurger.app in release/")
 }
 
