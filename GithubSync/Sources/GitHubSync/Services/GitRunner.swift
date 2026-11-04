@@ -45,8 +45,8 @@ public final class GitRunner: @unchecked Sendable {
         }
     }
 
-    public func run(args: [String], at directory: URL) async throws -> String {
-        let result = try await execute(args: args, at: directory)
+    public func run(args: [String], at directory: URL, timeout: TimeInterval = 120.0) async throws -> String {
+        let result = try await execute(args: args, at: directory, timeout: timeout)
         if !result.isSuccess {
             let cmdStr = args.joined(separator: " ")
             AppLogger.shared.error("Git 执行失败 [\(cmdStr)]: \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))", tag: "Git")
@@ -55,7 +55,7 @@ public final class GitRunner: @unchecked Sendable {
         return result.stdout
     }
 
-    public func execute(args: [String], at directory: URL) async throws -> GitResult {
+    public func execute(args: [String], at directory: URL, timeout: TimeInterval = 120.0) async throws -> GitResult {
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let process = Process()
@@ -79,12 +79,60 @@ public final class GitRunner: @unchecked Sendable {
                 process.standardOutput = stdoutPipe
                 process.standardError = stderrPipe
 
+                // 超时监控与状态保护锁
+                let lock = NSLock()
+                var isCompleted = false
+                var didTimeOut = false
+
+                let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
+                timer.schedule(deadline: .now() + timeout)
+                timer.setEventHandler {
+                    lock.lock()
+                    defer { lock.unlock() }
+                    if !isCompleted {
+                        didTimeOut = true
+                        if process.isRunning {
+                            process.terminate()
+                        }
+                    }
+                }
+                timer.resume()
+
                 do {
                     try process.run()
+
+                    // 并发排空 stdout 与 stderr 管道，防止超过 64KB 导致管道写满产生死锁
+                    var stdoutData = Data()
+                    var stderrData = Data()
+                    let readGroup = DispatchGroup()
+
+                    readGroup.enter()
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                        readGroup.leave()
+                    }
+
+                    readGroup.enter()
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                        readGroup.leave()
+                    }
+
+                    readGroup.wait()
                     process.waitUntilExit()
 
-                    let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-                    let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                    timer.cancel()
+                    lock.lock()
+                    isCompleted = true
+                    let timedOut = didTimeOut
+                    lock.unlock()
+
+                    if timedOut {
+                        let cmdStr = args.joined(separator: " ")
+                        AppLogger.shared.error("Git 执行超时 (超过 \(Int(timeout)) 秒) [\(cmdStr)]", tag: "Git")
+                        continuation.resume(throwing: GitError.timedOut(command: cmdStr, timeout: timeout))
+                        return
+                    }
 
                     let stdoutStr = String(data: stdoutData, encoding: .utf8) ?? ""
                     let stderrStr = String(data: stderrData, encoding: .utf8) ?? ""
@@ -92,7 +140,19 @@ public final class GitRunner: @unchecked Sendable {
                     let res = GitResult(exitCode: process.terminationStatus, stdout: stdoutStr, stderr: stderrStr)
                     continuation.resume(returning: res)
                 } catch {
-                    continuation.resume(throwing: error)
+                    timer.cancel()
+                    lock.lock()
+                    isCompleted = true
+                    let timedOut = didTimeOut
+                    lock.unlock()
+
+                    if timedOut {
+                        let cmdStr = args.joined(separator: " ")
+                        AppLogger.shared.error("Git 执行超时 (超过 \(Int(timeout)) 秒) [\(cmdStr)]", tag: "Git")
+                        continuation.resume(throwing: GitError.timedOut(command: cmdStr, timeout: timeout))
+                    } else {
+                        continuation.resume(throwing: error)
+                    }
                 }
             }
         }
