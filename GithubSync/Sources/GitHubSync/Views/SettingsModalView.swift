@@ -7,7 +7,6 @@ public struct SettingsModalView: View {
     @State private var debounceSeconds: Int = 5
     @State private var remotePollMinutes: Int = 5
     @State private var launchAtStartup: Bool = false
-    @State private var showConfirmReset: Bool = false
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 18) {
