@@ -163,6 +163,22 @@ public final class SyncEngine {
 
             // 推送合并结果
             _ = try await gitRunner.run(args: ["push", "origin", branch], at: repoURL)
+            await pullLFSIfNeeded(at: repoURL)
+        } else {
+            // 两侧均无提交或已同步，检查并补全可能遗漏的 LFS 实体
+            await pullLFSIfNeeded(at: repoURL)
+        }
+    }
+
+    /// 若仓库配置了 Git LFS，拉取并实体化 LFS 大文件对象
+    private func pullLFSIfNeeded(at repoURL: URL) async {
+        let gitattributesURL = repoURL.appendingPathComponent(".gitattributes")
+        let hasLFS = (try? String(contentsOf: gitattributesURL, encoding: .utf8))?.contains("filter=lfs") == true
+        if hasLFS {
+            let res = try? await gitRunner.run(args: ["lfs", "pull"], at: repoURL, timeout: 300.0)
+            if res != nil {
+                AppLogger.shared.info("[\(repoURL.lastPathComponent)] Git LFS 资源同步完成", tag: "LFS")
+            }
         }
     }
 }

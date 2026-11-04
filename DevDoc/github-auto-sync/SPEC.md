@@ -494,3 +494,14 @@ fn prune_fifo(path: &str) {
 
 ### 10.3 网络操作自动重试机制
 - 对高频网络 I/O 命令（`fetch`、`push`、`pull`、`ls-remote`）提供至多 2 次自动容错重试（递增重试等待：`attempt * 2` 秒），平滑吸收公网抖动与偶发丢包。
+
+---
+
+## 11. Git LFS 大文件对象支持规范 (Git LFS Integration Spec)
+
+### 11.1 LFS 托管属性白名单判定
+- 在 `LargeFileHandler` 识别 >=100MB 大文件时，先执行 `git check-attr filter <path>`。若属性包含 `filter: lfs`，表明该文件为受控的 Git LFS 资源，不再写入 `.gitignore` 并予以放行。
+
+### 11.2 自动拉取与实体化 (`git lfs pull`)
+- 在完成远端合并（`merge --ff-only`）、硬重置（`reset --hard`）或双向同步比对后，若检测到仓库根目录下存在 `.gitattributes` 且包含 `filter=lfs`，自动触发 `git lfs pull`（设置 300 秒超时保障）。
+- 杜绝因缺失 LFS 过滤拉取导致大文件停留在 134 字节文本指针（Pointer File）的状态。
