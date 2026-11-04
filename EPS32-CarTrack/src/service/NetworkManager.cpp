@@ -627,6 +627,12 @@ void AppNetworkManager::setupHttpRoutes() {
     _server.on("/ncsi.txt", HTTP_GET, redirectCb);
     _server.on("/connecttest.txt", HTTP_GET, redirectCb);
     _server.on("/success.txt", HTTP_GET, redirectCb);
+    // Enhanced Apple / Android / Xiaomi / Huawei CNA probe endpoints
+    _server.on("/library/test/success.html", HTTP_GET, redirectCb);
+    _server.on("/mobile/status.go", HTTP_GET, redirectCb);
+    _server.on("/check_network_status.txt", HTTP_GET, redirectCb);
+    _server.on("/kindle-wifi/wifiredirect.html", HTTP_GET, redirectCb);
+    _server.on("/wpad.dat", HTTP_GET, redirectCb);
     _server.onNotFound([this]() { handleCaptiveRedirect(); });
 
     _server.on("/api/scan", HTTP_GET, [this]() {
