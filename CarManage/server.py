@@ -264,6 +264,10 @@ class CarTrackerHandler(http.server.BaseHTTPRequestHandler):
         if path.startswith('/api/vehicles/'):
             try:
                 vid = int(path.split('/')[-1])
+                conflict = database.check_optimistic_lock('vehicles', vid, body)
+                if conflict:
+                    self.send_json({"error": True, "message": "检测到多端并发修改冲突", **conflict}, status=409)
+                    return
                 success = database.update_vehicle(vid, body)
                 if success:
                     self.send_json({"success": True, "vehicle": database.get_vehicle_by_id(vid)})
@@ -276,6 +280,10 @@ class CarTrackerHandler(http.server.BaseHTTPRequestHandler):
         if path.startswith('/api/records/fuel/'):
             try:
                 rid = int(path.split('/')[-1])
+                conflict = database.check_optimistic_lock('fuel_records', rid, body)
+                if conflict:
+                    self.send_json({"error": True, "message": "检测到多端并发修改冲突", **conflict}, status=409)
+                    return
                 success = database.update_fuel_record(rid, body)
                 if success:
                     self.send_json({"success": True, "record": database.get_fuel_record_by_id(rid)})
@@ -288,6 +296,10 @@ class CarTrackerHandler(http.server.BaseHTTPRequestHandler):
         if path.startswith('/api/records/electricity/'):
             try:
                 rid = int(path.split('/')[-1])
+                conflict = database.check_optimistic_lock('electricity_records', rid, body)
+                if conflict:
+                    self.send_json({"error": True, "message": "检测到多端并发修改冲突", **conflict}, status=409)
+                    return
                 success = database.update_electricity_record(rid, body)
                 if success:
                     self.send_json({"success": True, "record": database.get_electricity_record_by_id(rid)})
@@ -300,6 +312,10 @@ class CarTrackerHandler(http.server.BaseHTTPRequestHandler):
         if path.startswith('/api/records/maintenance/'):
             try:
                 rid = int(path.split('/')[-1])
+                conflict = database.check_optimistic_lock('maintenance_records', rid, body)
+                if conflict:
+                    self.send_json({"error": True, "message": "检测到多端并发修改冲突", **conflict}, status=409)
+                    return
                 success = database.update_maintenance_record(rid, body)
                 if success:
                     self.send_json({"success": True, "record": database.get_maintenance_record_by_id(rid)})
@@ -312,6 +328,10 @@ class CarTrackerHandler(http.server.BaseHTTPRequestHandler):
         if path.startswith('/api/records/status/'):
             try:
                 rid = int(path.split('/')[-1])
+                conflict = database.check_optimistic_lock('status_records', rid, body)
+                if conflict:
+                    self.send_json({"error": True, "message": "检测到多端并发修改冲突", **conflict}, status=409)
+                    return
                 success = database.update_status_record(rid, body)
                 if success:
                     self.send_json({"success": True, "record": database.get_status_record_by_id(rid)})
