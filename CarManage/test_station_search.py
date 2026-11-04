@@ -223,16 +223,20 @@ class TestStationSearchAndDeduplication(unittest.TestCase):
 
     def test_worker_syntax_and_baidu_proxy(self):
         # 验证 worker.js 包含 /api/baidu-search 且 Service Worker 为 v44
-        with open('car_maintenance_app/cloudflare/worker.js', 'r', encoding='utf-8') as f:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        worker_path = os.path.join(base_dir, 'cloudflare/worker.js')
+        with open(worker_path, 'r', encoding='utf-8') as f:
             w_code = f.read()
         self.assertIn("/api/baidu-search", w_code)
         self.assertIn("3YJcotkPHfGjr1vN50trOKrHoWUAwWCS", w_code)
 
-        with open('car_maintenance_app/static/sw.js', 'r', encoding='utf-8') as f:
+        sw_path = os.path.join(base_dir, 'static/sw.js')
+        with open(sw_path, 'r', encoding='utf-8') as f:
             sw_code = f.read()
         self.assertRegex(sw_code, r"car-tracker-cache-v\d+")
 
-        with open('car_maintenance_app/static/db.js', 'r', encoding='utf-8') as f:
+        db_path = os.path.join(base_dir, 'static/db.js')
+        with open(db_path, 'r', encoding='utf-8') as f:
             db_code = f.read()
         self.assertRegex(db_code, r"version:\s*\d+")
         self.assertIn("station_cache", db_code)
@@ -240,7 +244,9 @@ class TestStationSearchAndDeduplication(unittest.TestCase):
         self.assertIn("queryStationCache", db_code)
 
     def test_app_js_brand_protection_and_verified_stations(self):
-        with open('car_maintenance_app/static/app.js', 'r', encoding='utf-8') as f:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        app_path = os.path.join(base_dir, 'static/app.js')
+        with open(app_path, 'r', encoding='utf-8') as f:
             app_code = f.read()
         self.assertIn("getStationBrandKey", app_code)
         self.assertIn("VERIFIED_CHARGING_STATIONS", app_code)
