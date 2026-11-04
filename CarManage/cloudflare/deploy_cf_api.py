@@ -131,11 +131,16 @@ def deploy(account_id: str, api_token: str):
         return False
     print("✅ 数据库表结构初始化成功！")
 
-    # 结构迁移：若已存在表则安全补全新增字段
-    for col_sql in [
+    # 结构迁移：若已存在表则安全补全新增字段（绝不破坏线上已有数据）
+    migration_sqls = [
         "ALTER TABLE electricity_records ADD COLUMN is_calibrated INTEGER DEFAULT 0;",
-        "ALTER TABLE electricity_records ADD COLUMN calibrated_capacity REAL;"
-    ]:
+        "ALTER TABLE electricity_records ADD COLUMN calibrated_capacity REAL;",
+    ]
+    for tbl in ("vehicles", "fuel_records", "electricity_records", "maintenance_records", "status_records"):
+        migration_sqls.append(f"ALTER TABLE {tbl} ADD COLUMN updated_at TEXT;")
+        migration_sqls.append(f"ALTER TABLE {tbl} ADD COLUMN sync_version INTEGER DEFAULT 1;")
+
+    for col_sql in migration_sqls:
         make_request(
             f"{CF_API_BASE}/accounts/{account_id}/d1/database/{db_id}/query",
             method="POST",
