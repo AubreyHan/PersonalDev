@@ -152,9 +152,22 @@ def init_db():
             record_date TEXT NOT NULL,              -- 记录时间 (YYYY-MM-DD HH:MM)
             notes TEXT,                             -- 备注
             created_at TEXT NOT NULL,
+            updated_at TEXT,
+            sync_version INTEGER DEFAULT 1,
             FOREIGN KEY (vehicle_id) REFERENCES vehicles (id) ON DELETE CASCADE
         )
     ''')
+
+    # 统一为五大核心业务表平滑迁移补齐乐观锁版本号 (sync_version) 与更新时间 (updated_at)
+    for tbl in ('vehicles', 'fuel_records', 'electricity_records', 'maintenance_records', 'status_records'):
+        cursor.execute(f"PRAGMA table_info({tbl})")
+        t_cols = [col[1] for col in cursor.fetchall()]
+        if 'updated_at' not in t_cols:
+            cursor.execute(f"ALTER TABLE {tbl} ADD COLUMN updated_at TEXT")
+            cursor.execute(f"UPDATE {tbl} SET updated_at = created_at WHERE updated_at IS NULL")
+        if 'sync_version' not in t_cols:
+            cursor.execute(f"ALTER TABLE {tbl} ADD COLUMN sync_version INTEGER DEFAULT 1")
+            cursor.execute(f"UPDATE {tbl} SET sync_version = 1 WHERE sync_version IS NULL")
 
     # 为已有当前里程但尚无 status_records 的车辆生成初始状态快照
     try:
