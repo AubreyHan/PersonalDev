@@ -134,5 +134,4 @@ public struct SettingsModalView: View {
             appState.factoryResetAndExit()
         }
     }
-    }
 }
