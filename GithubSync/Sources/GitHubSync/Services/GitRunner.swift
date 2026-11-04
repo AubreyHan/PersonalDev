@@ -45,14 +45,27 @@ public final class GitRunner: @unchecked Sendable {
         }
     }
 
-    public func run(args: [String], at directory: URL, timeout: TimeInterval = 120.0) async throws -> String {
-        let result = try await execute(args: args, at: directory, timeout: timeout)
-        if !result.isSuccess {
-            let cmdStr = args.joined(separator: " ")
-            AppLogger.shared.error("Git 执行失败 [\(cmdStr)]: \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))", tag: "Git")
-            throw GitError.commandFailed(command: cmdStr, exitCode: result.exitCode, stderr: result.stderr)
+    public func run(args: [String], at directory: URL, timeout: TimeInterval = 120.0, maxRetries: Int = 1) async throws -> String {
+        var lastResult: GitResult?
+        let isNetworkOp = ["fetch", "push", "pull", "clone", "ls-remote"].contains(args.first ?? "")
+        let attempts = isNetworkOp ? (1 + maxRetries) : 1
+
+        for attempt in 1...attempts {
+            let result = try await execute(args: args, at: directory, timeout: timeout)
+            if result.isSuccess {
+                return result.stdout
+            }
+            lastResult = result
+            if attempt < attempts {
+                AppLogger.shared.warn("Git 网络操作重试 [\(args.joined(separator: " "))]，将在 2 秒后进行第 \(attempt) 次重试...", tag: "Git")
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
         }
-        return result.stdout
+
+        let cmdStr = args.joined(separator: " ")
+        let stderr = lastResult?.stderr ?? ""
+        AppLogger.shared.error("Git 执行失败 [\(cmdStr)]: \(stderr.trimmingCharacters(in: .whitespacesAndNewlines))", tag: "Git")
+        throw GitError.commandFailed(command: cmdStr, exitCode: lastResult?.exitCode ?? 1, stderr: stderr)
     }
 
     public func execute(args: [String], at directory: URL, timeout: TimeInterval = 120.0) async throws -> GitResult {
@@ -71,7 +84,14 @@ public final class GitRunner: @unchecked Sendable {
                 } else {
                     env["PATH"] = extraPaths
                 }
+                if env["HOME"] == nil {
+                    env["HOME"] = NSHomeDirectory()
+                }
+                if env["USER"] == nil {
+                    env["USER"] = NSUserName()
+                }
                 env["GIT_TERMINAL_PROMPT"] = "0"
+                env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
                 process.environment = env
 
                 let stdoutPipe = Pipe()
