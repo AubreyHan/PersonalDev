@@ -1,95 +1,87 @@
 ---
 name: 3d-track-animation
-description: >-
-  Generate 3D GPS trajectory flyover animation videos (both 9:16 vertical 720x1280
-  and 16:9 horizontal 1280x720 MP4s) from one or more GPX (.gpx) files or compressed
-  archives (.zip, .tar.gz, .tgz, .tar.bz2, .tar.xz, .gz, .bz2, .xz, .7z, .rar).
-  Activate this skill when the user uploads or specifies GPX file(s) or compressed
-  archive(s) and issues a command like "3D轨迹： 行走｜骑行｜自驾（如没有说明，根据速度判断） 轨迹名称"
-  (or asks to generate a 3D trajectory animation from GPX files).
+description: Generate 3D GPS trajectory flyover animation videos (both 9:16 vertical 720x1280 and 16:9 horizontal 1280x720 MP4s) from one or more GPX (.gpx) files, compressed archives (.zip, .tar.gz, .tgz, .tar.bz2, .tar.xz, .gz, .bz2, .xz, .7z, .rar), or the local ./GPX subdirectory across macOS and Linux. Activate this skill when the user issues a command like "3D轨迹： 行走｜骑行｜自驾（如没有说明，根据速度判断） 轨迹名称" (or asks to generate a 3D trajectory animation).
 ---
 
-# 3D轨迹动画生成技能 (3D GPX Trajectory Animation Skill)
+# 3D Track Flyover Animation Skill (`3d-track-animation`)
 
-当用户上传或指定一个或多个 `.gpx` 轨迹文件（或包含 `.gpx` 的压缩文件），并发出如下格式的指令时自动触发本技能，生成 **16:9 横屏 (`1280x720`)** 与 **9:16 竖屏 (`720x1280`)** 两种分辨率的 3D 轨迹巡航动画（无任何第三方水印）：
-
-1. **上传或指定 GPX 文件 / 压缩包**：
-   - 支持直接传入单个或多个 `.gpx` 文件、文件夹，或压缩包（`.zip`, `.tar`, `.tar.gz`, `.tgz`, `.tar.bz2`, `.tbz2`, `.tar.xz`, `.txz`, `.gz`, `.bz2`, `.xz`, `.7z`, `.rar`）。
-   - 若上传的是压缩文件（包括多层嵌套压缩包或被重命名的上传附件），脚本会自动通过扩展名与文件魔数（Magic Bytes）识别并递归解包，提取其中所有 `.gpx` 轨迹文件（自动过滤 `__MACOSX` 及 `._*` 隐藏文件），并按时间顺序合并为一条完整轨迹。
-2. **发出指令格式**：
-   `3D轨迹： [行走|骑行|自驾] <轨迹名称>`
-   - 示例 1（指定运动类型）：`3D轨迹： 自驾 武汉回京`
-   - 示例 2（指定运动类型）：`3D轨迹： 骑行 环青海湖`
-   - 示例 3（指定运动类型）：`3D轨迹： 行走 20261101奥森`
-   - 示例 4（未说明运动类型，自动根据轨迹平均速度判断）：`3D轨迹： 20261101奥森`
-     - 平均速度 `< 12 km/h` -> 自动识别为 **行走/跑步**（使用人形立牌图标 [person_icon.png](./resources/person_icon.png)）
-     - 平均速度 `12 ~ 35 km/h` -> 自动识别为 **骑行**（使用自行车图标 [bike_icon.png](./resources/bike_icon.png)）
-     - 平均速度 `> 35 km/h` -> 自动识别为 **自驾**（使用小汽车图标 [car_icon.png](./resources/car_icon.png)）
-3. **自动输出双分辨率 3D 轨迹动画**：
-   - `<输出前缀>_16x9.mp4` (`1280x720`, 30fps)
-   - `<输出前缀>_9x16.mp4` (`720x1280`, 30fps)
+Generate smooth 60fps 3D satellite-terrain GPS flyover videos in both **16:9 horizontal (`1280x720`)** and **9:16 vertical (`720x1280`)** formats, compatible with both **macOS (`Darwin`)** and **Linux (`Linux`)**.
 
 ---
 
-## 核心视觉与动画特性
+## 1. Command Trigger & Parsing Rules
 
-- **3D 立体地形与路网地图**：
-  - 采用 Esri `World_Imagery` 高清卫星影像底图，对中国境内骑行/自驾/长途路线自动叠加高德透明道路/高速编号/地名图层（自动进行 `WGS-84 -> GCJ-02` 坐标对齐）。
-  - 两侧山丘立体起伏明显，路线走廊纵向坡度平滑自然（25 点高斯平滑 + 26° 俯仰跟随视角），行进中具有自然的上下坡立体感。
-- **平滑速度控制与运镜**：
-  - **片头总览 (0~4s)**：展示完整行程轨迹与顶部标题横幅（`<轨迹名称>  <总里程>KM  <累计爬升>m`）。
-  - **俯冲切入 (4~6.5s)**：平滑拉近至起点。
-  - **3D 巡航跟随 (6.5~51.5s)**：采用 C1 连续的速度控制曲线（7% 平滑加速 + 86% 匀速巡航 + 7% 平滑减速），全程无停顿，动态渲染荧光绿轨迹 (`#B8FF28`)、地面投影及移动图标。
-  - **HUD 仪表盘**：左上角无水印黑白卫星小地图（含红点起点与荧光绿实时位置）、`Distance` 距离卡片、左下角 `Ascent` / `Descent` 爬升下降卡片、底部动态海拔剖面图（若 GPX 含心率数据则自动在左上角展示 `Average Heart Rate` 卡片）。
-  - **片尾拉升全览 (51.5~56.5s)**：视角从终点平滑拉升回全景高度，完整展示整个行程轨迹及顶部标题统计信息。
+### User Command Format
+```text
+3D轨迹： [行走|骑行|自驾] [轨迹名称]
+```
+Examples:
+- `3D轨迹： 骑行 20261101奥森` → Mode = `骑行`, Title = `20261101奥森`
+- `3D轨迹： 自驾 武汉到北京` → Mode = `自驾`, Title = `武汉到北京`
+- `3D轨迹： 2026暑期西北自驾` → Mode = `auto` (inferred from average speed), Title = `2026暑期西北自驾`
+- `3D轨迹：` → Mode = `auto`, Title = extracted from `<name>` tag in GPX
+
+### Input GPX File & `./GPX` Subdirectory Auto-Discovery
+1. **Uploaded or Specified Files / Archives**:
+   - Supports **1 or multiple `.gpx` files** and **compressed archives** (`.zip`, `.tar.gz`, `.tgz`, `.tar.bz2`, `.tar.xz`, `.gz`, `.bz2`, `.xz`, `.7z`, `.rar`).
+   - Note that Antigravity may save uploaded `.zip` or `.gz` files in `.user_uploaded/` with a `.gpx` extension or generic name; `prepare_and_download.py` inspects magic bytes automatically and unpacks them recursively.
+2. **Automatic Fallback to `./GPX` Subdirectory (with Auto-Cleanup)**:
+   - If the user issues a `3D轨迹：...` command **without uploading or specifying any GPX/archive files**, omit `--gpx` (or pass `--gpx-dir "<workspace_dir>/GPX"`).
+   - `prepare_and_download.py` will automatically scan `<workspace_dir>/GPX` for all `.gpx` files and compressed archives.
+   - Once both `16:9` and `9:16` MP4 videos have been generated and verified in `./output/`, `run_3d_track.sh` **automatically clears all files inside `<workspace_dir>/GPX`**.
+
+### Output Subdirectory (`./output`)
+- All generated MP4 videos MUST be saved into the `./output` subdirectory of the workspace (`<workspace_dir>/output/`), creating `./output` automatically if it does not exist:
+  - `<workspace_dir>/output/<轨迹名称>_16x9.mp4` (`1280x720`, 60fps)
+  - `<workspace_dir>/output/<轨迹名称>_9x16.mp4` (`720x1280`, 60fps)
+
+### Progress Reporting Every 2 Minutes
+- Whenever a task (such as downloading hundreds of map tiles or rendering long trajectories) runs in the background or takes longer than 2 minutes, use the `schedule` tool (`DurationSeconds: 120`, `TimerCondition: "any"`) to report concrete progress (e.g., tile download percentage or video rendering stage) to the user every 2 minutes until completion.
 
 ---
 
-## 标准执行步骤 (Step-by-Step Procedure)
+## 2. Step-by-Step Execution Workflow
 
-### 第 1 步：解析用户指令与 GPX / 压缩包路径
+### Step 1: Prepare GPX Data & Download/Verify Cached Map Tiles
 
-1. **收集 GPX 文件或压缩包**：
-   - 检查用户在当前对话中上传的 `.gpx` 或压缩包附件（位于 `<appDataDir>/brain/<conversation-id>/.user_uploaded/*`）或用户在指令中指定的本地文件/目录路径。
-   - 无需手动解压：直接将上传的压缩包或 `.gpx` 文件路径全部作为参数传给 `--gpx`，由 [prepare_and_download.py](./scripts/prepare_and_download.py) 的 `expand_gpx_inputs` 自动解包、递归扫描 `.gpx` 并按时间戳排序合并。
-2. **解析运动类型与轨迹名称**：
-   - 从 `3D轨迹： ...` 指令中提取可选的运动方式（`行走`/`跑步` -> `行走`，`骑行`/`骑车` -> `骑行`，`自驾`/`开车` -> `自驾`；若未提供则设为 `auto`）以及 `<轨迹名称>`。
-
-### 第 2 步：运行自动解包、轨迹合并与地图瓦片下载
-
-使用 [prepare_and_download.py](./scripts/prepare_and_download.py) 自动解包压缩文件、解析合并所有 GPX 文件、计算最佳缩放级别 `z` 并下载卫星与路网瓦片至 `<scratchDir>/track_work`：
+Run `scripts/prepare_and_download.py`.
+- **Case A: User uploaded or specified file(s)**: pass them via `--gpx "<file1>" "<file2>" ...`
+- **Case B: User did NOT upload or specify file(s)**: omit `--gpx` and pass `--gpx-dir "<workspace_dir>/GPX"` so it automatically scans `./GPX` and marks it for post-render cleanup.
 
 ```bash
-python3 /Users/aubreyhan/Tools/git_repo/PersonalDev/EPS32/.agents/skills/3d-track-animation/scripts/prepare_and_download.py \
-  --gpx <file_or_archive1> [file_or_archive2 ...] \
+python3 "<skill_dir>/scripts/prepare_and_download.py" \
+  --gpx-dir "./GPX" \
   --name "<轨迹名称>" \
   --mode "<行走|骑行|自驾|auto>" \
-  --work-dir "<scratchDir>/track_work"
+  --work-dir "<scratch_or_tmp_dir>/track_work"
 ```
+*(Note: `<skill_dir>` is the directory containing this `SKILL.md`. If the user uploaded files, add `--gpx "<path1>" "<path2>"` to the command above.)*
 
-> [!NOTE]
-> 先在标准沙盒模式 (`BypassSandbox: false`) 下运行；若因沙盒无网络权限导致地图瓦片下载数量为 0，则仅对该瓦片下载命令使用 `BypassSandbox: true` 重新执行。
+`prepare_and_download.py` automatically:
+1. Unpacks any compressed archives or scans `./GPX` (relative to the current working directory, or the path passed to `--gpx-dir`) if `--gpx` is omitted.
+2. Parses all GPX files, sorts them chronologically, merges points, and smooths elevation.
+3. Determines the activity mode (`行走` / `骑行` / `自驾`) and selects optimal zoom level `z` (`8..17`).
+4. Uses the persistent local cache directory (`<skill_dir>/cache/`) and verifies whether cached map tiles (`ETag` / `Last-Modified` / `SHA-256`) have remote updates.
 
-### 第 3 步：编译并渲染 16:9 与 9:16 双分辨率 3D 轨迹视频
+### Step 2: Compile & Render Both 16:9 and 9:16 Videos into `./output`
 
-在标准沙盒模式 (`BypassSandbox: false`) 下运行 [run_3d_track.sh](./scripts/run_3d_track.sh)，自动编译 [render_3d_track.mm](./scripts/render_3d_track.mm) 并输出 `16:9` 与 `9:16` 两个 MP4 视频到工作区目录 `/Users/aubreyhan/Tools/git_repo/PersonalDev/EPS32/`：
+Run `<skill_dir>/scripts/run_3d_track.sh`:
 
 ```bash
-zsh /Users/aubreyhan/Tools/git_repo/PersonalDev/EPS32/.agents/skills/3d-track-animation/scripts/run_3d_track.sh \
-  "<scratchDir>/track_work/track_data.json" \
-  "/Users/aubreyhan/Tools/git_repo/PersonalDev/EPS32/<输出文件名前缀>"
+"<skill_dir>/scripts/run_3d_track.sh" \
+  "<scratch_or_tmp_dir>/track_work/track_data.json" \
+  "./output/<轨迹名称>"
 ```
 
-- **进度汇报规则**：若渲染或下载任务转入后台异步执行且预计耗时超过 2 分钟，使用 `schedule` 工具设置 `DurationSeconds: 120` 定时器，每 2 分钟向用户汇报一次当前渲染进度，直至两个分辨率视频全部生成完毕。
+What `run_3d_track.sh` does:
+1. Detects the OS (`Darwin` vs `Linux`):
+   - **macOS (`Darwin`)**: Compiles `scripts/render_3d_track.mm` (if updated) and renders via native `CoreGraphics` + `AVFoundation`.
+   - **Linux (`Linux`)**: Compiles `scripts/render_3d_track_linux.cpp` (if updated), runs `scripts/prepare_linux_assets.py`, and renders via multi-threaded C++17 software rasterization piped into `ffmpeg`.
+2. Creates `<workspace_dir>/output/` automatically if it does not exist, and outputs:
+   - `<workspace_dir>/output/<轨迹名称>_16x9.mp4` (`1280x720`, 60fps)
+   - `<workspace_dir>/output/<轨迹名称>_9x16.mp4` (`720x1280`, 60fps)
+3. If the GPX files were loaded from `<workspace_dir>/GPX`, automatically empties `<workspace_dir>/GPX` once both videos are verified non-empty.
 
-### 第 4 步：校验输出并展示结果
+### Step 3: Verify & Present Results
 
-1. 确认 `<输出文件名前缀>_16x9.mp4` 与 `<输出文件名前缀>_9x16.mp4` 均已生成且文件大小正常。
-2. 如需生成预览关键帧，可执行：
-   ```bash
-   /Users/aubreyhan/Tools/git_repo/PersonalDev/EPS32/.agents/skills/3d-track-animation/scripts/bin/render_3d_track \
-     --json "<scratchDir>/track_work/track_data.json" \
-     --res-dir "/Users/aubreyhan/Tools/git_repo/PersonalDev/EPS32/.agents/skills/3d-track-animation/resources" \
-     --preview "<scratchDir>" --16x9
-   ```
-3. 向用户返回生成的 `16:9` 和 `9:16` 视频文件链接、自动识别或指定的运动模式、合并后的总里程与累计爬升数据。
+Verify that both `<workspace_dir>/output/<轨迹名称>_16x9.mp4` and `<workspace_dir>/output/<轨迹名称>_9x16.mp4` exist and are non-empty, then report the summary metrics and clickable `file://` links to the user.

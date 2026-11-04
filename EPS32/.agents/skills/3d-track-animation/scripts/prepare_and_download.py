@@ -9,6 +9,7 @@ import argparse
 import bz2
 import concurrent.futures
 import gzip
+import hashlib
 import json
 import lzma
 import math
@@ -19,6 +20,9 @@ import ssl
 import subprocess
 import sys
 import tarfile
+import threading
+import time
+import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
@@ -194,69 +198,192 @@ def choose_optimal_zoom(lats, lons, use_gcj02):
     return best_z, x_min, x_max, y_min, y_max
 
 
-def download_tiles(z, x_min, x_max, y_min, y_max, sat_dir, road_dir, use_road_overlay):
+def is_valid_tile_file(path):
+    if not os.path.exists(path):
+        return False
+    try:
+        sz = os.path.getsize(path)
+        if sz <= 100:
+            return False
+        with open(path, 'rb') as f:
+            magic = f.read(8)
+        if path.lower().endswith('.jpg'):
+            return magic.startswith(b'\xff\xd8')
+        if path.lower().endswith('.png'):
+            return magic.startswith(b'\x89PNG\r\n\x1a\n')
+        return True
+    except Exception:
+        return False
+
+
+def file_sha256(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        while True:
+            chunk = f.read(65536)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def download_tiles(
+    z, x_min, x_max, y_min, y_max, sat_dir, road_dir, use_road_overlay,
+    cache_dir=None, check_updates=True, max_age_hours=24.0
+):
     os.makedirs(sat_dir, exist_ok=True)
     if use_road_overlay:
         os.makedirs(road_dir, exist_ok=True)
+
+    meta_root = cache_dir if cache_dir else os.path.dirname(sat_dir)
+    os.makedirs(meta_root, exist_ok=True)
+    meta_path = os.path.join(meta_root, "tile_cache_meta.json")
+    tile_meta = {}
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, 'r', encoding='utf-8') as f:
+                tile_meta = json.load(f)
+        except Exception:
+            tile_meta = {}
+
+    meta_lock = threading.Lock()
+    now_ts = time.time()
+    max_age_sec = max(0.0, float(max_age_hours) * 3600.0)
 
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
 
-    tasks = []
-    cached_count = 0
+    all_items = []
     for y in range(y_min, y_max + 1):
         for x in range(x_min, x_max + 1):
             sat_out = os.path.join(sat_dir, f"{z}_{x}_{y}.jpg")
             sat_url = f"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-            if os.path.exists(sat_out) and os.path.getsize(sat_out) > 100:
-                cached_count += 1
-            else:
-                tasks.append((sat_url, sat_out))
+            all_items.append((f"sat/{z}_{x}_{y}.jpg", sat_url, sat_out))
             if use_road_overlay and z <= 16:
                 road_out = os.path.join(road_dir, f"{z}_{x}_{y}.png")
                 srv = ((x + y) % 4) + 1
                 road_url = f"https://webst0{srv}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}"
-                if os.path.exists(road_out) and os.path.getsize(road_out) > 100:
-                    cached_count += 1
-                else:
-                    tasks.append((road_url, road_out))
+                all_items.append((f"road/{z}_{x}_{y}.png", road_url, road_out))
 
-    total_needed = cached_count + len(tasks)
-    if not tasks:
-        print(f"Map tiles 100% hit from local cache: {cached_count}/{total_needed} (z={z}, x={x_min}..{x_max}, y={y_min}..{y_max}).")
+    fresh_cached_count = 0
+    work_items = []
+    for key, url, out_path in all_items:
+        valid_local = is_valid_tile_file(out_path)
+        entry = tile_meta.get(key)
+        if valid_local:
+            # Backfill metadata if tile was migrated from legacy directory without metadata
+            if not entry or entry.get('size') != os.path.getsize(out_path) or not entry.get('sha256'):
+                entry = {
+                    'sha256': file_sha256(out_path),
+                    'size': os.path.getsize(out_path),
+                    'etag': (entry or {}).get('etag', ''),
+                    'last_modified': (entry or {}).get('last_modified', ''),
+                    'checked_at': (entry or {}).get('checked_at', now_ts)
+                }
+                tile_meta[key] = entry
+            age = now_ts - float(entry.get('checked_at', 0.0))
+            if not check_updates or age < max_age_sec:
+                fresh_cached_count += 1
+                continue
+            work_items.append((key, url, out_path, True, entry))
+        else:
+            work_items.append((key, url, out_path, False, entry or {}))
+
+    total_needed = len(all_items)
+    if not work_items:
+        # Save any backfilled metadata
+        try:
+            tmp_meta = f"{meta_path}.tmp.{os.getpid()}"
+            with open(tmp_meta, 'w', encoding='utf-8') as f:
+                json.dump(tile_meta, f, ensure_ascii=False)
+            os.replace(tmp_meta, meta_path)
+        except Exception:
+            pass
+        print(f"Map tiles 100% hit & verified from local cache: {fresh_cached_count}/{total_needed} (z={z}, x={x_min}..{x_max}, y={y_min}..{y_max}).")
         return
 
-    def fetch_one(item):
-        url, out_path = item
-        if os.path.exists(out_path) and os.path.getsize(out_path) > 100:
-            return True
-        tmp_path = f"{out_path}.tmp.{os.getpid()}"
+    def fetch_or_verify(item):
+        key, url, out_path, has_valid_local, entry = item
+        tmp_path = f"{out_path}.tmp.{os.getpid()}.{threading.get_ident()}"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        if has_valid_local:
+            if entry.get('etag'):
+                headers['If-None-Match'] = entry['etag']
+            if entry.get('last_modified'):
+                headers['If-Modified-Since'] = entry['last_modified']
+
         for attempt in range(2):
             try:
-                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                req = urllib.request.Request(url, headers=headers)
                 with urllib.request.urlopen(req, timeout=6, context=ctx) as resp:
                     data = resp.read()
+                    etag = resp.headers.get('ETag', '') or ''
+                    last_mod = resp.headers.get('Last-Modified', '') or ''
                     if len(data) > 100:
-                        with open(tmp_path, 'wb') as f:
-                            f.write(data)
-                        os.replace(tmp_path, out_path)
-                        return True
+                        new_sha = hashlib.sha256(data).hexdigest()
+                        old_sha = entry.get('sha256', '')
+                        is_updated = bool(has_valid_local and old_sha and new_sha != old_sha)
+                        if not has_valid_local or is_updated:
+                            with open(tmp_path, 'wb') as f:
+                                f.write(data)
+                            os.replace(tmp_path, out_path)
+                        with meta_lock:
+                            tile_meta[key] = {
+                                'sha256': new_sha,
+                                'size': len(data),
+                                'etag': etag or entry.get('etag', ''),
+                                'last_modified': last_mod or entry.get('last_modified', ''),
+                                'checked_at': time.time()
+                            }
+                        if not has_valid_local:
+                            return 'downloaded'
+                        return 'updated' if is_updated else 'verified'
+            except urllib.error.HTTPError as he:
+                if he.code == 304 and has_valid_local:
+                    with meta_lock:
+                        entry['checked_at'] = time.time()
+                        tile_meta[key] = entry
+                    return 'verified'
             except Exception:
                 try:
                     if os.path.exists(tmp_path):
                         os.remove(tmp_path)
                 except Exception:
                     pass
-        return False
+        if has_valid_local:
+            return 'cached_offline'
+        return 'failed'
 
     dl_count = 0
+    upd_count = 0
+    ver_count = 0
+    off_count = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=36) as ex:
-        for res in ex.map(fetch_one, tasks):
-            if res:
+        for status in ex.map(fetch_or_verify, work_items):
+            if status == 'downloaded':
                 dl_count += 1
-    ok_count = cached_count + dl_count
-    print(f"Map tiles ready: {ok_count}/{total_needed} (Local cache hit: {cached_count}, Newly downloaded: {dl_count}) [z={z}, x={x_min}..{x_max}, y={y_min}..{y_max}].")
+            elif status == 'updated':
+                upd_count += 1
+            elif status == 'verified':
+                ver_count += 1
+            elif status == 'cached_offline':
+                off_count += 1
+
+    try:
+        tmp_meta = f"{meta_path}.tmp.{os.getpid()}"
+        with open(tmp_meta, 'w', encoding='utf-8') as f:
+            json.dump(tile_meta, f, ensure_ascii=False)
+        os.replace(tmp_meta, meta_path)
+    except Exception:
+        pass
+
+    ok_count = fresh_cached_count + ver_count + off_count + upd_count + dl_count
+    print(
+        f"Map tiles ready: {ok_count}/{total_needed} "
+        f"(Cache hit: {fresh_cached_count + ver_count + off_count}, Updated: {upd_count}, Newly downloaded: {dl_count}) "
+        f"[z={z}, x={x_min}..{x_max}, y={y_min}..{y_max}]."
+    )
 
 
 def is_valid_gpx_candidate(filepath):
@@ -346,10 +473,24 @@ def expand_gpx_inputs(input_paths, extract_root):
             sub_dir = os.path.join(extract_root, f"unarchive_{archive_counter[0]}")
             os.makedirs(sub_dir, exist_ok=True)
             print(f"Unpacking archive ({base}): {path} -> {sub_dir}")
-            # macOS /usr/bin/tar (bsdtar/libarchive) supports 7z, rar, zip, tar natively
-            res = subprocess.run(['/usr/bin/tar', '-xf', path, '-C', sub_dir], capture_output=True)
-            if res.returncode != 0:
-                subprocess.run(['7z', 'x', path, f'-o{sub_dir}', '-y'], capture_output=True)
+            # Try bsdtar / /usr/bin/tar / 7z / unrar across macOS and Linux
+            extracted_ok = False
+            for cmd in [
+                ['bsdtar', '-xf', path, '-C', sub_dir],
+                ['/usr/bin/tar', '-xf', path, '-C', sub_dir],
+                ['7z', 'x', path, f'-o{sub_dir}', '-y'],
+                ['7za', 'x', path, f'-o{sub_dir}', '-y'],
+                ['unrar', 'x', '-y', path, sub_dir],
+            ]:
+                try:
+                    res = subprocess.run(cmd, capture_output=True)
+                    if res.returncode == 0 and os.listdir(sub_dir):
+                        extracted_ok = True
+                        break
+                except FileNotFoundError:
+                    continue
+            if not extracted_ok:
+                print(f"Warning: Could not unpack {path}; ensure 7z/bsdtar/unrar is installed.", file=sys.stderr)
             process_path(sub_dir)
             return
 
@@ -375,26 +516,66 @@ def expand_gpx_inputs(input_paths, extract_root):
     return gpx_files
 
 
+def compute_gpx_signature(gpx_paths, name, mode):
+    h = hashlib.sha256()
+    h.update(f"name={name.strip()}|mode={mode.strip()}\n".encode('utf-8'))
+    for p in sorted(gpx_paths):
+        h.update(f"file={os.path.basename(p)}|sha256={file_sha256(p)}\n".encode('utf-8'))
+    return h.hexdigest()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Prepare and merge GPX files (or archives) for 3D track animation")
     default_cache = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "cache"))
-    parser.add_argument("--gpx", nargs="+", required=True, help="One or more GPX files, compressed archives (.zip/.tar.gz/.gz/.7z), or folders")
+    parser.add_argument("--gpx", nargs="*", default=[], help="One or more GPX files, compressed archives (.zip/.tar.gz/.gz/.7z), or folders. If omitted, automatically searches ./GPX")
+    parser.add_argument("--gpx-dir", default="GPX", help="Fallback subdirectory to search when --gpx is not provided (default: ./GPX)")
     parser.add_argument("--name", default="", help="Track title displayed in overview banner")
     parser.add_argument("--mode", default="auto", help="Activity mode: 行走|骑行|自驾 or auto")
     parser.add_argument("--work-dir", required=True, help="Working directory for track_data.json")
     parser.add_argument("--cache-dir", default=default_cache, help="Persistent local cache directory for map tiles")
+    parser.add_argument("--check-updates", action="store_true", default=True, help="Check whether cached content has updates (default: True)")
+    parser.add_argument("--cache-max-age-hours", type=float, default=24.0, help="Max age in hours before re-verifying cached map tiles with remote server (set 0 to force check every tile)")
     parser.add_argument("--skip-tiles", action="store_true", help="Skip downloading map tiles")
     args = parser.parse_args()
 
     os.makedirs(args.work_dir, exist_ok=True)
+    os.makedirs(args.cache_dir, exist_ok=True)
     extract_dir = os.path.join(args.work_dir, "extracted_gpx")
     if os.path.exists(extract_dir):
         shutil.rmtree(extract_dir)
 
-    expanded_gpx_paths = expand_gpx_inputs(args.gpx, extract_dir)
+    gpx_inputs = [p for p in args.gpx if p and p.strip()]
+    cleanup_gpx_dir = ""
+    fallback_dir = os.path.abspath(args.gpx_dir)
+
+    if not gpx_inputs:
+        os.makedirs(fallback_dir, exist_ok=True)
+        print(f"No --gpx files specified; automatically searching subdirectory: {fallback_dir}")
+        gpx_inputs = [fallback_dir]
+        cleanup_gpx_dir = fallback_dir
+    elif len(gpx_inputs) == 1 and os.path.isdir(gpx_inputs[0]) and os.path.abspath(gpx_inputs[0]) == fallback_dir:
+        cleanup_gpx_dir = fallback_dir
+
+    expanded_gpx_paths = expand_gpx_inputs(gpx_inputs, extract_dir)
     if not expanded_gpx_paths:
-        print(f"Error: No valid GPX files found in input(s): {args.gpx}", file=sys.stderr)
+        print(f"Error: No valid GPX or archive files found in input(s): {gpx_inputs}", file=sys.stderr)
         sys.exit(1)
+
+    input_sig = compute_gpx_signature(expanded_gpx_paths, args.name, args.mode)
+    tracks_cache_dir = os.path.join(args.cache_dir, "tracks")
+    os.makedirs(tracks_cache_dir, exist_ok=True)
+    cached_track_json = os.path.join(tracks_cache_dir, f"track_{input_sig[:16]}.json")
+    json_path = os.path.join(args.work_dir, "track_data.json")
+
+    # Check if existing track_data.json is up-to-date with current GPX files & parameters
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                existing_td = json.load(f)
+            if existing_td.get('input_signature') != input_sig:
+                print("Detected GPX/parameter update compared to cached track_data.json -> re-parsing.")
+        except Exception:
+            pass
 
     # 1. Parse all GPX files
     parsed_files = []
@@ -525,7 +706,7 @@ def main():
     if use_road_overlay:
         os.makedirs(road_dir, exist_ok=True)
 
-    # Migrate any tiles that may already exist in work_dir into the persistent local cache
+    # Migrate or update any tiles that exist in work_dir into the persistent local cache
     for sub_name, target_cache_dir in [(f"tiles_sat_z{z}", sat_dir), (f"tiles_road_z{z}", road_dir)]:
         legacy_dir = os.path.join(args.work_dir, sub_name)
         if os.path.abspath(legacy_dir) != os.path.abspath(target_cache_dir) and os.path.isdir(legacy_dir):
@@ -533,10 +714,15 @@ def main():
             for fname in os.listdir(legacy_dir):
                 src_f = os.path.join(legacy_dir, fname)
                 dst_f = os.path.join(target_cache_dir, fname)
-                if os.path.isfile(src_f) and os.path.getsize(src_f) > 100 and not os.path.exists(dst_f):
-                    shutil.copy2(src_f, dst_f)
+                if is_valid_tile_file(src_f):
+                    if not is_valid_tile_file(dst_f) or (
+                        os.path.getmtime(src_f) > os.path.getmtime(dst_f) and file_sha256(src_f) != file_sha256(dst_f)
+                    ):
+                        shutil.copy2(src_f, dst_f)
 
     track_data = {
+        'input_signature': input_sig,
+        'updated_at': int(time.time()),
         'name': final_name,
         'icon_mode': icon_mode,
         'mode_desc': mode_desc,
@@ -551,6 +737,7 @@ def main():
         'use_road_overlay': use_road_overlay,
         'sat_tiles_dir': sat_dir,
         'road_tiles_dir': road_dir,
+        'cleanup_gpx_dir': cleanup_gpx_dir,
         'total_dist': round(cum_dist, 1),
         'total_asc': round(cum_asc, 1),
         'total_desc': round(cum_desc, 1),
@@ -559,18 +746,22 @@ def main():
         'points': sampled
     }
 
-    json_path = os.path.join(args.work_dir, "track_data.json")
     with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(track_data, f, ensure_ascii=False)
+    with open(cached_track_json, 'w', encoding='utf-8') as f:
         json.dump(track_data, f, ensure_ascii=False)
 
     print(f"Track Name : {final_name}")
     print(f"Mode       : {mode_desc} (icon_mode={icon_mode})")
     print(f"Distance   : {cum_dist/1000.0:.2f} km | Ascent: {cum_asc:.0f} m | Descent: {cum_desc:.0f} m | Avg HR: {avg_hr}")
     print(f"Tile Grid  : z={z}, x={x_min}..{x_max} ({x_max-x_min+1} cols), y={y_min}..{y_max} ({y_max-y_min+1} rows)")
-    print(f"Saved JSON : {json_path}")
+    print(f"Saved JSON : {json_path} (Cached: {cached_track_json})")
 
     if not args.skip_tiles:
-        download_tiles(z, x_min, x_max, y_min, y_max, sat_dir, road_dir, use_road_overlay)
+        download_tiles(
+            z, x_min, x_max, y_min, y_max, sat_dir, road_dir, use_road_overlay,
+            cache_dir=args.cache_dir, check_updates=args.check_updates, max_age_hours=args.cache_max_age_hours
+        )
 
 
 if __name__ == "__main__":
