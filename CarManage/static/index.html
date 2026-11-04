@@ -1837,6 +1837,19 @@
           </div>
         </div>
 
+        <!-- 乐观锁并发版本冲突保护面板 -->
+        <div id="sync-conflicts-section" class="bg-amber-50/70 rounded-xl p-3.5 border border-amber-200/80 space-y-2 hidden">
+          <div class="flex items-center justify-between">
+            <div class="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+              <span>🛡️</span> 多端并发修改冲突快照 (<span id="sync-conflicts-count">0</span>)
+            </div>
+            <button type="button" onclick="App.clearSyncConflicts()" class="text-[11px] text-amber-700 hover:text-amber-900 underline">
+              清空归档
+            </button>
+          </div>
+          <div id="sync-conflicts-list" class="space-y-2 max-h-36 overflow-y-auto text-[11px]"></div>
+        </div>
+
         <!-- Cloudflare Worker 域名配置 -->
         <div class="space-y-3">
           <label class="form-label text-xs">
@@ -2078,9 +2091,15 @@
     </div>
   </div>
 
-  <!-- 先加载离线 IndexedDB 与同步引擎，再加载业务主控 -->
-  <script src="db.js?v=73"></script>
-  <script src="app.js?v=73"></script>
+  <!-- 先加载离线 IndexedDB 与同步引擎，再按序加载 6 大业务子模块与核心组装入口 -->
+  <script src="db.js?v=74"></script>
+  <script src="modules/auth.js?v=74"></script>
+  <script src="modules/sync_ui.js?v=74"></script>
+  <script src="modules/tri_calc.js?v=74"></script>
+  <script src="modules/stations.js?v=74"></script>
+  <script src="modules/records.js?v=74"></script>
+  <script src="modules/energy_charts.js?v=74"></script>
+  <script src="app.js?v=74"></script>
 </body>
 </html>
 
