@@ -22,9 +22,6 @@ impl FsEventsWatcher {
         let debounce_queue = Arc::new(DebounceQueue::new(debounce_duration, scan_trigger_tx));
         let queue_clone = Arc::clone(&debounce_queue);
 
-        // Tokio runtime handle for bridging synchronous notify callback to async debounce queue
-        let rt = tokio::runtime::Handle::current();
-
         let watcher = RecommendedWatcher::new(
             move |res: Result<Event, notify::Error>| {
                 if let Ok(event) = res {
@@ -46,7 +43,7 @@ impl FsEventsWatcher {
                                 };
 
                                 let q = Arc::clone(&queue_clone);
-                                rt.spawn(async move {
+                                tauri::async_runtime::spawn(async move {
                                     q.trigger(target_folder).await;
                                 });
                             }
