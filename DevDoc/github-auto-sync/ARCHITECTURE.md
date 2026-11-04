@@ -181,3 +181,4 @@ sequenceDiagram
 4. **管道并发排空防死锁**：调度底层 Git 时，主进程通过异步并发队列实时消费 `stdout` 与 `stderr`，杜绝子进程因输出超过内核 64KB Pipe 缓冲区而写阻塞卡死。
 5. **子进程超时熔断与防重入锁自愈**：所有 Git 调用受 120 秒超时监控。若子进程挂起自动强制 terminate 杀灭，确保调度器防重入锁在 `defer` 中必然释放，保证后续同步正常调度。
 6. **网络层弹性防御与 SSH 密钥显式绑定**：针对网络抖动及 macOS 钥匙串环境下多密钥匹配问题，`GitRunner` 注入带有 `BatchMode=yes`、`ConnectTimeout=15` 与显式 `IdentityFile` 的 `GIT_SSH_COMMAND`，并在网络操作失败时提供递增重试，杜绝偶发性公钥认证阻断。
+7. **Git LFS 协同集成与实体化保障**：集成 Git LFS 识别流。`LargeFileHandler` 识别 `filter=lfs` 属性对合法 LFS 大文件予以白名单放行；`SyncEngine` 在远端拉取拉齐后自动触发 `git lfs pull`，保证视频/二进制资源不降级为指针文件。

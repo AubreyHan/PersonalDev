@@ -224,3 +224,7 @@
   - **任务 8.1**：在 `~/.ssh/config` 与应用运行环境中强化 `IdentitiesOnly yes`、`UseKeychain yes` 与 `AddKeysToAgent yes`，杜绝非 GitHub 密钥导致的握手超限拒绝。
   - **任务 8.2**：在 `GitRunner.swift` 中为 `GIT_SSH_COMMAND` 注入显式密钥绑定与连接超时/保持参数 (`ConnectTimeout=15`, `ServerAliveInterval=15`, `ServerAliveCountMax=3`)。
   - **任务 8.3**：在 `GitRunner.run` 中实现针对网络操作的自动递增重试（至多 2 次重试），平滑消除公网抖动异常。
+
+- [x] **9. 阶段九：Git LFS 大文件协同与实体化支持**
+  - **任务 9.1**：在 `LargeFileHandler` 中增加 `isTrackedByLFS` 白名单过滤，对配置了 `filter=lfs` 的大文件放行，不强制加入 `.gitignore`。
+  - **任务 9.2**：在 `SyncEngine` 中新增 `pullLFSIfNeeded`，在远端合并/拉取后自动调用 `git lfs pull`，将指针文件实体化。
