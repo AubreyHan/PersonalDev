@@ -7,12 +7,12 @@ export const TrashRuleView: React.FC = () => {
   const saveTrashConfig = useFolderStore((s) => s.saveTrashConfig);
 
   const [days, setDays] = useState(trashConfig.daysThreshold);
-  const [maxGb, setMaxGb] = useState(trashConfig.maxCapacityGb ?? trashConfig.maxCapacityGB ?? 0);
+  const [maxGb, setMaxGb] = useState(trashConfig.maxCapacityGb);
   const [isSaving, setIsSaving] = useState(false);
 
   React.useEffect(() => {
     setDays(trashConfig.daysThreshold);
-    setMaxGb(trashConfig.maxCapacityGb ?? trashConfig.maxCapacityGB ?? 0);
+    setMaxGb(trashConfig.maxCapacityGb);
   }, [trashConfig]);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -21,7 +21,6 @@ export const TrashRuleView: React.FC = () => {
     await saveTrashConfig({
       daysThreshold: Number(days),
       maxCapacityGb: Number(maxGb),
-      maxCapacityGB: Number(maxGb),
     });
     setIsSaving(false);
   };
