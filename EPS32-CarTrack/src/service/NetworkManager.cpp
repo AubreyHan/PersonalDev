@@ -804,7 +804,9 @@ void AppNetworkManager::update() {
     }
 
     if (_portalRunning) {
-        _dnsServer.processNextRequest();
+        for (int i = 0; i < 8; ++i) {
+            _dnsServer.processNextRequest();
+        }
         _server.handleClient();
 
         // Handle connection testing state machine
@@ -838,6 +840,13 @@ void AppNetworkManager::update() {
     state.lock();
     auto& w = state.getContextUnsafe().wifi;
     w.isConnected = connected;
+    if (_portalRunning) {
+        w.apStations = (uint8_t)WiFi.softAPgetStationNum();
+        w.portalConnectState = _portalConnectState;
+    } else {
+        w.apStations = 0;
+        w.portalConnectState = 0;
+    }
     if (connected) {
         strncpy(w.ssid, WiFi.SSID().c_str(), sizeof(w.ssid) - 1);
         strncpy(w.ipAddr, WiFi.localIP().toString().c_str(), sizeof(w.ipAddr) - 1);
