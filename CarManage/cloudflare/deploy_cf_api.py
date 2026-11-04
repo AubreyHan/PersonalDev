@@ -44,6 +44,12 @@ def build_static_assets(script_dir):
         "/db.js": ("db.js", "application/javascript; charset=utf-8"),
         "/sw.js": ("sw.js", "application/javascript; charset=utf-8"),
         "/manifest.json": ("manifest.json", "application/manifest+json; charset=utf-8"),
+        "/modules/auth.js": ("modules/auth.js", "application/javascript; charset=utf-8"),
+        "/modules/sync_ui.js": ("modules/sync_ui.js", "application/javascript; charset=utf-8"),
+        "/modules/tri_calc.js": ("modules/tri_calc.js", "application/javascript; charset=utf-8"),
+        "/modules/stations.js": ("modules/stations.js", "application/javascript; charset=utf-8"),
+        "/modules/records.js": ("modules/records.js", "application/javascript; charset=utf-8"),
+        "/modules/energy_charts.js": ("modules/energy_charts.js", "application/javascript; charset=utf-8"),
     }
     for route, (filename, mime) in files_map.items():
         p = os.path.join(static_dir, filename)

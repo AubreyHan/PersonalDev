@@ -2,13 +2,19 @@
  * 我的车管家 Service Worker (离线缓存核心)
  */
 
-const CACHE_NAME = 'car-tracker-cache-v73';
+const CACHE_NAME = 'car-tracker-cache-v74';
 const STATIC_ASSETS = [
   './',
   './index.html',
   './style.css',
-  './app.js',
   './db.js',
+  './modules/auth.js',
+  './modules/sync_ui.js',
+  './modules/tri_calc.js',
+  './modules/stations.js',
+  './modules/records.js',
+  './modules/energy_charts.js',
+  './app.js',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
