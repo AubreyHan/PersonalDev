@@ -1,5 +1,6 @@
 .DS_Store
 .build/
-# dist/
+dist/GitHubSync.app
+dist/dmg_staging/
 *.swp
 *~
