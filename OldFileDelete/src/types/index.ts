@@ -36,7 +36,6 @@ export interface FolderItem {
 export interface TrashRuleConfig {
   daysThreshold: number; // 默认初始值 0 (填 0 表示不执行)
   maxCapacityGb: number; // 默认初始值 0 (填 0 表示不执行)
-  maxCapacityGB?: number; // 兼容别名
 }
 
 export interface AskItem {
