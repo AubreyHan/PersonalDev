@@ -35,7 +35,7 @@ impl DebounceQueue {
         let path_clone = folder_path.clone();
         let tasks_map = Arc::clone(&self.active_tasks);
 
-        let handle = tokio::spawn(async move {
+        let handle = tauri::async_runtime::spawn(async move {
             tokio::time::sleep(duration).await;
             // Clean up from active map
             let mut map = tasks_map.lock().await;

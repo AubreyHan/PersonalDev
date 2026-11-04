@@ -108,8 +108,8 @@ impl FsEventsWatcher {
 }
 
 /// Spawns an hourly background heartbeat to trigger scheduled checks for natural time-based expiration.
-pub fn spawn_hourly_heartbeat(trigger_tx: mpsc::Sender<()>) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
+pub fn spawn_hourly_heartbeat(trigger_tx: mpsc::Sender<()>) -> tauri::async_runtime::JoinHandle<()> {
+    tauri::async_runtime::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(3600));
         // First tick completes immediately, skip it
         interval.tick().await;
