@@ -84,7 +84,7 @@ python3 server.py 8088
 ## ☁️ Cloudflare D1 云端同步配置
 
 如需在多端（iPhone / iPad / Mac）使用云端数据库：
-1. 参考 [Cloudflare 部署指南](file:///Users/aubreyhan/Tools/git_repo/car_maintenance_app/cloudflare/deploy_guide.md) 创建 Cloudflare D1 数据库与 Worker 服务（全程可在 Cloudflare 网页端 3 分钟完成，无需本地配环境）。
+1. 参考 [Cloudflare 部署指南](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/CarManage/cloudflare/deploy_guide.md) 创建 Cloudflare D1 数据库与 Worker 服务（全程可在 Cloudflare 网页端 3 分钟完成，无需本地配环境）。
 2. 在应用右上角点击 **☁️ 云端同步** 按钮，填入您的 Worker 域名（如 `https://car-care-api.xxx.workers.dev`）并保存。
 3. 点击“立即双向同步”，后续在任何设备打开都能自动同步最新记录！
 
@@ -93,7 +93,7 @@ python3 server.py 8088
 ## 📁 目录结构
 
 ```
-car_maintenance_app/
+CarManage/
 ├── server.py              # 轻量 RESTful API 与 PWA 静态服务托管
 ├── database.py            # SQLite 本地数据库、自动建表、数据统计逻辑
 ├── start.sh               # 一键启动并打开浏览器的快捷脚本

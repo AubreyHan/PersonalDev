@@ -628,7 +628,7 @@ if __name__ == "__main__":
 
 #### 运行方式：
 ```bash
-python3 car_maintenance_app/cloudflare/deploy_cf_api.py <ACCOUNT_ID> <API_TOKEN>
+python3 cloudflare/deploy_cf_api.py <ACCOUNT_ID> <API_TOKEN>
 ```
 *仅需执行一条命令，10 秒内即可完成从静态资源打包、新建空数据库、执行建表到全球部署的全流程。*
 
