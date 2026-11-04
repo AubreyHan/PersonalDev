@@ -80,6 +80,67 @@
       input.value = saved || (window.CarSync ? CarSync.DEFAULT_WORKER_URL : 'https://car-tracker-api.aubreyhan.workers.dev');
     }
     if (window.CarSync) CarSync.updatePendingCount();
+    await this.renderSyncConflicts();
+  },
+
+  async renderSyncConflicts() {
+    const section = document.getElementById('sync-conflicts-section');
+    const countEl = document.getElementById('sync-conflicts-count');
+    const listEl = document.getElementById('sync-conflicts-list');
+    if (!section || !listEl || !window.CarDB || !CarDB.getConflicts) return;
+
+    const conflicts = await CarDB.getConflicts();
+    if (!conflicts || conflicts.length === 0) {
+      section.classList.add('hidden');
+      listEl.innerHTML = '';
+      if (countEl) countEl.textContent = '0';
+      return;
+    }
+
+    section.classList.remove('hidden');
+    if (countEl) countEl.textContent = String(conflicts.length);
+    const entityLabel = {
+      vehicles: '车辆档案',
+      fuel: '油耗记录',
+      electricity: '电耗记录',
+      maintenance: '费用支出',
+      status: '状态快照'
+    };
+
+    listEl.innerHTML = conflicts.map(c => {
+      const label = entityLabel[c.entity] || c.entity;
+      const timeStr = (c.occurred_at || '').replace('T', ' ').slice(0, 19);
+      return `
+        <div class="bg-white/90 rounded-lg p-2.5 border border-amber-200 flex items-center justify-between gap-2">
+          <div>
+            <div class="font-semibold text-slate-800">${label} #${c.record_id} · 版本 v${c.client_base_version || 1} ➔ v${c.server_version || 2}</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">发生于 ${timeStr} (已自动保护合并)</div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button type="button" onclick="App.resolveSyncConflict(${c.cid}, 'use_local')" class="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded border border-blue-200 font-medium">用本地</button>
+            <button type="button" onclick="App.resolveSyncConflict(${c.cid}, 'use_server')" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-200 font-medium">用云端</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  },
+
+  async resolveSyncConflict(cid, strategy) {
+    if (!window.CarSync || !CarSync.resolveConflict) return;
+    const ok = await CarSync.resolveConflict(cid, strategy);
+    if (ok) {
+      this.showToast(strategy === 'use_server' ? '已恢复为云端版本！' : '已强制应用本地版本！', 'success');
+      await this.renderSyncConflicts();
+    } else {
+      this.showToast('处理冲突记录失败，请检查网络连接', 'error');
+    }
+  },
+
+  async clearSyncConflicts() {
+    if (!window.CarDB || !CarDB.clearConflicts) return;
+    await CarDB.clearConflicts();
+    await this.renderSyncConflicts();
+    this.showToast('冲突归档日志已清空', 'success');
   },
 
   async fillDefaultWorkerUrl() {
@@ -149,6 +210,7 @@
     if (window.CarSync) {
       this.showToast('正在连接云端双向同步...', 'info');
       await CarSync.sync(false, true);
+      await this.renderSyncConflicts();
       if (CarSync.status === 'synced') {
         this.showToast('✅ 云端双向同步完成！', 'success');
       } else if (CarSync.status === 'error') {
