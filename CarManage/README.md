@@ -94,22 +94,30 @@ python3 server.py 8088
 
 ```
 CarManage/
-├── server.py              # 轻量 RESTful API 与 PWA 静态服务托管
-├── database.py            # SQLite 本地数据库、自动建表、数据统计逻辑
+├── server.py              # 轻量 RESTful API、乐观锁版本控制与 PWA 静态服务托管
+├── database.py            # SQLite 本地数据库、自动建表、乐观锁校验、数据统计逻辑
 ├── start.sh               # 一键启动并打开浏览器的快捷脚本
+├── rollback.sh            # 版本保护与一键无损回滚脚本 (./rollback.sh status | restore)
 ├── test_app.py            # 核心业务逻辑与数据模型单元测试
-├── test_handler.py        # API 与 PWA 静态路由集成测试
+├── test_handler.py        # API、模块化静态路由与乐观锁冲突集成测试
 ├── static/
 │   ├── index.html         # PWA 主单页应用 (自适应手机/平板/PC全平台)
-│   ├── app.js             # 智能联动计算、离线优先能耗分析与交互驱动
-│   ├── db.js              # IndexedDB 本地数据库封装与 Cloudflare 双向同步引擎
+│   ├── app.js             # 核心状态定义、全局事件绑定与模块化自动装配器
+│   ├── modules/           # 前端高内聚业务子模块 (零构建依赖)
+│   │   ├── auth.js        # 用户登录鉴权、离线哈希校验与账号安全模块
+│   │   ├── sync_ui.js     # PWA 缓存、云端同步状态与乐观锁冲突裁决 UI 模块
+│   │   ├── tri_calc.js    # 油电三项智能联动计算、电池校准与常用费用标签模块
+│   │   ├── stations.js    # 高德+百度双地图并发检索、30m 空间去重与品牌保护模块
+│   │   ├── records.js     # 车辆档案、概览看板、油/电/维保/状态快照 CRUD 与历史明细模块
+│   │   └── energy_charts.js # 区间能耗、FIFO 实耗成本分析、SVG 趋势图与多维费用图表模块
+│   ├── db.js              # IndexedDB 本地存储、Outbox 智能合并与乐观锁双向同步引擎
 │   ├── sw.js              # Service Worker 离线应用缓存
 │   ├── manifest.json      # Web App Manifest 桌面/手机安装配置
 │   ├── icon-192.png       # 192x192 高清 App 图标
 │   ├── icon-512.png       # 512x512 高清 App 图标
 │   └── style.css          # 自定义主题与汽车仪表质感样式
 └── cloudflare/
-    ├── schema.sql         # Cloudflare D1 数据表初始化脚本
+    ├── schema.sql         # Cloudflare D1 数据表初始化脚本 (含 sync_version 乐观锁字段)
     ├── worker.js          # Cloudflare Worker 全球边缘计算 RESTful API 服务
     ├── wrangler.toml      # Wrangler 命令行一键部署配置
     └── deploy_guide.md    # 详细的 Cloudflare 网页/CLI 极速部署指南
