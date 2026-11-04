@@ -122,14 +122,16 @@
 
 ## Phase 4: Git 执行管道与三大同步策略
 
-### 任务 4.1: 宿主系统 Git 命令调度器
-* **目标**：通过 Rust 异步执行本机 `git` 命令，复用系统 SSH Key。
+### 任务 4.1: 宿主系统 Git 命令调度器与防死锁超时熔断
+* **目标**：异步调度本机 `git` 命令，复用系统 SSH Key；解决 64KB 管道缓冲区死锁问题并引入 120 秒超时熔断。
 * **文件范围**：
-  * `src-tauri/src/git/runner.rs`
-* **Vibe Prompt 示范**：
-  > “编写 `runner.rs`：使用 `tokio::process::Command` 异步调度系统的 `git` 命令，设置 `current_dir` 为目标仓库目录。提供异步包装函数：`git_status()`, `git_fetch()`, `git_add()`, `git_commit()`, `git_push()` 等，并捕获 stderr/stdout。”
+  * `src-tauri/src/git/runner.rs`（或 Swift 架构下的 `GitRunner.swift`）
+* **核心防死锁与熔断规范**：
+  * **管道并发排空**：主进程启动子进程后，必须通过后台异步队列并发排空 `stdoutPipe` 与 `stderrPipe`，避免超过 64KB 导致 `write()` 阻塞卡死；
+  * **120 秒超时监控**：挂载超时定时器，超时自动调用 `terminate()` 杀死子进程并抛出超时错误，保证上层防重入锁正常释放；
+  * **Commit 静默参数**：`git commit` 默认携带 `-q`，减少大量文件变更时的无用输出。
 * **验收验证**：
-  * 在测试 repo 上调用 `git_status`，能正确拿到修改文件列表与当前分支。
+  * 在单次变更包含 1,000+ 个文件的测试仓库上触发提交，能顺畅完成并返回，无任何管道死锁；模拟进程阻塞超过 120 秒能安全超时退出。
 
 ### 任务 4.2: Commit Message 摘要生成器与大文件 (>100MB) 自动忽略
 * **目标**：自动提取变动文件生成格式化提交信息；对 $\ge 100\text{MB}$ 的大文件自动追加至 `.gitignore` 的 `# large files` 标签下，防止 GitHub 拒推。
