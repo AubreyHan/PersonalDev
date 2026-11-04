@@ -6,6 +6,8 @@ let repoRoot = URL(fileURLWithPath: #file)
     .deletingLastPathComponent()
 
 let dmgDir = repoRoot.appendingPathComponent("src-tauri/target/release/bundle/dmg").path
+let macosDir = repoRoot.appendingPathComponent("src-tauri/target/release/bundle/macos").path
+let relieaseDir = repoRoot.appendingPathComponent("reliease").path
 let iconPath = repoRoot.appendingPathComponent("src-tauri/icons/icon.icns").path
 
 guard let icon = NSImage(contentsOfFile: iconPath) else {
@@ -14,10 +16,39 @@ guard let icon = NSImage(contentsOfFile: iconPath) else {
 }
 
 let fm = FileManager.default
+
+// Ensure reliease directory exists
+try? fm.createDirectory(atPath: relieaseDir, withIntermediateDirectories: true, attributes: nil)
+
+// Stamp icon on original DMGs
 if let files = try? fm.contentsOfDirectory(atPath: dmgDir) {
     for f in files where f.hasSuffix(".dmg") {
         let fullPath = "\(dmgDir)/\(f)"
         let ok = NSWorkspace.shared.setIcon(icon, forFile: fullPath, options: [])
         print("Stamped icon onto \(f): \(ok)")
+        
+        // Copy DMG to reliease directory
+        let destDmg = "\(relieaseDir)/\(f)"
+        try? fm.removeItem(atPath: destDmg)
+        do {
+            try fm.copyItem(atPath: fullPath, toPath: destDmg)
+            let destOk = NSWorkspace.shared.setIcon(icon, forFile: destDmg, options: [])
+            print("Copied \(f) to reliease/ (stamped: \(destOk))")
+        } catch {
+            print("Failed to copy \(f) to reliease: \(error)")
+        }
     }
 }
+
+// Copy FilePurger.app to reliease directory
+let srcApp = "\(macosDir)/FilePurger.app"
+let destApp = "\(relieaseDir)/FilePurger.app"
+if fm.fileExists(atPath: srcApp) {
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+    p.arguments = [srcApp, destApp]
+    try? p.run()
+    p.waitUntilExit()
+    print("Copied FilePurger.app to reliease/ via ditto (exit: \(p.terminationStatus))")
+}
+

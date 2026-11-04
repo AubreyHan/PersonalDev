@@ -219,3 +219,8 @@
   * **查看器界面**：展示当前容量徽标、按等级过滤（ALL/SYNC/INFO/WARN/ERROR）、关键字实时检索、一键复制、访达定位与手动清空。
 * **验收验证**：
   * 连续写入超过 1MB 数据，日志大小稳定截留在 1MB 以下，头部历史日志平滑淘汰，最新日志完整保留；在访达中将应用删除，日志一并被彻底移除。
+
+- [x] **8. 阶段八：SSH 网络环境加固与弹性重试机制**
+  - **任务 8.1**：在 `~/.ssh/config` 与应用运行环境中强化 `IdentitiesOnly yes`、`UseKeychain yes` 与 `AddKeysToAgent yes`，杜绝非 GitHub 密钥导致的握手超限拒绝。
+  - **任务 8.2**：在 `GitRunner.swift` 中为 `GIT_SSH_COMMAND` 注入显式密钥绑定与连接超时/保持参数 (`ConnectTimeout=15`, `ServerAliveInterval=15`, `ServerAliveCountMax=3`)。
+  - **任务 8.3**：在 `GitRunner.run` 中实现针对网络操作的自动递增重试（至多 2 次重试），平滑消除公网抖动异常。
