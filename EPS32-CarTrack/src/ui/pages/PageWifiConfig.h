@@ -5,4 +5,7 @@ class PageWifiConfig : public BasePage {
 public:
     void render(M5Canvas& canvas, const SystemContext& ctx) override;
     bool onTouchTap(int16_t x, int16_t y, SystemContext& ctx) override;
+
+private:
+    uint32_t _successAutoExitMs = 0;
 };
