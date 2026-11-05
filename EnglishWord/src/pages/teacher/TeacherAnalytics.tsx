@@ -12,7 +12,7 @@ import {
   Volume2,
 } from 'lucide-react';
 import { playWordAudio } from '../../db/audioCache';
-import type { StudentAnalyticsSummary, StudentWeakWord } from '../../shared/types';
+import type { StudentAnalyticsSummary, StudentWeakWord, WordMeaning } from '@shared/types';
 
 export const TeacherAnalytics: React.FC = () => {
   const [summaries, setSummaries] = useState<StudentAnalyticsSummary[]>([]);
@@ -233,7 +233,7 @@ export const TeacherAnalytics: React.FC = () => {
                         </div>
 
                         <div className="text-xs text-slate-600 mt-1 line-clamp-1">
-                          {w.meanings.map((m) => `${m.pos} ${m.zh}`).join('； ')}
+                          {w.meanings.map((m: WordMeaning) => `${m.pos} ${m.zh}`).join('； ')}
                         </div>
 
                         <div className="text-[11px] text-amber-700 bg-amber-50 px-2 py-1 rounded-lg mt-2 inline-flex items-center gap-1.5 border border-amber-200/60">

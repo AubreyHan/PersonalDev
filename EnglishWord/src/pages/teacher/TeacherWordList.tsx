@@ -13,7 +13,7 @@ import {
   X,
   ExternalLink,
 } from 'lucide-react';
-import type { TeacherWord, WordMeaning, WordExample, WordInflections } from '../../shared/types';
+import type { TeacherWord, WordMeaning, WordExample, WordInflections } from '@shared/types';
 
 export const TeacherWordList: React.FC = () => {
   const [words, setWords] = useState<TeacherWord[]>([]);
@@ -259,7 +259,7 @@ export const TeacherWordList: React.FC = () => {
 
                 {/* 中文释义 */}
                 <div className="mt-3 space-y-1">
-                  {w.meanings.slice(0, 3).map((m, idx) => (
+                  {w.meanings.slice(0, 3).map((m: WordMeaning, idx: number) => (
                     <div key={idx} className="text-xs text-slate-700 flex items-baseline gap-1.5">
                       <span className="font-semibold text-blue-600 italic">{m.pos}</span>
                       <span className="line-clamp-1">{m.zh}</span>
@@ -272,14 +272,14 @@ export const TeacherWordList: React.FC = () => {
                   <div className="mt-3 flex flex-wrap gap-1">
                     {Object.entries(w.inflections).map(
                       ([k, v]) =>
-                        v && (
+                        typeof v === 'string' && v.trim() ? (
                           <span
                             key={k}
                             className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono"
                           >
                             {v}
                           </span>
-                        )
+                        ) : null
                     )}
                   </div>
                 )}
