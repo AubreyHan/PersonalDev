@@ -32,6 +32,7 @@ DevDoc/
 - [github-auto-sync](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/github-auto-sync/README.md)：基于 Tauri 2.0 (Rust) + React 的轻量级桌面系统托盘应用，支持多目录 Git 仓库自动递归发现、动态监听与 4 种模式策略化自动同步。
 - [qnap-photosphere](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/qnap-photosphere/README.md)：基于 Go + QPKG 原生打包的威联通 NAS 全能相册与资产清洗中枢，集成 Immich 协议兼容与 CPU 友好型 AI 整理。
 - [garmin-activity-exporter](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/garmin-activity-exporter/README.md)：基于 Tauri 2.0 (Rust) + React 的现代化轻量桌面应用，支持 Garmin 双区登录、GPX/TCX 通用轨迹批量与增量导出、多维筛选及灵活模板归档。
+- [english-word](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/english-word/README.md)：基于 React 19 + Vite PWA (IndexedDB 离线优先) 与 Cloudflare 全家桶 (Pages + Workers + D1 + Workers AI) 的跨平台多租户英语单词学习与艾宾浩斯复习系统，支持听说读写四步递进式闯关与盲测复习回炉机制。
 
 ---
 
