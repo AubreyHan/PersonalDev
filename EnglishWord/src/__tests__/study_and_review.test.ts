@@ -110,7 +110,7 @@ describe('Student Study & Review Pipeline Integration', () => {
     expect(useReviewStore.getState().currentSubStep).toBe('2.1'); // 无步骤1展示页直接开考
 
     // 模拟复习出错触发惩罚
-    useReviewStore.getState().triggerPenalty('2.1');
+    await useReviewStore.getState().triggerPenalty('2.1');
 
     const updatedState = useReviewStore.getState();
     expect(updatedState.penaltyActive).toBe(true);

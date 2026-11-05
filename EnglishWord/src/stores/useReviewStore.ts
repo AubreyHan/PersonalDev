@@ -170,7 +170,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     set({ currentSubStep: step });
   },
 
-  triggerPenalty: (step) => {
+  triggerPenalty: async (step) => {
     const { reviewQueue, currentIndex, isSpotCheck } = get();
     const currentItem = reviewQueue[currentIndex];
     if (!currentItem) return;
@@ -188,7 +188,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     );
 
     // 持久化更新
-    saveLocalProgressUpdate(currentItem.word.normalizedText, failUpdate);
+    await saveLocalProgressUpdate(currentItem.word.normalizedText, failUpdate);
 
     // 今日队尾回炉重考机制 (Intra-day Re-queue)：追加到队列尾部重新盲测一次！
     const updatedQueue = [...reviewQueue];
