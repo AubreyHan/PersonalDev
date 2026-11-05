@@ -130,7 +130,7 @@ pub async fn auth_open_web_login(
     .inner_size(480.0, 720.0)
     .resizable(true)
     .center()
-    .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36")
+    .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15")
     .on_navigation(move |nav_url| {
         let u = nav_url.as_str();
         eprintln!("SSO Window Navigating: {}", u);
