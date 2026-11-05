@@ -1,0 +1,12 @@
+name = "english-word"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "english-word-db"
+database_id = "local-d1-id"
+
+[ai]
+binding = "AI"
