@@ -31,7 +31,7 @@ interface ReviewState {
   startTodayReview: () => void;
   startMasteredSpotCheck: () => void;
   moveToSubStep: (step: '2.1' | '2.2' | '2.3' | '2.4') => void;
-  triggerPenalty: (step: '2.1' | '2.2' | '2.3' | '2.4') => void;
+  triggerPenalty: (step: '2.1' | '2.2' | '2.3' | '2.4') => Promise<void>;
   completeCurrentWord: () => Promise<void>;
   exitReview: () => void;
 }

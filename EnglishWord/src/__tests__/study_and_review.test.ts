@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useStudyStore } from '../stores/useStudyStore';
 import { useReviewStore } from '../stores/useReviewStore';
