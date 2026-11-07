@@ -5,8 +5,8 @@ compatibility_flags = ["nodejs_compat"]
 
 [[d1_databases]]
 binding = "DB"
-database_name = "english-word-db"
-database_id = "local-d1-id"
+database_name = "english_word_d1"
+database_id = "75fd4e87-82eb-416f-81e1-7dcd4777682a"
 
 [ai]
 binding = "AI"
