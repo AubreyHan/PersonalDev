@@ -260,3 +260,34 @@ func TestBuildUnitsAmbiguousStem(t *testing.T) {
 		t.Fatal(strings.Join(got, "|"))
 	}
 }
+
+func TestImmediateDirCleanupAndM4V(t *testing.T) {
+	e := newEnv(t)
+	e.im.Indexer.Initial(context.Background())
+	e.in(t, "dir1/sub/1.jpg", "one", day(7), "")
+	put(t, e.inbox, "dir1/sub/.DS_Store", "junk")
+	e.in(t, "dir2/2.m4v", "two-m4v", day(7), "")
+
+	origHash := e.im.Hash
+	dir1GoneBeforeDir2 := false
+	e.im.Hash = func(p string) (string, error) {
+		if strings.HasSuffix(p, "2.m4v") {
+			// By the time dir2/2.m4v is hashed, dir1 and dir1/sub must already be deleted.
+			if _, err := os.Stat(filepath.Join(e.inbox, "dir1")); os.IsNotExist(err) {
+				dir1GoneBeforeDir2 = true
+			}
+		}
+		return origHash(p)
+	}
+
+	res, err := e.im.Run(context.Background(), time.Date(2026, 11, 7, 13, 0, 0, 0, cst))
+	if err != nil || res.Imported != 2 {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+	if !dir1GoneBeforeDir2 {
+		t.Fatal("expected dir1 to be deleted immediately after its last file was moved, before dir2 was processed")
+	}
+	if _, err := os.Stat(filepath.Join(e.album, "2026/2026-11/2026-11-07/2.m4v")); err != nil {
+		t.Fatalf("m4v not imported: %v", err)
+	}
+}

@@ -30,6 +30,7 @@ pkg_install(){
 }
 
 pkg_post_install(){
+  SYS_QPKG_SERVICE_ENABLED="TRUE"
   chown -R 0:0 "$SYS_QPKG_DIR" 2>/dev/null || true
   chmod 755 "$SYS_QPKG_DIR/photo-album.sh" "$SYS_QPKG_DIR/bin/photo-album-server" 2>/dev/null
 }
