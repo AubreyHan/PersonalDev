@@ -29,6 +29,17 @@
 
 ---
 
+## 线上部署状态 (Live Deployment)
+
+- **公网 HTTPS 访问入口**：[https://english-word.aubreyhan.workers.dev](https://english-word.aubreyhan.workers.dev)
+- **部署架构**：Cloudflare Workers 单一边缘全栈架构 (内置静态资源路由 + Hono API + Service Worker)
+- **云端 D1 数据库**：`english_word_d1` (`75fd4e87-82eb-416f-81e1-7dcd4777682a`)
+- **Workers AI 绑定**：`AI` (支持 `@cf/meta/llama-3.1-8b-instruct` 结构化智能查词与 `@cf/openai/whisper` 跟读语音评测)
+- **初始超级管理员**：账号 `admin`，密码 `P@ss=w0rd`
+- **新建教师与学生默认密码**：`passw0rd` (用户登录后可在右上角修改密码，管理员可一键重置)
+
+---
+
 ## 文档导航
 
 本项目文档完全遵循 Vibe Spec 架构规范，为后续在业务工程仓库 `/Users/aubreyhan/Tools/git_repo/PersonalDev/EnglishWord` 中进行 AI 辅助编码提供完备的上下文输入：
