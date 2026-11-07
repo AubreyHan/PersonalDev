@@ -21,6 +21,17 @@ func (c *fakeClock) Add(d time.Duration) {
 	c.mu.Unlock()
 }
 
+var started chan struct{}
+
+func waitStarted(t *testing.T) {
+	t.Helper()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("scan did not start")
+	}
+}
+
 func setup(t *testing.T) (*Scheduler, *fakeClock, *[]time.Time, *[]time.Time, chan struct{}) {
 	t.Helper()
 	st, err := store.Open(t.TempDir(), true)
@@ -33,10 +44,12 @@ func setup(t *testing.T) (*Scheduler, *fakeClock, *[]time.Time, *[]time.Time, ch
 	var mu sync.Mutex
 	var scans, busy []time.Time
 	release := make(chan struct{}, 10)
+	started = make(chan struct{}, 10)
 	s := New(st, func(ctx context.Context, start time.Time) {
 		mu.Lock()
 		scans = append(scans, start)
 		mu.Unlock()
+		started <- struct{}{}
 		<-release
 	}, func(t time.Time) { busy = append(busy, t) })
 	s.Now = clk.Now
@@ -49,6 +62,7 @@ func TestScheduling(t *testing.T) {
 
 	// next_scan_at unset (just finished initial index) -> scan immediately.
 	s.Check(ctx)
+	waitStarted(t)
 	release <- struct{}{}
 	s.Wait()
 	if len(*scans) != 1 {
@@ -69,6 +83,7 @@ func TestScheduling(t *testing.T) {
 	// Due: starts a long-running scan; next is measured from the start.
 	clk.Add(time.Minute)
 	s.Check(ctx)
+	waitStarted(t)
 	if len(*scans) != 2 || !s.Scanning() {
 		t.Fatal("expected second scan running")
 	}
@@ -94,6 +109,7 @@ func TestScheduling(t *testing.T) {
 	}
 	clk.Add(10 * time.Minute)
 	s.Check(ctx)
+	waitStarted(t)
 	release <- struct{}{}
 	s.Wait()
 	if len(*scans) != 3 {
@@ -108,6 +124,7 @@ func TestRestartPastDueScansImmediately(t *testing.T) {
 	s, clk, scans, _, release := setup(t)
 	s.Store.SetTime(store.KeyNextScanAt, clk.Now().Add(-3*time.Hour)) // NAS was off
 	s.Check(context.Background())
+	waitStarted(t)
 	release <- struct{}{}
 	s.Wait()
 	if len(*scans) != 1 {
