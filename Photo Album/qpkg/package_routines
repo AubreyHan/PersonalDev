@@ -1,0 +1,34 @@
+######################################################################
+# QDK package_routines for photo-album
+#
+# Uninstall (PRD §1 卸载 / ARCHITECTURE §7): delete the configuration and
+# the MD5 index (<album>/.photo-album/). Photos, the import directory,
+# logs/ and duplicates/ are never touched. The binary does the cleanup so
+# the album path is parsed from bootstrap.json safely.
+######################################################################
+
+PKG_PRE_REMOVE="{
+_root=\$(/sbin/getcfg photo-album Install_Path -f /etc/config/qpkg.conf)
+if [ -x \"\$_root/photo-album.sh\" ]; then \"\$_root/photo-album.sh\" stop; fi
+if [ -x \"\$_root/bin/photo-album-server\" ]; then \"\$_root/bin/photo-album-server\" -data-dir \"\$_root\" -uninstall-cleanup; fi
+}"
+
+pkg_init(){
+  :
+}
+
+pkg_check_requirement(){
+  :
+}
+
+pkg_pre_install(){
+  :
+}
+
+pkg_install(){
+  :
+}
+
+pkg_post_install(){
+  chmod 755 "$SYS_QPKG_DIR/photo-album.sh" "$SYS_QPKG_DIR/bin/photo-album-server" 2>/dev/null
+}
