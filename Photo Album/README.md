@@ -40,13 +40,16 @@ go run ./cmd/photo-album-server -data-dir /tmp/pa-data -share-root /tmp/pa-share
 ## 打包
 
 ```sh
+brew install gnu-sed gnu-tar grep coreutils   # 仅 macOS 首次需要
 ./scripts/build_qpkg.sh
 ```
 
-脚本会产出 `build/qpkg/photo-album/`（QDK 源码树）：
+产物是 `build/photo-album_<版本>_x86_64.qpkg`，可以直接在 App Center 中“手动安装”。
 
-- 本机有 `qbuild` 时，直接生成 `.qpkg`。
-- 本机没有 `qbuild` 时，打包成 `build/photo-album-qdk.tar.gz`，需要到装了 QDK 的 NAS 上执行 `qbuild`。具体步骤见脚本开头的注释。
+- 本机有 QDK 的 `qbuild` 时直接用它。
+- 没有时，`scripts/qbuild_local.sh` 会拉取官方 QDK，在本机运行它的 `qbuild`：命令路径临时指向 GNU 工具，写进安装包的安装脚本保持原样。
+
+安装包没有 QNAP 数字签名。安装前需要在 App Center → 设置中勾选“允许安装没有有效数字签名的应用程序”。
 
 ## 真机预研（Phase 0）
 

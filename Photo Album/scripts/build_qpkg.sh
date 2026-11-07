@@ -1,14 +1,10 @@
 #!/bin/sh
-# Build the photo-album QPKG.
+# Build the photo-album QPKG:  ./scripts/build_qpkg.sh
 #
-#   ./scripts/build_qpkg.sh
-#
-# Produces build/qpkg/photo-album/ (QDK source tree). If QDK's `qbuild` is on
-# PATH (Linux, or on the NAS with the QDK app installed) it also builds the
-# .qpkg; otherwise it creates build/photo-album-qdk.tar.gz to copy to the NAS:
-#
-#   scp build/photo-album-qdk.tar.gz admin@nas:/share/Public/
-#   ssh admin@nas 'cd /share/Public && tar xzf photo-album-qdk.tar.gz && cd photo-album && qbuild'
+# Output: build/photo-album_<ver>_x86_64.qpkg
+# Uses QDK's `qbuild` if it is on PATH; otherwise runs the official QDK
+# qbuild locally via scripts/qbuild_local.sh (macOS needs:
+# brew install gnu-sed gnu-tar grep coreutils).
 set -eu
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -38,9 +34,9 @@ go run ./scripts/genicons "$OUT/icons"
 if command -v qbuild >/dev/null 2>&1; then
   echo "==> qbuild"
   (cd "$OUT" && qbuild)
-  ls -la "$OUT/build/"
+  cp "$OUT"/build/*.qpkg build/
 else
-  tar -C build/qpkg -czf build/photo-album-qdk.tar.gz photo-album
-  echo "qbuild not found; QDK source tree packed to build/photo-album-qdk.tar.gz (version $VER)."
-  echo "Run qbuild on the NAS (QDK app) — see the header of this script."
+  echo "==> qbuild (local QDK, scripts/qbuild_local.sh)"
+  scripts/qbuild_local.sh "$OUT"
 fi
+echo "Done: build/photo-album_${VER}_x86_64.qpkg"
