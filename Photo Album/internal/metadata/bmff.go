@@ -1,7 +1,6 @@
 package metadata
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -285,5 +284,3 @@ func min64(a, b int64) int64 {
 	}
 	return b
 }
-
-var _ = bytes.Equal
