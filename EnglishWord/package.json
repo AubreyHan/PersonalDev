@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:worker": "esbuild src/workerEntry.ts --bundle --format=esm --platform=neutral --target=es2022 --external:./static_assets.js --outfile=cloudflare/worker.js",
+    "build:all": "npm run build && npm run build:worker",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
