@@ -505,3 +505,14 @@ fn prune_fifo(path: &str) {
 ### 11.2 自动拉取与实体化 (`git lfs pull`)
 - 在完成远端合并（`merge --ff-only`）、硬重置（`reset --hard`）或双向同步比对后，若检测到仓库根目录下存在 `.gitattributes` 且包含 `filter=lfs`，自动触发 `git lfs pull`（设置 300 秒超时保障）。
 - 杜绝因缺失 LFS 过滤拉取导致大文件停留在 134 字节文本指针（Pointer File）的状态。
+
+---
+
+## 12. macOS 代码签名与异常状态码诊断规范 (macOS Code Signing & Fault Isolation)
+
+### 12.1 内核级 SIGKILL (Code 9 / 137) 故障防护
+- **故障背景**：macOS 内核（Codesigning Monitor）在进程通过 `mmap` 内存映射读取二进制可执行文件（Mach-O）时，会对映射页面进行实时代码签名完整性校验。若工作区内存在签名损坏、元数据丢失（如 `code has no resources but signature indicates they must be present`）或非法修改的 Mach-O 二进制文件，系统内核将在 Git 执行 `status` / `diff` 读取文件内容时直接下发 `SIGKILL`（信号 9 / 退出码 137）强行击杀 Git 进程。
+- **静默报错阻断**：由于 `SIGKILL` 属于内核直接终止信号，子进程无法输出任何 `stderr`，导致界面以往仅显示 `Git命令执行失败 (status --porcelain, code 9):`。
+- **自动诊断与友好提示**：在 `GitRunner` 中捕获 `exitCode == 9 || exitCode == 137` 且 `stderr` 为空的异常场景，自动注入诊断指导：
+  `macOS 代码签名异常 (SIGKILL/Invalid Page): 仓库内存在损坏或未正确签名的 Mach-O 二进制文件，系统内核在 Git 内存映射读取时强制终止了进程`。
+- **修复指引**：引导用户或运维通过 `codesign -s - --force <binary_path>` 重新签署 ad-hoc 签名，或通过 `.gitignore` 排除不应纳入版本控制的临时构建可执行产物。
