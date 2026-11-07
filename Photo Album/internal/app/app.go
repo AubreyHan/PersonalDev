@@ -42,6 +42,7 @@ type App struct {
 	Tune func(*importer.Importer, *scheduler.Scheduler)
 
 	mu      sync.RWMutex
+	setupMu sync.Mutex
 	phase   Phase
 	lastErr string
 	st      *store.Store
@@ -181,10 +182,15 @@ func (a *App) runConfigured(ctx context.Context, st *store.Store, albumDir strin
 
 // Setup performs the first-run configuration.
 func (a *App) Setup(req setup.Request) error {
+	a.setupMu.Lock()
+	defer a.setupMu.Unlock()
 	a.mu.RLock()
 	phase := a.phase
 	a.mu.RUnlock()
 	if phase != PhaseUnconfigured {
+		return ErrAlreadyConfigured
+	}
+	if _, err := bootstrap.Load(a.DataDir); !errors.Is(err, bootstrap.ErrNotConfigured) {
 		return ErrAlreadyConfigured
 	}
 	album, imp, err := setup.Validate(a.ShareRoot, req)
