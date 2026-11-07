@@ -170,7 +170,7 @@ CREATE INDEX idx_files_md5 ON files(md5);
    - 图片：Apple MakerNote tag `0x0011`
    - MOV：`mdta` key `com.apple.quicktime.content.identifier`
 2. 同一 ContentIdentifier 正好对应 1 张图片 + 1 个 MOV → 配成一组
-3. 剩下的文件按“同一目录、文件名主干相同（不区分大小写）、一张图片 + 一个 MOV”配对
+3. 剩下的文件按“同一目录、文件名主干相同（不区分大小写）、正好一张图片 + 一个 MOV”配对；同一主干对应多张图片（如 `IMG_1.HEIC` 和 `IMG_1.JPG`）时有歧义，不配对
 4. 未配上的文件按普通文件处理（不与相册里已有的文件配对）
 
 ### 5.7 导入管道（单次扫描）
