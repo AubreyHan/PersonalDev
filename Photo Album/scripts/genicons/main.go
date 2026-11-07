@@ -1,97 +1,188 @@
-// Command genicons writes the QPKG icons (64px, 80px and a gray 64px
-// variant) into the given directory.
+// Command genicons renders the QPKG icons from the master artwork.
+//
+//	go run ./scripts/genicons <master.png> <qpkg-icons-dir> [favicon.png]
+//
+// Outputs photo-album.gif (64px), photo-album_80.gif (80px) and
+// photo-album_gray.gif (64px, grayscale, shown when the app is disabled),
+// each with rounded transparent corners; optionally a 128px PNG favicon.
 package main
 
 import (
 	"image"
 	"image/color"
 	"image/gif"
+	"image/png"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
+	"sort"
+
+	"golang.org/x/image/draw"
 )
 
-func draw(size int, gray bool) *image.Paletted {
-	bg := color.RGBA{0x25, 0x63, 0xeb, 0xff}
-	sun := color.RGBA{0xfb, 0xbf, 0x24, 0xff}
-	hill := color.RGBA{0xff, 0xff, 0xff, 0xff}
-	if gray {
-		bg, sun, hill = color.RGBA{0x9c, 0xa3, 0xaf, 0xff}, color.RGBA{0xd1, 0xd5, 0xdb, 0xff}, color.RGBA{0xf3, 0xf4, 0xf6, 0xff}
+func load(p string) image.Image {
+	f, err := os.Open(p)
+	if err != nil {
+		log.Fatal(err)
 	}
-	pal := color.Palette{color.Transparent, bg, sun, hill}
-	img := image.NewPaletted(image.Rect(0, 0, size, size), pal)
-	f := float64(size)
-	r := f * 0.18 // corner radius
-	inRounded := func(x, y float64) bool {
-		cx, cy := x, y
-		if x < r {
-			cx = r
-		} else if x > f-r {
-			cx = f - r
-		}
-		if y < r {
-			cy = r
-		} else if y > f-r {
-			cy = f - r
-		}
-		dx, dy := x-cx, y-cy
-		return dx*dx+dy*dy <= r*r
-	}
-	for y := 0; y < size; y++ {
-		for x := 0; x < size; x++ {
-			px, py := float64(x)+0.5, float64(y)+0.5
-			if !inRounded(px, py) {
-				continue
-			}
-			idx := uint8(1)
-			// Sun.
-			sx, sy, sr := f*0.70, f*0.30, f*0.10
-			if (px-sx)*(px-sx)+(py-sy)*(py-sy) <= sr*sr {
-				idx = 2
-			}
-			// Two hills (triangles).
-			if py > f*0.80-(f*0.45-abs(px-f*0.38))*1.1 && py < f*0.82 {
-				idx = 3
-			}
-			if py > f*0.80-(f*0.28-abs(px-f*0.68))*1.1 && py < f*0.82 {
-				idx = 3
-			}
-			img.SetColorIndex(x, y, idx)
-		}
+	defer f.Close()
+	img, _, err := image.Decode(f)
+	if err != nil {
+		log.Fatal(err)
 	}
 	return img
 }
 
-func abs(v float64) float64 {
-	if v < 0 {
-		return -v
+// render scales the master to size and applies a rounded-square alpha mask
+// (corner radius 22% like QTS app icons), optionally converting to gray.
+func render(src image.Image, size int, gray bool) *image.NRGBA {
+	b := src.Bounds()
+	side := b.Dx()
+	if b.Dy() < side {
+		side = b.Dy()
 	}
-	return v
+	crop := image.Rect(b.Min.X+(b.Dx()-side)/2, b.Min.Y+(b.Dy()-side)/2, 0, 0)
+	crop.Max = crop.Min.Add(image.Pt(side, side))
+	dst := image.NewNRGBA(image.Rect(0, 0, size, size))
+	draw.CatmullRom.Scale(dst, dst.Bounds(), src, crop, draw.Src, nil)
+
+	f := float64(size)
+	r := f * 0.22
+	for y := 0; y < size; y++ {
+		for x := 0; x < size; x++ {
+			// Signed distance to the rounded square, 4x4 supersampled coverage.
+			cov := 0.0
+			for sy := 0; sy < 4; sy++ {
+				for sx := 0; sx < 4; sx++ {
+					px := float64(x) + (float64(sx)+0.5)/4
+					py := float64(y) + (float64(sy)+0.5)/4
+					cx := math.Min(math.Max(px, r), f-r)
+					cy := math.Min(math.Max(py, r), f-r)
+					if (px-cx)*(px-cx)+(py-cy)*(py-cy) <= r*r {
+						cov++
+					}
+				}
+			}
+			c := dst.NRGBAAt(x, y)
+			c.A = uint8(float64(c.A) * cov / 16)
+			if gray {
+				l := uint8(0.299*float64(c.R) + 0.587*float64(c.G) + 0.114*float64(c.B))
+				// Lighten so the disabled state reads as inactive.
+				l = uint8(128 + int(l)/2)
+				c.R, c.G, c.B = l, l, l
+			}
+			dst.SetNRGBA(x, y, c)
+		}
+	}
+	return dst
+}
+
+// medianCut builds an adaptive palette of n colors from opaque pixels.
+func medianCut(img *image.NRGBA, n int) color.Palette {
+	var px [][3]uint8
+	for i := 0; i < len(img.Pix); i += 4 {
+		if img.Pix[i+3] >= 128 {
+			px = append(px, [3]uint8{img.Pix[i], img.Pix[i+1], img.Pix[i+2]})
+		}
+	}
+	boxes := [][][3]uint8{px}
+	for len(boxes) < n {
+		// Split the box with the largest channel range.
+		bi, bc, br := -1, 0, -1
+		for i, bx := range boxes {
+			if len(bx) < 2 {
+				continue
+			}
+			for c := 0; c < 3; c++ {
+				lo, hi := uint8(255), uint8(0)
+				for _, p := range bx {
+					if p[c] < lo {
+						lo = p[c]
+					}
+					if p[c] > hi {
+						hi = p[c]
+					}
+				}
+				if int(hi-lo) > br {
+					bi, bc, br = i, c, int(hi-lo)
+				}
+			}
+		}
+		if bi < 0 || br == 0 {
+			break
+		}
+		bx := boxes[bi]
+		sort.Slice(bx, func(i, j int) bool { return bx[i][bc] < bx[j][bc] })
+		mid := len(bx) / 2
+		boxes[bi] = bx[:mid]
+		boxes = append(boxes, bx[mid:])
+	}
+	pal := color.Palette{color.NRGBA{0, 0, 0, 0}}
+	for _, bx := range boxes {
+		if len(bx) == 0 {
+			continue
+		}
+		var s [3]int
+		for _, p := range bx {
+			s[0] += int(p[0])
+			s[1] += int(p[1])
+			s[2] += int(p[2])
+		}
+		l := len(bx)
+		pal = append(pal, color.NRGBA{uint8(s[0] / l), uint8(s[1] / l), uint8(s[2] / l), 255})
+	}
+	return pal
+}
+
+func writeGIF(path string, img *image.NRGBA) {
+	pal := medianCut(img, 255)
+	out := image.NewPaletted(img.Bounds(), pal)
+	opaque := pal[1:]
+	for y := 0; y < img.Bounds().Dy(); y++ {
+		for x := 0; x < img.Bounds().Dx(); x++ {
+			c := img.NRGBAAt(x, y)
+			if c.A < 128 {
+				out.SetColorIndex(x, y, 0)
+				continue
+			}
+			out.SetColorIndex(x, y, uint8(1+opaque.Index(color.NRGBA{c.R, c.G, c.B, 255})))
+		}
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+	if err := gif.Encode(f, out, nil); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func writePNG(path string, img image.Image) {
+	f, err := os.Create(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+	if err := png.Encode(f, img); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func main() {
-	if len(os.Args) != 2 {
-		log.Fatal("usage: genicons <out-dir>")
+	if len(os.Args) < 3 {
+		log.Fatal("usage: genicons <master.png> <out-dir> [favicon.png]")
 	}
-	dir := os.Args[1]
+	src := load(os.Args[1])
+	dir := os.Args[2]
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		log.Fatal(err)
 	}
-	for name, spec := range map[string]struct {
-		size int
-		gray bool
-	}{
-		"photo-album.gif":      {64, false},
-		"photo-album_80.gif":   {80, false},
-		"photo-album_gray.gif": {64, true},
-	} {
-		f, err := os.Create(filepath.Join(dir, name))
-		if err != nil {
-			log.Fatal(err)
-		}
-		if err := gif.Encode(f, draw(spec.size, spec.gray), nil); err != nil {
-			log.Fatal(err)
-		}
-		f.Close()
+	writeGIF(filepath.Join(dir, "photo-album.gif"), render(src, 64, false))
+	writeGIF(filepath.Join(dir, "photo-album_80.gif"), render(src, 80, false))
+	writeGIF(filepath.Join(dir, "photo-album_gray.gif"), render(src, 64, true))
+	if len(os.Args) > 3 {
+		writePNG(os.Args[3], render(src, 128, false))
 	}
 }
