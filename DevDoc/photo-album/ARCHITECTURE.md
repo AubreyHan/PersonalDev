@@ -162,7 +162,7 @@ CREATE INDEX idx_files_md5 ON files(md5);
 
 - 带时区的时间换算到 NAS 系统时区；不带时区的 EXIF 直接当作本地时间
 - 值为 0、早于 1970 或晚于“当前时间 + 1 天”的，视为取不到
-- 时区数据通过 `time/tzdata` 内嵌；NAS 时区读取方式见 §8 待验证项
+- 时区数据通过 `time/tzdata` 内嵌。NAS 时区的读取顺序：环境变量 `PHOTO_ALBUM_TZ`（IANA 名称）→ `TZ`（IANA 名称）→ `/etc/localtime` → `TZ` 按 POSIX 格式解析（如 QTS 风格的 `CST-8` 表示 UTC+8）→ `time.Local`。最终以 Phase 0 实测结果为准，见 §8
 
 ### 5.6 Live Photo 配对
 
@@ -203,7 +203,8 @@ flowchart TD
 | — | 目标日期目录内有同名文件，但 MD5 不同 | `同名改名`（第三列为改名后的新路径） |
 
 - Live Photo 组：两个文件都重复时，各自按上表写日志；只有一个重复时，整组移到 duplicates，两个文件都标 `Live Photo 部分重复`。所有 Live Photo 文件的日志类型前都加 `Live Photo `。
-- 重命名：`_N` 从 1 开始，取第一个在目标目录中不存在的编号（不区分大小写）；Live Photo 组要求两个文件名都不存在。
+- 重命名：`_N` 从 1 开始，取第一个在目标目录中不存在的编号（不区分大小写）；Live Photo 组要求两个文件名都不存在。Live Photo 组改名时，两个文件都写一行 `Live Photo 同名改名`。
+- 单元内某个文件计算 MD5 失败时，整个单元留在原处：出错的文件写 `失败 | 源路径 | 错误原因`，另一半写 `失败 | 源路径 | Live Photo 另一半处理失败`。
 
 ### 5.8 文件移动
 
@@ -222,7 +223,9 @@ flowchart TD
 
 ### 5.9 空目录清理
 
-扫描结束后，自底向上遍历导入目录（根目录、`logs/`、`duplicates/` 除外）。一个目录满足以下条件就删除：只剩“垃圾项”或已为空。垃圾项包括：
+扫描结束后，只检查本次有文件被移走的目录（导入或移到 duplicates），从最深的开始向上逐级检查，直到导入目录根目录（根目录本身不删）。一个目录只剩“垃圾项”或已为空时就删除，然后继续检查它的上一级；遇到不满足条件的目录就停止。用户事先建好的空目录不会被删。
+
+垃圾项包括：
 
 - 文件：`.DS_Store`、`._*`、`Thumbs.db`、`desktop.ini`
 - 目录：`.@__thumb`、`@__thumb`（QTS 自动生成的缩略图目录）
@@ -286,11 +289,13 @@ Photo Album/
 ├── web/                # React + Vite + TS
 ├── qpkg/
 │   ├── qpkg.cfg        # QPKG_NAME=photo-album, QPKG_DISPLAY_NAME="Photo Album", QPKG_WEB_PORT=8090
-│   ├── package_routines # 卸载前：读取 bootstrap.json，删除 <相册目录>/.photo-album/
-│   ├── shared/photo-album.sh   # start/stop/restart，用 nice/ionice 启动
-│   └── icons/
-├── scripts/build_qpkg.sh
-└── testdata/           # 各格式样例（含 iPhone Live Photo）
+│   ├── package_routines # 卸载前：停止服务，执行 photo-album-server -uninstall-cleanup（读取 bootstrap.json，只删除 <相册目录>/.photo-album/）
+│   └── shared/photo-album.sh   # start/stop/restart/status，有 nice/ionice 时用它们启动（二进制内也会自行降优先级）
+├── scripts/
+│   ├── build_qpkg.sh   # 前端构建 → 测试 → 静态编译 → 组装 QDK 树 → qbuild（本机没有 qbuild 时打成 tar 包，到 NAS 上构建）
+│   ├── nas_probe.sh    # Phase 0 只读环境探查
+│   └── genicons/       # 生成 QPKG 图标
+└── testdata/           # 真机样例（Phase 0 补充）
 ```
 
 ## 8. 风险与待真机验证项
