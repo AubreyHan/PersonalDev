@@ -2928,6 +2928,10 @@ var COMMON_HOMOPHONE_MAP = {
   stare: ["stair"],
   stair: ["stare"]
 };
+function hasChinese(str) {
+  if (!str) return false;
+  return /[\u4e00-\u9fa5]/.test(str);
+}
 function heuristicSyllableSplit(word) {
   if (word.includes(" ") || word.includes("-") || word.length <= 4) {
     return word;
@@ -2998,6 +3002,27 @@ function deriveInflections(word) {
     pastParticiple
   };
 }
+function findTargetInSentence(sentence, targetText, inflections) {
+  const candidates = [
+    targetText,
+    inflections.pastTense,
+    inflections.pastParticiple,
+    inflections.presentParticiple,
+    inflections.thirdPerson,
+    inflections.plural,
+    inflections.comparative,
+    inflections.superlative
+  ].filter((c) => Boolean(c && typeof c === "string"));
+  for (const cand of candidates) {
+    const escaped = cand.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`\\b${escaped}\\b`, "i");
+    const match2 = sentence.match(regex);
+    if (match2) {
+      return match2[0];
+    }
+  }
+  return targetText;
+}
 async function enrichWord(rawText, aiBinding) {
   const text = rawText.trim();
   const normalizedText = normalizeText(text);
@@ -3012,58 +3037,101 @@ async function enrichWord(rawText, aiBinding) {
   let examples = [];
   let tags = [];
   try {
-    const dictResp = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(normalizedText)}`, {
-      signal: AbortSignal.timeout(2500)
+    const youdaoUrl = `https://dict.youdao.com/jsonapi?q=${encodeURIComponent(normalizedText)}`;
+    const ydResp = await fetch(youdaoUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+      },
+      signal: AbortSignal.timeout(3500)
     });
-    if (dictResp.ok) {
-      const data = await dictResp.json();
-      if (Array.isArray(data) && data[0]) {
-        const item = data[0];
-        if (item.phonetics && Array.isArray(item.phonetics)) {
-          for (const p of item.phonetics) {
-            if (p.text && !phoneticUs) phoneticUs = p.text;
-            if (p.audio && !audioUsUrl.startsWith("http")) {
-              audioUsUrl = p.audio;
-            }
-          }
-        }
-        if (!phoneticUs && item.phonetic) {
-          phoneticUs = item.phonetic;
-        }
-        if (item.meanings && Array.isArray(item.meanings)) {
-          for (const m of item.meanings) {
-            const pos = m.partOfSpeech ? `${m.partOfSpeech}.` : "";
-            if (m.definitions && m.definitions[0]) {
-              const def = m.definitions[0];
-              meanings.push({
-                pos: pos || "n.",
-                zh: def.definition || ""
-              });
-              if (def.example && examples.length < 2) {
-                examples.push({
-                  en: def.example,
-                  zh: "\u8BF7\u9605\u8BFB\u7406\u89E3\u8BE5\u4F8B\u53E5",
-                  targetInSentence: text
+    if (ydResp.ok) {
+      const data = await ydResp.json();
+      const ec = data?.ec;
+      if (ec?.word && ec.word[0]) {
+        const w = ec.word[0];
+        if (w.usphone) phoneticUs = `/${w.usphone}/`;
+        if (w.ukphone) phoneticUk = `/${w.ukphone}/`;
+        if (Array.isArray(w.trs)) {
+          for (const trGroup of w.trs) {
+            for (const tr of trGroup.tr || []) {
+              const rawStr = tr?.l?.i?.[0] || "";
+              if (!rawStr || !hasChinese(rawStr)) continue;
+              const match2 = rawStr.match(/^([a-zA-Z]+\.?)\s*(.+)$/);
+              if (match2) {
+                meanings.push({
+                  pos: match2[1].endsWith(".") ? match2[1] : `${match2[1]}.`,
+                  zh: match2[2].trim()
+                });
+              } else {
+                meanings.push({
+                  pos: text.includes(" ") ? "phr." : "n./v.",
+                  zh: rawStr.trim()
                 });
               }
             }
           }
         }
       }
+      if (Array.isArray(ec?.exam_type)) {
+        tags = ec.exam_type.filter((t) => typeof t === "string");
+      }
+      const blngPairs = data?.blng_sents_part?.["sentence-pair"];
+      if (Array.isArray(blngPairs)) {
+        for (const pair of blngPairs.slice(0, 3)) {
+          const en = pair.sentence || pair["sentence-eng"]?.replace(/<[^>]+>/g, "");
+          const zh = pair["sentence-translation"];
+          if (en && zh && hasChinese(zh)) {
+            const matchedTarget = findTargetInSentence(en, text, inflections);
+            examples.push({
+              en: en.trim(),
+              zh: zh.trim(),
+              targetInSentence: matchedTarget
+            });
+          }
+        }
+      }
     }
   } catch {
   }
+  if (meanings.length === 0 || !meanings.some((m) => hasChinese(m.zh))) {
+    try {
+      const suggestUrl = `https://dict.youdao.com/suggest?num=1&doctype=json&q=${encodeURIComponent(normalizedText)}`;
+      const sugResp = await fetch(suggestUrl, {
+        signal: AbortSignal.timeout(2500)
+      });
+      if (sugResp.ok) {
+        const sugData = await sugResp.json();
+        const entries = sugData?.data?.entries;
+        if (Array.isArray(entries) && entries[0]?.explain) {
+          const rawExplain = entries[0].explain;
+          if (hasChinese(rawExplain)) {
+            const parts = rawExplain.split(/[;；]/).map((s) => s.trim()).filter(Boolean);
+            meanings = parts.map((part) => {
+              const match2 = part.match(/^([a-zA-Z]+\.?)\s*(.+)$/);
+              if (match2) {
+                return { pos: match2[1].endsWith(".") ? match2[1] : `${match2[1]}.`, zh: match2[2].trim() };
+              }
+              return { pos: text.includes(" ") ? "phr." : "n./v.", zh: part };
+            });
+          }
+        }
+      }
+    } catch {
+    }
+  }
   if (aiBinding && typeof aiBinding.run === "function") {
     try {
-      const prompt = `You are an expert English lexicographer. Provide structured vocabulary JSON for the word or phrase: "${text}".
+      const prompt = `You are an expert English-Chinese bilingual lexicographer.
+Provide structured vocabulary JSON for the English word or phrase: "${text}".
+IMPORTANT: All 'zh' fields in meanings and in examples MUST be written in fluent Simplified Chinese (\u7B80\u4F53\u4E2D\u6587). DO NOT return English definitions in 'zh'.
 Output valid JSON only with keys:
 - syllables: string with syllable dots like "in\xB7for\xB7ma\xB7tion"
 - phoneticUs: string like "/.../"
-- meanings: array of { pos: string, zh: string } with accurate simplified Chinese translation
+- meanings: array of { pos: string, zh: string } where zh MUST be Simplified Chinese
 - inflections: { plural, thirdPerson, presentParticiple, pastTense, pastParticiple, comparative, superlative }
 - homophones: array of strings of valid homophones (e.g. right -> ["write"])
-- examples: array of { en: string, zh: string, targetInSentence: string } (targetInSentence is the exact word form used in the sentence).
-DO NOT return any markdown wrapping.`;
+- examples: array of { en: string, zh: string, targetInSentence: string } where zh MUST be fluent Chinese translation of the sentence, targetInSentence is the exact form in 'en'.
+DO NOT return any markdown formatting.`;
       const aiResp = await aiBinding.run("@cf/meta/llama-3.1-8b-instruct", {
         messages: [{ role: "user", content: prompt }],
         max_tokens: 800
@@ -3073,17 +3141,29 @@ DO NOT return any markdown wrapping.`;
         const parsed = JSON.parse(cleaned);
         if (parsed.syllables) syllables = parsed.syllables;
         if (parsed.phoneticUs) phoneticUs = parsed.phoneticUs;
-        if (Array.isArray(parsed.meanings) && parsed.meanings.length > 0) meanings = parsed.meanings;
+        if (Array.isArray(parsed.meanings)) {
+          const validAiMeanings = parsed.meanings.filter((m) => m && hasChinese(m.zh));
+          if (validAiMeanings.length > 0) {
+            meanings = validAiMeanings;
+          }
+        }
         if (parsed.inflections) inflections = { ...inflections, ...parsed.inflections };
         if (Array.isArray(parsed.homophones)) homophones = parsed.homophones;
-        if (Array.isArray(parsed.examples) && parsed.examples.length > 0) examples = parsed.examples;
+        if (Array.isArray(parsed.examples)) {
+          const validAiExamples = parsed.examples.filter((e) => e && e.en && hasChinese(e.zh));
+          if (validAiExamples.length > 0) {
+            examples = validAiExamples;
+          }
+        }
       }
     } catch {
     }
   }
+  meanings = meanings.filter((m) => hasChinese(m.zh));
   if (meanings.length === 0) {
-    meanings = [{ pos: text.includes(" ") ? "phr." : "n./v.", zh: "\uFF08\u8BF7\u7F16\u8F91\u8F93\u5165\u4E2D\u6587\u91CA\u4E49\uFF09" }];
+    meanings = [{ pos: text.includes(" ") ? "phr." : "n./v.", zh: "\uFF08\u6682\u65E0\u4E2D\u6587\u91CA\u4E49\uFF0C\u8BF7\u624B\u52A8\u8F93\u5165\uFF09" }];
   }
+  examples = examples.filter((ex) => hasChinese(ex.zh));
   if (examples.length === 0) {
     examples = [
       {
