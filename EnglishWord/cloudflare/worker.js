@@ -2932,6 +2932,52 @@ function hasChinese(str) {
   if (!str) return false;
   return /[\u4e00-\u9fa5]/.test(str);
 }
+function isPlaceholderMeaning(zh) {
+  if (!zh || !hasChinese(zh)) return true;
+  if (zh.includes("\u8BF7\u7F16\u8F91") || zh.includes("\u6682\u65E0\u4E2D\u6587")) return true;
+  return false;
+}
+function isPlaceholderExample(zh) {
+  if (!zh || !hasChinese(zh)) return true;
+  if (zh.includes("\u8BF7\u9605\u8BFB\u7406\u89E3") || /^这是关于\s*.+\s*的例句[。.]?$/.test(zh.trim())) return true;
+  return false;
+}
+function parseMeaningString(rawStr, isPhrase) {
+  const raw2 = rawStr.trim();
+  if (!raw2 || !hasChinese(raw2)) return null;
+  const posMatch = raw2.match(/^([a-zA-Z]+\.?)\s*(.+)$/);
+  if (posMatch) {
+    const pos = posMatch[1].endsWith(".") ? posMatch[1] : `${posMatch[1]}.`;
+    let zh = posMatch[2].trim();
+    if (zh.includes("\uFF1A") || zh.includes(":")) {
+      const parts = zh.split(/[:：]/);
+      if (hasChinese(parts[0])) {
+        zh = parts[0].trim();
+      }
+    }
+    zh = zh.replace(/[…\.\s]+$/, "").trim();
+    if (!zh || isPlaceholderMeaning(zh)) return null;
+    return { pos, zh };
+  }
+  if (raw2.includes("\uFF1A") || raw2.includes(":")) {
+    const parts = raw2.split(/[:：]/);
+    if (hasChinese(parts[0])) {
+      const zh = parts[0].replace(/[…\.\s]+$/, "").trim();
+      if (zh && !isPlaceholderMeaning(zh)) {
+        return {
+          pos: isPhrase ? "phr." : "n./v.",
+          zh
+        };
+      }
+    }
+  }
+  const cleanZh = raw2.replace(/[…\.\s]+$/, "").trim();
+  if (!cleanZh || isPlaceholderMeaning(cleanZh)) return null;
+  return {
+    pos: isPhrase ? "phr." : "n./v.",
+    zh: cleanZh
+  };
+}
 function heuristicSyllableSplit(word) {
   if (word.includes(" ") || word.includes("-") || word.length <= 4) {
     return word;
@@ -2945,6 +2991,14 @@ function heuristicSyllableSplit(word) {
 }
 function deriveInflections(word) {
   const norm = normalizeText(word);
+  if (norm === "be") {
+    return {
+      thirdPerson: "is",
+      presentParticiple: "being",
+      pastTense: "was",
+      pastParticiple: "been"
+    };
+  }
   if (norm.includes(" ")) {
     const parts = norm.split(" ");
     const first = parts[0];
@@ -3026,6 +3080,7 @@ function findTargetInSentence(sentence, targetText, inflections) {
 async function enrichWord(rawText, aiBinding) {
   const text = rawText.trim();
   const normalizedText = normalizeText(text);
+  const isPhrase = text.includes(" ");
   let syllables = heuristicSyllableSplit(text);
   let phoneticUs = "";
   let phoneticUk = "";
@@ -3055,20 +3110,34 @@ async function enrichWord(rawText, aiBinding) {
           for (const trGroup of w.trs) {
             for (const tr of trGroup.tr || []) {
               const rawStr = tr?.l?.i?.[0] || "";
-              if (!rawStr || !hasChinese(rawStr)) continue;
-              const match2 = rawStr.match(/^([a-zA-Z]+\.?)\s*(.+)$/);
-              if (match2) {
-                meanings.push({
-                  pos: match2[1].endsWith(".") ? match2[1] : `${match2[1]}.`,
-                  zh: match2[2].trim()
-                });
-              } else {
-                meanings.push({
-                  pos: text.includes(" ") ? "phr." : "n./v.",
-                  zh: rawStr.trim()
-                });
+              const parsed = parseMeaningString(rawStr, isPhrase);
+              if (parsed && !meanings.some((m) => m.zh === parsed.zh)) {
+                meanings.push(parsed);
               }
             }
+          }
+        }
+      }
+      if (meanings.length === 0 && data?.web_trans?.["web-translation"]) {
+        const wtList = data.web_trans["web-translation"];
+        if (Array.isArray(wtList)) {
+          for (const item of wtList) {
+            const transArr = item.trans;
+            if (Array.isArray(transArr)) {
+              for (const t of transArr) {
+                const val = (t.value || "").replace(/<[^>]+>/g, "").trim();
+                if (val && hasChinese(val) && !val.includes("...") && val.length <= 20) {
+                  const cleanZh = val.replace(/[…\.\s]+$/, "").trim();
+                  if (cleanZh && !isPlaceholderMeaning(cleanZh) && !meanings.some((m) => m.zh === cleanZh)) {
+                    meanings.push({
+                      pos: isPhrase ? "phr." : "n./v.",
+                      zh: cleanZh
+                    });
+                  }
+                }
+              }
+            }
+            if (meanings.length >= 2) break;
           }
         }
       }
@@ -3080,7 +3149,7 @@ async function enrichWord(rawText, aiBinding) {
         for (const pair of blngPairs.slice(0, 3)) {
           const en = pair.sentence || pair["sentence-eng"]?.replace(/<[^>]+>/g, "");
           const zh = pair["sentence-translation"];
-          if (en && zh && hasChinese(zh)) {
+          if (en && zh && hasChinese(zh) && !isPlaceholderExample(zh)) {
             const matchedTarget = findTargetInSentence(en, text, inflections);
             examples.push({
               en: en.trim(),
@@ -3093,7 +3162,7 @@ async function enrichWord(rawText, aiBinding) {
     }
   } catch {
   }
-  if (meanings.length === 0 || !meanings.some((m) => hasChinese(m.zh))) {
+  if (meanings.length === 0 || !meanings.some((m) => hasChinese(m.zh) && !isPlaceholderMeaning(m.zh))) {
     try {
       const suggestUrl = `https://dict.youdao.com/suggest?num=1&doctype=json&q=${encodeURIComponent(normalizedText)}`;
       const sugResp = await fetch(suggestUrl, {
@@ -3106,13 +3175,12 @@ async function enrichWord(rawText, aiBinding) {
           const rawExplain = entries[0].explain;
           if (hasChinese(rawExplain)) {
             const parts = rawExplain.split(/[;；]/).map((s) => s.trim()).filter(Boolean);
-            meanings = parts.map((part) => {
-              const match2 = part.match(/^([a-zA-Z]+\.?)\s*(.+)$/);
-              if (match2) {
-                return { pos: match2[1].endsWith(".") ? match2[1] : `${match2[1]}.`, zh: match2[2].trim() };
+            for (const part of parts) {
+              const parsed = parseMeaningString(part, isPhrase);
+              if (parsed && !meanings.some((m) => m.zh === parsed.zh)) {
+                meanings.push(parsed);
               }
-              return { pos: text.includes(" ") ? "phr." : "n./v.", zh: part };
-            });
+            }
           }
         }
       }
@@ -3142,7 +3210,9 @@ DO NOT return any markdown formatting.`;
         if (parsed.syllables) syllables = parsed.syllables;
         if (parsed.phoneticUs) phoneticUs = parsed.phoneticUs;
         if (Array.isArray(parsed.meanings)) {
-          const validAiMeanings = parsed.meanings.filter((m) => m && hasChinese(m.zh));
+          const validAiMeanings = parsed.meanings.filter(
+            (m) => m && hasChinese(m.zh) && !isPlaceholderMeaning(m.zh)
+          );
           if (validAiMeanings.length > 0) {
             meanings = validAiMeanings;
           }
@@ -3150,7 +3220,9 @@ DO NOT return any markdown formatting.`;
         if (parsed.inflections) inflections = { ...inflections, ...parsed.inflections };
         if (Array.isArray(parsed.homophones)) homophones = parsed.homophones;
         if (Array.isArray(parsed.examples)) {
-          const validAiExamples = parsed.examples.filter((e) => e && e.en && hasChinese(e.zh));
+          const validAiExamples = parsed.examples.filter(
+            (e) => e && e.en && hasChinese(e.zh) && !isPlaceholderExample(e.zh)
+          );
           if (validAiExamples.length > 0) {
             examples = validAiExamples;
           }
@@ -3159,11 +3231,11 @@ DO NOT return any markdown formatting.`;
     } catch {
     }
   }
-  meanings = meanings.filter((m) => hasChinese(m.zh));
+  meanings = meanings.filter((m) => hasChinese(m.zh) && !isPlaceholderMeaning(m.zh));
   if (meanings.length === 0) {
-    meanings = [{ pos: text.includes(" ") ? "phr." : "n./v.", zh: "\uFF08\u6682\u65E0\u4E2D\u6587\u91CA\u4E49\uFF0C\u8BF7\u624B\u52A8\u8F93\u5165\uFF09" }];
+    meanings = [{ pos: isPhrase ? "phr." : "n./v.", zh: "\uFF08\u6682\u65E0\u4E2D\u6587\u91CA\u4E49\uFF0C\u8BF7\u624B\u52A8\u8F93\u5165\uFF09" }];
   }
-  examples = examples.filter((ex) => hasChinese(ex.zh));
+  examples = examples.filter((ex) => hasChinese(ex.zh) && !isPlaceholderExample(ex.zh));
   if (examples.length === 0) {
     examples = [
       {

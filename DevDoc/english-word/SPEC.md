@@ -227,7 +227,10 @@ stateDiagram-v2
 
 ### 4.3 教师端词库与学情接口 (仅 `role === 'teacher'`)
 - `POST /api/teacher/words/enrich`
-  - 说明：输入英文单词或词组，调用词典 + Workers AI 自动返回补全后的结构化 JSON。
+  - 说明：输入英文单词或多词词组（如 `be related to`, `look forward to`, `a sense of humour`），调用权威词典接口（有道 JSON API / Suggest API）+ Cloudflare Workers AI，自动解析地道中文释义、真声音标及双语例句：
+    - **词性与中文释义拆分**：支持单词标准 `pos.` 拆分；针对短语自动识别为 `pos: 'phr.'`，并智能截取中文冒号前的核心精准释义（例如 `与……有关：指两个或多个...` -> `与……有关`，`幽默感：一种能够...` -> `幽默感`）；
+    - **短语网络释义与真实双语例句**：支持从 `web_trans` 及 `blng_sents_part` 提取真实中英双语例句（严禁使用“这是关于xxx的例句”或“请编辑输入中文释义”等占位符）；
+    - **系动词与时态派生**：支持 `be` 及其复合词组的不规则形态（`is / was / being / been`）智能匹配例句。
   - Request: `{ "text": "look forward to" }`
   - Response `200`: 返回填充好的 `Omit<TeacherWord, 'id' | 'teacherId' | 'createdAt' | 'updatedAt'>` 对象。
 - `GET /api/teacher/words`
