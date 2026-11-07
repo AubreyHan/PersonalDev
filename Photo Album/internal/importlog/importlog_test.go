@@ -62,7 +62,7 @@ func TestPrune(t *testing.T) {
 		names = append(names, e.Name())
 	}
 	got := strings.Join(names, ",")
-	if got != "20260809.log,20261107.log,2026.log,notes.txt" {
+	if got != "2026.log,20260809.log,20261107.log,notes.txt" {
 		t.Fatal(got)
 	}
 }

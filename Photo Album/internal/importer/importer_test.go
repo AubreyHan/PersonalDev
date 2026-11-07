@@ -12,6 +12,7 @@ import (
 	"photo-album/internal/indexer"
 	"photo-album/internal/metadata"
 	"photo-album/internal/store"
+	"photo-album/internal/walk"
 )
 
 var cst = time.FixedZone("CST", 8*3600)
@@ -95,16 +96,16 @@ func TestFullScenario(t *testing.T) {
 	}
 
 	// Import directory content.
-	e.in(t, "a/IMG_0001.JPG", "same1", day(7), "")             // same name, same content
-	e.in(t, "IMG_0002.jpg", "new2", day(7), "")                 // same name (case), different content
-	e.in(t, "copy.jpg", "dupcontent", day(7), "")               // content dup elsewhere
-	e.in(t, "b/IMG_0003.JPG", "three", day(7), "")              // first of batch dup
-	e.in(t, "c/IMG_0003.JPG", "three", day(7), "")              // batch dup
+	e.in(t, "a/IMG_0001.JPG", "same1", day(7), "")               // same name, same content
+	e.in(t, "IMG_0002.jpg", "new2", day(7), "")                  // same name (case), different content
+	e.in(t, "copy.jpg", "dupcontent", day(7), "")                // content dup elsewhere
+	e.in(t, "b/IMG_0003.JPG", "three", day(7), "")               // first of batch dup
+	e.in(t, "c/IMG_0003.JPG", "three", day(7), "")               // batch dup
 	e.in(t, "live/IMG_0004.HEIC", "heic4", day(6), "CID-AAAA-4") // live photo (MOV dated next day)
 	e.in(t, "live/IMG_0004.MOV", "mov4", day(7), "CID-AAAA-4")
-	e.in(t, "lp/IMG_0005.HEIC", "heic5", day(7), "")            // live partial dup (paired by stem)
+	e.in(t, "lp/IMG_0005.HEIC", "heic5", day(7), "") // live partial dup (paired by stem)
 	e.in(t, "lp/IMG_0005.MOV", "dupcontent", day(7), "")
-	e.in(t, "lr/IMG_0006.HEIC", "h6", day(5), "CID-BBBB-6")     // live rename (MOV name taken)
+	e.in(t, "lr/IMG_0006.HEIC", "h6", day(5), "CID-BBBB-6") // live rename (MOV name taken)
 	e.in(t, "lr/IMG_0006.mov", "m6", day(5), "CID-BBBB-6")
 	put(t, e.inbox, "d/x.jpg", "x") // no metadata -> mtime
 	mt := time.Date(2024, 2, 29, 9, 0, 0, 0, cst)
@@ -233,6 +234,8 @@ func TestFailureKeepsFileAndContinues(t *testing.T) {
 		t.Fatalf("%s", b)
 	}
 }
+
+func entry(rel string) walk.Entry { return walk.Entry{Rel: rel} }
 
 func TestBuildUnitsAmbiguousStem(t *testing.T) {
 	mk := func(rel, cid string) *file {
