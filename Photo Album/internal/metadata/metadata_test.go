@@ -249,6 +249,10 @@ func TestMP4MvhdUTCConvertedAcrossMidnight(t *testing.T) {
 	if got := info.Taken.In(shanghai).Format("2006-01-02"); got != "2026-11-07" {
 		t.Fatalf("got %s (%v)", got, info.Taken)
 	}
+	infoM4V, _ := Read(write(t, "clip.M4V", buildMOV(secs, nil)), shanghai)
+	if got := infoM4V.Taken.In(shanghai).Format("2006-01-02"); got != "2026-11-07" {
+		t.Fatalf("m4v got %s (%v)", got, infoM4V.Taken)
+	}
 }
 
 func TestCR3(t *testing.T) {

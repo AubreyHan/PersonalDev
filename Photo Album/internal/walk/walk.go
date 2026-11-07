@@ -27,7 +27,7 @@ var extKinds = map[string]Kind{
 	"png": KindImage, "gif": KindImage, "webp": KindImage, "tif": KindImage, "tiff": KindImage,
 	"cr2": KindRaw, "cr3": KindRaw, "nef": KindRaw, "arw": KindRaw, "dng": KindRaw,
 	"raf": KindRaw, "orf": KindRaw, "rw2": KindRaw,
-	"mp4": KindVideo, "mov": KindVideo,
+	"mp4": KindVideo, "mov": KindVideo, "m4v": KindVideo,
 }
 
 // KindOf returns the kind of a file name (extension match is case-insensitive).

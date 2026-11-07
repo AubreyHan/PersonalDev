@@ -21,7 +21,8 @@ func touch(t *testing.T, root, rel string) {
 func TestKindOf(t *testing.T) {
 	cases := map[string]Kind{
 		"a.JPG": KindImage, "a.HeIc": KindImage, "b.CR3": KindRaw, "c.rw2": KindRaw,
-		"d.MOV": KindVideo, "e.mp4": KindVideo, "f.txt": KindNone, "noext": KindNone,
+		"d.MOV": KindVideo, "e.mp4": KindVideo, "i.M4V": KindVideo, "j.m4v": KindVideo,
+		"f.txt": KindNone, "noext": KindNone,
 		"g.tiff": KindImage, "h.webp": KindImage,
 	}
 	for name, want := range cases {
