@@ -27,13 +27,14 @@ start() {
     mv -f "$LOG" "$LOG.1"
   fi
   # Low priority (ARCHITECTURE §1): nice 19 + idle I/O class when available.
-  # The binary also applies both itself as a fallback.
+  # The binary also applies both itself via Linux syscalls as a fallback.
   PREFIX=""
-  command -v ionice >/dev/null 2>&1 && PREFIX="ionice -c 3"
-  command -v nice >/dev/null 2>&1 && PREFIX="nice -n 19 $PREFIX"
+  ionice -c 3 true >/dev/null 2>&1 && PREFIX="ionice -c 3"
+  nice -n 19 true >/dev/null 2>&1 && PREFIX="nice -n 19 $PREFIX"
   cd "$QPKG_ROOT" || exit 1
+  trap '' HUP
   # shellcheck disable=SC2086
-  nohup $PREFIX "$BIN" -data-dir "$QPKG_ROOT" -listen ":$PORT" -share-root /share >> "$LOG" 2>&1 &
+  $PREFIX "$BIN" -data-dir "$QPKG_ROOT" -listen ":$PORT" -share-root /share </dev/null >> "$LOG" 2>&1 &
   echo $! > "$PIDFILE"
   echo "$QPKG_NAME started."
 }

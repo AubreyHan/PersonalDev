@@ -36,6 +36,7 @@ func main() {
 	}
 
 	lowerPriority()
+	signal.Ignore(syscall.SIGHUP)
 	loc := metadata.NASLocation()
 	log.Printf("photo-album: data-dir=%s listen=%s share-root=%s tz=%s", *dataDir, *listen, *shareRoot, loc)
 
