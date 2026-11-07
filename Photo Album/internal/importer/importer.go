@@ -121,11 +121,10 @@ func (im *Importer) Run(ctx context.Context, start time.Time) (Result, error) {
 		return res, err
 	}
 	sc := &scan{
-		im:      im,
-		start:   start,
-		spec:    spec,
-		batch:   map[string]string{},
-		touched: map[string]bool{},
+		im:    im,
+		start: start,
+		spec:  spec,
+		batch: map[string]string{},
 	}
 
 	// 4. Process units.
@@ -145,8 +144,7 @@ func (im *Importer) Run(ctx context.Context, start time.Time) (Result, error) {
 		}
 	}
 
-	// 5. Clean up, log, prune.
-	cleanupDirs(im.ImportDir, sc.touched)
+	// 5. Log and prune.
 	res.Imported, res.Duplicates, res.Failed, res.Aborted = sc.imported, sc.dups, sc.failed, sc.abort
 	if err := im.Log.WriteScan(start, im.Now(), sc.abort, sc.entries); err != nil {
 		return res, err
@@ -201,7 +199,6 @@ type scan struct {
 	start   time.Time
 	spec    *perm.Spec
 	batch   map[string]string // md5 -> absolute album path imported in this scan
-	touched map[string]bool   // import sub-directories files were moved out of
 	entries []importlog.Entry
 	abort   string
 
@@ -360,7 +357,6 @@ func (sc *scan) toDuplicates(u unit, vs []verdict, allDup bool) error {
 		done = append(done, moved{f.Abs, dst})
 	}
 	for i, f := range u.files {
-		sc.touched[filepath.Dir(f.Abs)] = true
 		sc.dups++
 		typ, ref := vs[i].dupType, vs[i].ref
 		switch {
@@ -371,6 +367,7 @@ func (sc *scan) toDuplicates(u unit, vs []verdict, allDup bool) error {
 			typ = importlog.TypeLivePartial
 		}
 		sc.logf(typ, f.Abs, ref)
+		cleanupDir(sc.im.ImportDir, filepath.Dir(f.Abs))
 	}
 	return nil
 }
@@ -438,7 +435,6 @@ func (sc *scan) importUnit(u unit, sums []string, dateRel, targetDir string, nam
 		}
 		sc.batch[sums[i]] = dst
 		names[strings.ToLower(final[i])] = final[i]
-		sc.touched[filepath.Dir(f.Abs)] = true
 		sc.imported++
 		if final[i] != f.name() {
 			typ := importlog.TypeRenamed
@@ -447,6 +443,7 @@ func (sc *scan) importUnit(u unit, sums []string, dateRel, targetDir string, nam
 			}
 			sc.logf(typ, f.Abs, dst)
 		}
+		cleanupDir(sc.im.ImportDir, filepath.Dir(f.Abs))
 	}
 	return nil
 }

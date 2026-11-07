@@ -3,7 +3,6 @@ package importer
 import (
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 )
 
@@ -35,35 +34,22 @@ func junkOnly(dir string) (bool, []os.DirEntry) {
 	return true, ents
 }
 
-// cleanupDirs removes directories that became empty because files were moved
-// out of them, walking up towards (but never removing) root.
-func cleanupDirs(root string, touched map[string]bool) {
+// cleanupDir immediately removes dir if it has become empty (or contains only
+// system junk), walking up towards (but never removing) root.
+func cleanupDir(root, dir string) {
 	root = filepath.Clean(root)
-	dirs := make([]string, 0, len(touched))
-	for d := range touched {
-		dirs = append(dirs, filepath.Clean(d))
-	}
-	// Deepest first.
-	sort.Slice(dirs, func(i, j int) bool {
-		ci, cj := strings.Count(dirs[i], string(filepath.Separator)), strings.Count(dirs[j], string(filepath.Separator))
-		if ci != cj {
-			return ci > cj
+	d := filepath.Clean(dir)
+	for d != root && strings.HasPrefix(d, root+string(filepath.Separator)) {
+		ok, ents := junkOnly(d)
+		if !ok {
+			break
 		}
-		return dirs[i] < dirs[j]
-	})
-	for _, d := range dirs {
-		for d != root && strings.HasPrefix(d, root+string(filepath.Separator)) {
-			ok, ents := junkOnly(d)
-			if !ok {
-				break
-			}
-			for _, e := range ents {
-				os.RemoveAll(filepath.Join(d, e.Name()))
-			}
-			if err := os.Remove(d); err != nil {
-				break
-			}
-			d = filepath.Dir(d)
+		for _, e := range ents {
+			_ = os.RemoveAll(filepath.Join(d, e.Name()))
 		}
+		if err := os.Remove(d); err != nil {
+			break
+		}
+		d = filepath.Dir(d)
 	}
 }
