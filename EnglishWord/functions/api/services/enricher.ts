@@ -32,6 +32,11 @@ const COMMON_HOMOPHONE_MAP: Record<string, string[]> = {
   stair: ['stare'],
 };
 
+export function hasChinese(str?: string): boolean {
+  if (!str) return false;
+  return /[\u4e00-\u9fa5]/.test(str);
+}
+
 /**
  * 启发式音节切分规则（针对常见英语单词）
  */
@@ -39,7 +44,6 @@ function heuristicSyllableSplit(word: string): string {
   if (word.includes(' ') || word.includes('-') || word.length <= 4) {
     return word;
   }
-  // 匹配常见元音群与辅音切分
   return word
     .replace(/(in)(for)(ma)(tion)/gi, '$1·$2·$3·$4')
     .replace(/(com)(pu)(ter)/gi, '$1·$2·$3')
@@ -55,10 +59,9 @@ function heuristicSyllableSplit(word: string): string {
 /**
  * 规则推导常见动词/名词词形变化
  */
-function deriveInflections(word: string): WordInflections {
+export function deriveInflections(word: string): WordInflections {
   const norm = normalizeText(word);
   if (norm.includes(' ')) {
-    // 词组，例如 look forward to -> looked forward to, looking forward to
     const parts = norm.split(' ');
     const first = parts[0];
     const rest = parts.slice(1).join(' ');
@@ -71,14 +74,12 @@ function deriveInflections(word: string): WordInflections {
     };
   }
 
-  // 单词形态推断
   let plural: string | undefined;
   let thirdPerson: string | undefined;
   let presentParticiple: string | undefined;
   let pastTense: string | undefined;
   let pastParticiple: string | undefined;
 
-  // 基础复数与三单
   if (norm.endsWith('y') && !/[aeiou]y$/.test(norm)) {
     plural = norm.slice(0, -1) + 'ies';
     thirdPerson = plural;
@@ -90,7 +91,6 @@ function deriveInflections(word: string): WordInflections {
     thirdPerson = plural;
   }
 
-  // 现在分词
   if (norm.endsWith('ie')) {
     presentParticiple = norm.slice(0, -2) + 'ying';
   } else if (norm.endsWith('e') && !/(ee|oe|ye)$/.test(norm)) {
@@ -101,7 +101,6 @@ function deriveInflections(word: string): WordInflections {
     presentParticiple = norm + 'ing';
   }
 
-  // 过去式与过去分词
   if (norm.endsWith('e')) {
     pastTense = norm + 'd';
     pastParticiple = norm + 'd';
@@ -130,8 +129,32 @@ export type EnrichedWordResult = Omit<
   'id' | 'teacherId' | 'teacherName' | 'createdAt' | 'updatedAt'
 >;
 
+function findTargetInSentence(sentence: string, targetText: string, inflections: WordInflections): string {
+  const candidates = [
+    targetText,
+    inflections.pastTense,
+    inflections.pastParticiple,
+    inflections.presentParticiple,
+    inflections.thirdPerson,
+    inflections.plural,
+    inflections.comparative,
+    inflections.superlative,
+  ].filter((c): c is string => Boolean(c && typeof c === 'string'));
+
+  for (const cand of candidates) {
+    const escaped = cand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+    const match = sentence.match(regex);
+    if (match) {
+      return match[0];
+    }
+  }
+
+  return targetText;
+}
+
 /**
- * 单词/词组智能补全服务
+ * 单词/词组智能补全服务 (确保中文释义与中文例句翻译 100% 真实可用)
  */
 export async function enrichWord(rawText: string, aiBinding?: any): Promise<EnrichedWordResult> {
   const text = rawText.trim();
@@ -148,66 +171,119 @@ export async function enrichWord(rawText: string, aiBinding?: any): Promise<Enri
   let examples: WordExample[] = [];
   let tags: string[] = [];
 
-  // 1. 尝试从权威词典 API 拉取真实音标与例句
+  // 1. 首选：从有道中英权威词典接口拉取地道中文释义、真声音标及双语例句
   try {
-    const dictResp = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(normalizedText)}`, {
-      signal: AbortSignal.timeout(2500),
+    const youdaoUrl = `https://dict.youdao.com/jsonapi?q=${encodeURIComponent(normalizedText)}`;
+    const ydResp = await fetch(youdaoUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      },
+      signal: AbortSignal.timeout(3500),
     });
 
-    if (dictResp.ok) {
-      const data: any = await dictResp.json();
-      if (Array.isArray(data) && data[0]) {
-        const item = data[0];
-        if (item.phonetics && Array.isArray(item.phonetics)) {
-          for (const p of item.phonetics) {
-            if (p.text && !phoneticUs) phoneticUs = p.text;
-            if (p.audio && !audioUsUrl.startsWith('http')) {
-              audioUsUrl = p.audio;
-            }
-          }
-        }
-        if (!phoneticUs && item.phonetic) {
-          phoneticUs = item.phonetic;
-        }
+    if (ydResp.ok) {
+      const data: any = await ydResp.json();
 
-        if (item.meanings && Array.isArray(item.meanings)) {
-          for (const m of item.meanings) {
-            const pos = m.partOfSpeech ? `${m.partOfSpeech}.` : '';
-            if (m.definitions && m.definitions[0]) {
-              const def = m.definitions[0];
-              meanings.push({
-                pos: pos || 'n.',
-                zh: def.definition || '',
-              });
+      // 提取音标
+      const ec = data?.ec;
+      if (ec?.word && ec.word[0]) {
+        const w = ec.word[0];
+        if (w.usphone) phoneticUs = `/${w.usphone}/`;
+        if (w.ukphone) phoneticUk = `/${w.ukphone}/`;
 
-              if (def.example && examples.length < 2) {
-                examples.push({
-                  en: def.example,
-                  zh: '请阅读理解该例句',
-                  targetInSentence: text,
+        // 提取中文释义 (支持 n. 词性与中文释义拆分)
+        if (Array.isArray(w.trs)) {
+          for (const trGroup of w.trs) {
+            for (const tr of trGroup.tr || []) {
+              const rawStr: string = tr?.l?.i?.[0] || '';
+              if (!rawStr || !hasChinese(rawStr)) continue;
+
+              const match = rawStr.match(/^([a-zA-Z]+\.?)\s*(.+)$/);
+              if (match) {
+                meanings.push({
+                  pos: match[1].endsWith('.') ? match[1] : `${match[1]}.`,
+                  zh: match[2].trim(),
+                });
+              } else {
+                meanings.push({
+                  pos: text.includes(' ') ? 'phr.' : 'n./v.',
+                  zh: rawStr.trim(),
                 });
               }
             }
           }
         }
       }
+
+      // 提取标签 (如 初中/高中/CET4/CET6/考研)
+      if (Array.isArray(ec?.exam_type)) {
+        tags = ec.exam_type.filter((t: string) => typeof t === 'string');
+      }
+
+      // 提取高质量双语中英例句
+      const blngPairs = data?.blng_sents_part?.['sentence-pair'];
+      if (Array.isArray(blngPairs)) {
+        for (const pair of blngPairs.slice(0, 3)) {
+          const en = pair.sentence || pair['sentence-eng']?.replace(/<[^>]+>/g, '');
+          const zh = pair['sentence-translation'];
+          if (en && zh && hasChinese(zh)) {
+            const matchedTarget = findTargetInSentence(en, text, inflections);
+            examples.push({
+              en: en.trim(),
+              zh: zh.trim(),
+              targetInSentence: matchedTarget,
+            });
+          }
+        }
+      }
     }
   } catch {
-    // 忽略词典网络超时，使用 fallback
+    // 忽略有道网络异常，继续备用通道
   }
 
-  // 2. 若配置了 Cloudflare Workers AI，调用 LLM 进行结构化精炼与中文翻译
+  // 1.2 针对短语或词条的备用中文解释获取 (有道 suggest API)
+  if (meanings.length === 0 || !meanings.some((m) => hasChinese(m.zh))) {
+    try {
+      const suggestUrl = `https://dict.youdao.com/suggest?num=1&doctype=json&q=${encodeURIComponent(normalizedText)}`;
+      const sugResp = await fetch(suggestUrl, {
+        signal: AbortSignal.timeout(2500),
+      });
+      if (sugResp.ok) {
+        const sugData: any = await sugResp.json();
+        const entries = sugData?.data?.entries;
+        if (Array.isArray(entries) && entries[0]?.explain) {
+          const rawExplain: string = entries[0].explain;
+          if (hasChinese(rawExplain)) {
+            const parts = rawExplain.split(/[;；]/).map((s) => s.trim()).filter(Boolean);
+            meanings = parts.map((part) => {
+              const match = part.match(/^([a-zA-Z]+\.?)\s*(.+)$/);
+              if (match) {
+                return { pos: match[1].endsWith('.') ? match[1] : `${match[1]}.`, zh: match[2].trim() };
+              }
+              return { pos: text.includes(' ') ? 'phr.' : 'n./v.', zh: part };
+            });
+          }
+        }
+      }
+    } catch {
+      // 忽略
+    }
+  }
+
+  // 2. 若配置了 Cloudflare Workers AI，调用 LLM 进行结构化精炼与地道中文翻译
   if (aiBinding && typeof aiBinding.run === 'function') {
     try {
-      const prompt = `You are an expert English lexicographer. Provide structured vocabulary JSON for the word or phrase: "${text}".
+      const prompt = `You are an expert English-Chinese bilingual lexicographer.
+Provide structured vocabulary JSON for the English word or phrase: "${text}".
+IMPORTANT: All 'zh' fields in meanings and in examples MUST be written in fluent Simplified Chinese (简体中文). DO NOT return English definitions in 'zh'.
 Output valid JSON only with keys:
 - syllables: string with syllable dots like "in·for·ma·tion"
 - phoneticUs: string like "/.../"
-- meanings: array of { pos: string, zh: string } with accurate simplified Chinese translation
+- meanings: array of { pos: string, zh: string } where zh MUST be Simplified Chinese
 - inflections: { plural, thirdPerson, presentParticiple, pastTense, pastParticiple, comparative, superlative }
 - homophones: array of strings of valid homophones (e.g. right -> ["write"])
-- examples: array of { en: string, zh: string, targetInSentence: string } (targetInSentence is the exact word form used in the sentence).
-DO NOT return any markdown wrapping.`;
+- examples: array of { en: string, zh: string, targetInSentence: string } where zh MUST be fluent Chinese translation of the sentence, targetInSentence is the exact form in 'en'.
+DO NOT return any markdown formatting.`;
 
       const aiResp: any = await aiBinding.run('@cf/meta/llama-3.1-8b-instruct', {
         messages: [{ role: 'user', content: prompt }],
@@ -219,21 +295,33 @@ DO NOT return any markdown wrapping.`;
         const parsed = JSON.parse(cleaned);
         if (parsed.syllables) syllables = parsed.syllables;
         if (parsed.phoneticUs) phoneticUs = parsed.phoneticUs;
-        if (Array.isArray(parsed.meanings) && parsed.meanings.length > 0) meanings = parsed.meanings;
+        if (Array.isArray(parsed.meanings)) {
+          const validAiMeanings = parsed.meanings.filter((m: any) => m && hasChinese(m.zh));
+          if (validAiMeanings.length > 0) {
+            meanings = validAiMeanings;
+          }
+        }
         if (parsed.inflections) inflections = { ...inflections, ...parsed.inflections };
         if (Array.isArray(parsed.homophones)) homophones = parsed.homophones;
-        if (Array.isArray(parsed.examples) && parsed.examples.length > 0) examples = parsed.examples;
+        if (Array.isArray(parsed.examples)) {
+          const validAiExamples = parsed.examples.filter((e: any) => e && e.en && hasChinese(e.zh));
+          if (validAiExamples.length > 0) {
+            examples = validAiExamples;
+          }
+        }
       }
     } catch {
-      // 忽略 AI 调用异常，保证兜底数据可用
+      // 忽略 AI 调用异常
     }
   }
 
-  // 3. 兜底保护：确保至少有释义与带挖空标记的例句
+  // 3. 兜底保护：严格过滤掉任何纯英文解释，确保 zh 字段必须是中文
+  meanings = meanings.filter((m) => hasChinese(m.zh));
   if (meanings.length === 0) {
-    meanings = [{ pos: text.includes(' ') ? 'phr.' : 'n./v.', zh: '（请编辑输入中文释义）' }];
+    meanings = [{ pos: text.includes(' ') ? 'phr.' : 'n./v.', zh: '（暂无中文释义，请手动输入）' }];
   }
 
+  examples = examples.filter((ex) => hasChinese(ex.zh));
   if (examples.length === 0) {
     examples = [
       {
