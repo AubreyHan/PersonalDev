@@ -25,7 +25,15 @@ func main() {
 	dataDir := flag.String("data-dir", defDataDir, "directory holding bootstrap.json (QPKG install dir)")
 	listen := flag.String("listen", ":8090", "HTTP listen address")
 	shareRoot := flag.String("share-root", "/share", "root of selectable shared folders")
+	cleanup := flag.Bool("uninstall-cleanup", false, "remove <album>/.photo-album (called by the QPKG uninstaller) and exit")
 	flag.Parse()
+
+	if *cleanup {
+		if err := uninstallCleanup(*dataDir); err != nil {
+			log.Fatalf("uninstall-cleanup: %v", err)
+		}
+		return
+	}
 
 	lowerPriority()
 	loc := metadata.NASLocation()
