@@ -309,7 +309,7 @@ func (sc *scan) process(u unit) error {
 	if anyDup {
 		return sc.toDuplicates(u, verdicts, allDup)
 	}
-	return sc.importUnit(u, sums, verdicts, dateRel, targetDir, names, anyRename)
+	return sc.importUnit(u, sums, dateRel, targetDir, names, anyRename)
 }
 
 func (sc *scan) classify(f *file, sum, dateRel string, names map[string]string) (verdict, error) {
@@ -380,7 +380,7 @@ func splitExt(name string) (string, string) {
 	return name[:len(name)-len(ext)], ext
 }
 
-func (sc *scan) importUnit(u unit, sums []string, vs []verdict, dateRel, targetDir string, names map[string]string, rename bool) error {
+func (sc *scan) importUnit(u unit, sums []string, dateRel, targetDir string, names map[string]string, rename bool) error {
 	final := make([]string, len(u.files))
 	for i, f := range u.files {
 		final[i] = f.name()
@@ -448,6 +448,5 @@ func (sc *scan) importUnit(u unit, sums []string, vs []verdict, dateRel, targetD
 			sc.logf(typ, f.Abs, dst)
 		}
 	}
-	_ = vs
 	return nil
 }
