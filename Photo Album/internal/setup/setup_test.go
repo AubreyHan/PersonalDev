@@ -41,11 +41,11 @@ func TestValidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	cases := map[string]Request{
-		"不能相同":     {P("Photos"), P("CACHEDEV1_DATA/Photos"), 60},
-		"不能互相包含":   {P("Photos"), P("CACHEDEV1_DATA/Photos/sub"), 60},
-		"扫描间隔":     {P("Photos"), P("Inbox"), 4},
-		"不存在":      {P("Photos"), P("nope"), 60},
-		"共享文件夹":    {P("Photos"), "/tmp", 60},
+		"不能相同":      {P("Photos"), P("CACHEDEV1_DATA/Photos"), 60},
+		"不能互相包含":    {P("Photos"), P("CACHEDEV1_DATA/Photos/sub"), 60},
+		"扫描间隔":      {P("Photos"), P("Inbox"), 4},
+		"不存在":       {P("Photos"), P("nope"), 60},
+		"共享文件夹":     {P("Photos"), "/tmp", 60},
 		"临时导入目录未选择": {P("Photos"), "", 1441},
 	}
 	for want, req := range cases {

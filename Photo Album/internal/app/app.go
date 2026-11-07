@@ -38,6 +38,8 @@ type App struct {
 	ShareRoot  string
 	Loc        *time.Location
 	RetryEvery time.Duration
+	// Tune, when set, may adjust components before scanning starts (tests).
+	Tune func(*importer.Importer, *scheduler.Scheduler)
 
 	mu      sync.RWMutex
 	phase   Phase
@@ -170,6 +172,9 @@ func (a *App) runConfigured(ctx context.Context, st *store.Store, albumDir strin
 	a.mu.Lock()
 	a.sched = sched
 	a.mu.Unlock()
+	if a.Tune != nil {
+		a.Tune(im, sched)
+	}
 	a.setPhase(PhaseRunning, nil)
 	sched.Run(ctx)
 }
