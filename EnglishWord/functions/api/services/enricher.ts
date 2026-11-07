@@ -37,6 +37,68 @@ export function hasChinese(str?: string): boolean {
   return /[\u4e00-\u9fa5]/.test(str);
 }
 
+export function isPlaceholderMeaning(zh?: string): boolean {
+  if (!zh || !hasChinese(zh)) return true;
+  if (zh.includes('请编辑') || zh.includes('暂无中文')) return true;
+  return false;
+}
+
+export function isPlaceholderExample(zh?: string): boolean {
+  if (!zh || !hasChinese(zh)) return true;
+  if (zh.includes('请阅读理解') || /^这是关于\s*.+\s*的例句[。.]?$/.test(zh.trim())) return true;
+  return false;
+}
+
+/**
+ * 结构化解析释义字符串（支持 "n. 词义" 或 短语的 "短语释义：详细说明"）
+ */
+export function parseMeaningString(
+  rawStr: string,
+  isPhrase: boolean
+): { pos: string; zh: string } | null {
+  const raw = rawStr.trim();
+  if (!raw || !hasChinese(raw)) return null;
+
+  // 1. 匹配标准词性前缀，例如 "n. 情感，情绪" 或 "v. 害怕"
+  const posMatch = raw.match(/^([a-zA-Z]+\.?)\s*(.+)$/);
+  if (posMatch) {
+    const pos = posMatch[1].endsWith('.') ? posMatch[1] : `${posMatch[1]}.`;
+    let zh = posMatch[2].trim();
+    // 如果后面跟有冒号说明，提取冒号前的核心释义
+    if (zh.includes('：') || zh.includes(':')) {
+      const parts = zh.split(/[:：]/);
+      if (hasChinese(parts[0])) {
+        zh = parts[0].trim();
+      }
+    }
+    zh = zh.replace(/[…\.\s]+$/, '').trim();
+    if (!zh || isPlaceholderMeaning(zh)) return null;
+    return { pos, zh };
+  }
+
+  // 2. 如果包含冒号说明，例如 "与……有关：指两个或多个事物之间存在某种联系或关联。" 或 "幽默感：一种能够理解..."
+  if (raw.includes('：') || raw.includes(':')) {
+    const parts = raw.split(/[:：]/);
+    if (hasChinese(parts[0])) {
+      const zh = parts[0].replace(/[…\.\s]+$/, '').trim();
+      if (zh && !isPlaceholderMeaning(zh)) {
+        return {
+          pos: isPhrase ? 'phr.' : 'n./v.',
+          zh,
+        };
+      }
+    }
+  }
+
+  // 3. 直接作为释义
+  const cleanZh = raw.replace(/[…\.\s]+$/, '').trim();
+  if (!cleanZh || isPlaceholderMeaning(cleanZh)) return null;
+  return {
+    pos: isPhrase ? 'phr.' : 'n./v.',
+    zh: cleanZh,
+  };
+}
+
 /**
  * 启发式音节切分规则（针对常见英语单词）
  */
