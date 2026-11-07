@@ -19,6 +19,10 @@ public enum GitError: LocalizedError {
         switch self {
         case .commandFailed(let command, let exitCode, let stderr):
             let msg = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            if exitCode == 9 || exitCode == 137 {
+                let hint = msg.isEmpty ? "macOS 代码签名异常 (SIGKILL/Invalid Page): 仓库内存在损坏或未正确签名的 Mach-O 二进制文件，系统内核在 Git 内存映射读取时强制终止了进程" : msg
+                return "Git命令执行失败 (\(command), code \(exitCode)): \(hint)"
+            }
             return "Git命令执行失败 (\(command), code \(exitCode)): \(msg)"
         case .timedOut(let command, let timeout):
             return "Git命令执行超时 (\(command), 超过 \(Int(timeout)) 秒)"
@@ -64,7 +68,10 @@ public final class GitRunner: @unchecked Sendable {
         }
 
         let cmdStr = args.joined(separator: " ")
-        let stderr = lastResult?.stderr ?? ""
+        var stderr = lastResult?.stderr ?? ""
+        if (lastResult?.exitCode == 9 || lastResult?.exitCode == 137) && stderr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            stderr = "macOS 代码签名校验异常 (SIGKILL / Code Signature Invalid): 仓库中存在未正确签名的 Mach-O 可执行文件，系统内核在 Git 内存映射读取时强制终止了进程。"
+        }
         AppLogger.shared.error("Git 执行失败 [\(cmdStr)]: \(stderr.trimmingCharacters(in: .whitespacesAndNewlines))", tag: "Git")
         throw GitError.commandFailed(command: cmdStr, exitCode: lastResult?.exitCode ?? 1, stderr: stderr)
     }
