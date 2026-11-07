@@ -13,6 +13,8 @@ VER=$(sed -n 's/^QPKG_VER="\(.*\)"/\1/p' qpkg/qpkg.cfg)
 OUT="build/qpkg/photo-album"
 
 echo "==> front end"
+mkdir -p web/public
+go run ./scripts/genicons assets/icon.png build/.icons web/public/favicon.png
 (cd web && npm ci --no-audit --no-fund && npm run build)
 touch web/dist/.gitkeep
 
@@ -29,7 +31,7 @@ echo "==> QDK tree"
 cp qpkg/qpkg.cfg qpkg/package_routines "$OUT/"
 cp qpkg/shared/photo-album.sh "$OUT/shared/"
 chmod 755 "$OUT/shared/photo-album.sh" "$OUT/x86_64/bin/photo-album-server"
-go run ./scripts/genicons "$OUT/icons"
+go run ./scripts/genicons assets/icon.png "$OUT/icons"
 
 if command -v qbuild >/dev/null 2>&1; then
   echo "==> qbuild"

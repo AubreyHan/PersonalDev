@@ -11,6 +11,7 @@ import (
 	"image"
 	"image/color"
 	"image/gif"
+	_ "image/jpeg"
 	"image/png"
 	"log"
 	"math"
