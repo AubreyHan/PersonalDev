@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -219,24 +220,22 @@ func (a *App) Setup(req setup.Request) error {
 	return nil
 }
 
-// SetInterval changes the scan interval (only while running).
+// SetInterval changes the scan interval. While the initial index is still
+// running it is only stored; the scheduler picks it up when it starts.
 func (a *App) SetInterval(minutes int64) error {
 	a.mu.RLock()
-	sched := a.sched
+	st, sched := a.st, a.sched
 	a.mu.RUnlock()
-	if sched == nil {
-		a.mu.RLock()
-		st := a.st
-		a.mu.RUnlock()
-		if st == nil {
-			return errors.New("尚未完成配置")
-		}
-		if !scheduler.ValidInterval(minutes) {
-			return (&scheduler.Scheduler{}).SetInterval(minutes)
-		}
-		return st.SetInt(store.KeyIntervalMinutes, minutes)
+	if sched != nil {
+		return sched.SetInterval(minutes)
 	}
-	return sched.SetInterval(minutes)
+	if st == nil {
+		return errors.New("尚未完成配置")
+	}
+	if !scheduler.ValidInterval(minutes) {
+		return fmt.Errorf("扫描间隔必须在 %d–%d 分钟之间", scheduler.MinInterval, scheduler.MaxInterval)
+	}
+	return st.SetInt(store.KeyIntervalMinutes, minutes)
 }
 
 // Status is the status-page payload.
