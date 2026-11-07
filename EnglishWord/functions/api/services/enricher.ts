@@ -123,6 +123,14 @@ function heuristicSyllableSplit(word: string): string {
  */
 export function deriveInflections(word: string): WordInflections {
   const norm = normalizeText(word);
+  if (norm === 'be') {
+    return {
+      thirdPerson: 'is',
+      presentParticiple: 'being',
+      pastTense: 'was',
+      pastParticiple: 'been',
+    };
+  }
   if (norm.includes(' ')) {
     const parts = norm.split(' ');
     const first = parts[0];
@@ -221,6 +229,7 @@ function findTargetInSentence(sentence: string, targetText: string, inflections:
 export async function enrichWord(rawText: string, aiBinding?: any): Promise<EnrichedWordResult> {
   const text = rawText.trim();
   const normalizedText = normalizeText(text);
+  const isPhrase = text.includes(' ');
 
   let syllables = heuristicSyllableSplit(text);
   let phoneticUs = '';
@@ -253,26 +262,41 @@ export async function enrichWord(rawText: string, aiBinding?: any): Promise<Enri
         if (w.usphone) phoneticUs = `/${w.usphone}/`;
         if (w.ukphone) phoneticUk = `/${w.ukphone}/`;
 
-        // 提取中文释义 (支持 n. 词性与中文释义拆分)
+        // 提取中文释义 (支持 n. 词性与短语冒号释义拆分)
         if (Array.isArray(w.trs)) {
           for (const trGroup of w.trs) {
             for (const tr of trGroup.tr || []) {
               const rawStr: string = tr?.l?.i?.[0] || '';
-              if (!rawStr || !hasChinese(rawStr)) continue;
-
-              const match = rawStr.match(/^([a-zA-Z]+\.?)\s*(.+)$/);
-              if (match) {
-                meanings.push({
-                  pos: match[1].endsWith('.') ? match[1] : `${match[1]}.`,
-                  zh: match[2].trim(),
-                });
-              } else {
-                meanings.push({
-                  pos: text.includes(' ') ? 'phr.' : 'n./v.',
-                  zh: rawStr.trim(),
-                });
+              const parsed = parseMeaningString(rawStr, isPhrase);
+              if (parsed && !meanings.some((m) => m.zh === parsed.zh)) {
+                meanings.push(parsed);
               }
             }
+          }
+        }
+      }
+
+      // 若 ec 中无有效释义（多见于短语或俚语），尝试从 web_trans 提取地道网络释义
+      if (meanings.length === 0 && data?.web_trans?.['web-translation']) {
+        const wtList = data.web_trans['web-translation'];
+        if (Array.isArray(wtList)) {
+          for (const item of wtList) {
+            const transArr = item.trans;
+            if (Array.isArray(transArr)) {
+              for (const t of transArr) {
+                const val = (t.value || '').replace(/<[^>]+>/g, '').trim();
+                if (val && hasChinese(val) && !val.includes('...') && val.length <= 20) {
+                  const cleanZh = val.replace(/[…\.\s]+$/, '').trim();
+                  if (cleanZh && !isPlaceholderMeaning(cleanZh) && !meanings.some((m) => m.zh === cleanZh)) {
+                    meanings.push({
+                      pos: isPhrase ? 'phr.' : 'n./v.',
+                      zh: cleanZh,
+                    });
+                  }
+                }
+              }
+            }
+            if (meanings.length >= 2) break;
           }
         }
       }
@@ -282,13 +306,13 @@ export async function enrichWord(rawText: string, aiBinding?: any): Promise<Enri
         tags = ec.exam_type.filter((t: string) => typeof t === 'string');
       }
 
-      // 提取高质量双语中英例句
+      // 提取高质量双语中英例句 (支持单词及词组)
       const blngPairs = data?.blng_sents_part?.['sentence-pair'];
       if (Array.isArray(blngPairs)) {
         for (const pair of blngPairs.slice(0, 3)) {
           const en = pair.sentence || pair['sentence-eng']?.replace(/<[^>]+>/g, '');
           const zh = pair['sentence-translation'];
-          if (en && zh && hasChinese(zh)) {
+          if (en && zh && hasChinese(zh) && !isPlaceholderExample(zh)) {
             const matchedTarget = findTargetInSentence(en, text, inflections);
             examples.push({
               en: en.trim(),
@@ -304,7 +328,7 @@ export async function enrichWord(rawText: string, aiBinding?: any): Promise<Enri
   }
 
   // 1.2 针对短语或词条的备用中文解释获取 (有道 suggest API)
-  if (meanings.length === 0 || !meanings.some((m) => hasChinese(m.zh))) {
+  if (meanings.length === 0 || !meanings.some((m) => hasChinese(m.zh) && !isPlaceholderMeaning(m.zh))) {
     try {
       const suggestUrl = `https://dict.youdao.com/suggest?num=1&doctype=json&q=${encodeURIComponent(normalizedText)}`;
       const sugResp = await fetch(suggestUrl, {
@@ -317,13 +341,12 @@ export async function enrichWord(rawText: string, aiBinding?: any): Promise<Enri
           const rawExplain: string = entries[0].explain;
           if (hasChinese(rawExplain)) {
             const parts = rawExplain.split(/[;；]/).map((s) => s.trim()).filter(Boolean);
-            meanings = parts.map((part) => {
-              const match = part.match(/^([a-zA-Z]+\.?)\s*(.+)$/);
-              if (match) {
-                return { pos: match[1].endsWith('.') ? match[1] : `${match[1]}.`, zh: match[2].trim() };
+            for (const part of parts) {
+              const parsed = parseMeaningString(part, isPhrase);
+              if (parsed && !meanings.some((m) => m.zh === parsed.zh)) {
+                meanings.push(parsed);
               }
-              return { pos: text.includes(' ') ? 'phr.' : 'n./v.', zh: part };
-            });
+            }
           }
         }
       }
@@ -358,7 +381,9 @@ DO NOT return any markdown formatting.`;
         if (parsed.syllables) syllables = parsed.syllables;
         if (parsed.phoneticUs) phoneticUs = parsed.phoneticUs;
         if (Array.isArray(parsed.meanings)) {
-          const validAiMeanings = parsed.meanings.filter((m: any) => m && hasChinese(m.zh));
+          const validAiMeanings = parsed.meanings.filter(
+            (m: any) => m && hasChinese(m.zh) && !isPlaceholderMeaning(m.zh)
+          );
           if (validAiMeanings.length > 0) {
             meanings = validAiMeanings;
           }
@@ -366,7 +391,9 @@ DO NOT return any markdown formatting.`;
         if (parsed.inflections) inflections = { ...inflections, ...parsed.inflections };
         if (Array.isArray(parsed.homophones)) homophones = parsed.homophones;
         if (Array.isArray(parsed.examples)) {
-          const validAiExamples = parsed.examples.filter((e: any) => e && e.en && hasChinese(e.zh));
+          const validAiExamples = parsed.examples.filter(
+            (e: any) => e && e.en && hasChinese(e.zh) && !isPlaceholderExample(e.zh)
+          );
           if (validAiExamples.length > 0) {
             examples = validAiExamples;
           }
@@ -377,13 +404,13 @@ DO NOT return any markdown formatting.`;
     }
   }
 
-  // 3. 兜底保护：严格过滤掉任何纯英文解释，确保 zh 字段必须是中文
-  meanings = meanings.filter((m) => hasChinese(m.zh));
+  // 3. 兜底保护：严格过滤掉任何纯英文与占位符解释，确保 zh 字段必须是真实中文
+  meanings = meanings.filter((m) => hasChinese(m.zh) && !isPlaceholderMeaning(m.zh));
   if (meanings.length === 0) {
-    meanings = [{ pos: text.includes(' ') ? 'phr.' : 'n./v.', zh: '（暂无中文释义，请手动输入）' }];
+    meanings = [{ pos: isPhrase ? 'phr.' : 'n./v.', zh: '（暂无中文释义，请手动输入）' }];
   }
 
-  examples = examples.filter((ex) => hasChinese(ex.zh));
+  examples = examples.filter((ex) => hasChinese(ex.zh) && !isPlaceholderExample(ex.zh));
   if (examples.length === 0) {
     examples = [
       {
