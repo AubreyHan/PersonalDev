@@ -23,6 +23,13 @@ public enum GitError: LocalizedError {
                 let hint = msg.isEmpty ? "macOS 代码签名异常 (SIGKILL/Invalid Page): 仓库内存在损坏或未正确签名的 Mach-O 二进制文件，系统内核在 Git 内存映射读取时强制终止了进程" : msg
                 return "Git命令执行失败 (\(command), code \(exitCode)): \(hint)"
             }
+            if msg.contains("GH013") {
+                if msg.contains("PUSH PROTECTION") || msg.contains("Push cannot contain secrets") {
+                    return "GitHub 安全拦截 (GH013: 发现敏感凭据/Token): 推送分支中包含被 GitHub 拦截的 Secret 密钥，请在提交历史中移除或至 GitHub 安全页面解除拦截。"
+                } else if msg.contains("Protected branch") || msg.contains("protected") {
+                    return "GitHub 规则拦截 (GH013: 受保护分支): 目标分支受保护，禁止直接推送。"
+                }
+            }
             return "Git命令执行失败 (\(command), code \(exitCode)): \(msg)"
         case .timedOut(let command, let timeout):
             return "Git命令执行超时 (\(command), 超过 \(Int(timeout)) 秒)"
@@ -99,6 +106,8 @@ public final class GitRunner: @unchecked Sendable {
                     env["USER"] = NSUserName()
                 }
                 env["GIT_TERMINAL_PROMPT"] = "0"
+                env["GIT_MERGE_AUTOEDIT"] = "no"
+                env["GIT_EDITOR"] = "true"
                 let home = env["HOME"] ?? NSHomeDirectory()
                 let githubKey = "\(home)/.ssh/github"
                 var sshCmd = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
