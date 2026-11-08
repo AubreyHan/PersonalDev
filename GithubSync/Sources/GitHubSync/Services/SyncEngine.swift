@@ -103,16 +103,17 @@ public final class SyncEngine {
 
         if ahead > 0 && behind == 0 {
             // 本地领先，直接推送
-            _ = try await gitRunner.run(args: ["push", "origin", branch], at: repoURL)
+            _ = try await gitRunner.run(args: ["push", "origin", branch], at: repoURL, timeout: 600.0)
         } else if ahead == 0 && behind > 0 {
             // 远端领先，快进合并并拉取 LFS 实体
-            _ = try await gitRunner.run(args: ["merge", "--ff-only", "origin/\(branch)"], at: repoURL)
+            _ = try await gitRunner.run(args: ["merge", "--ff-only", "origin/\(branch)"], at: repoURL, timeout: 600.0)
             await pullLFSIfNeeded(at: repoURL)
         } else if ahead > 0 && behind > 0 {
-            // 两侧均有提交（冲突分叉），进行智能合并
+            // 两侧均有提交（冲突分叉），进行智能合并（禁用交互式编辑器，设置 600 秒超时以兼容大文件 LFS 检出）
             let mergeRes = try await gitRunner.execute(
-                args: ["merge", "--allow-unrelated-histories", "origin/\(branch)"],
-                at: repoURL
+                args: ["merge", "--no-edit", "--allow-unrelated-histories", "origin/\(branch)"],
+                at: repoURL,
+                timeout: 600.0
             )
 
             let gitDir = repoURL.appendingPathComponent(".git")
@@ -162,7 +163,7 @@ public final class SyncEngine {
             }
 
             // 推送合并结果
-            _ = try await gitRunner.run(args: ["push", "origin", branch], at: repoURL)
+            _ = try await gitRunner.run(args: ["push", "origin", branch], at: repoURL, timeout: 600.0)
             await pullLFSIfNeeded(at: repoURL)
         } else {
             // 两侧均无提交或已同步，检查并补全可能遗漏的 LFS 实体
