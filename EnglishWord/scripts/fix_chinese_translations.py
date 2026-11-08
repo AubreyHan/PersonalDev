@@ -5,12 +5,13 @@
 """
 
 import json
+import os
 import re
 import urllib.parse
 import urllib.request
 
-CF_ACCOUNT_ID = "bdfbfec8245e011c293f2a76e30af237"
-CF_API_TOKEN = ""
+CF_ACCOUNT_ID = os.environ.get("CF_ACCOUNT_ID", "bdfbfec8245e011c293f2a76e30af237")
+CF_API_TOKEN = os.environ.get("CF_API_TOKEN", "")
 D1_DATABASE_ID = "75fd4e87-82eb-416f-81e1-7dcd4777682a"
 CF_API_BASE = "https://api.cloudflare.com/client/v4"
 
