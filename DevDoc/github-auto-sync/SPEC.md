@@ -516,3 +516,26 @@ fn prune_fifo(path: &str) {
 - **自动诊断与友好提示**：在 `GitRunner` 中捕获 `exitCode == 9 || exitCode == 137` 且 `stderr` 为空的异常场景，自动注入诊断指导：
   `macOS 代码签名异常 (SIGKILL/Invalid Page): 仓库内存在损坏或未正确签名的 Mach-O 二进制文件，系统内核在 Git 内存映射读取时强制终止了进程`。
 - **修复指引**：引导用户或运维通过 `codesign -s - --force <binary_path>` 重新签署 ad-hoc 签名，或通过 `.gitignore` 排除不应纳入版本控制的临时构建可执行产物。
+
+---
+
+## 13. 非交互式合并与大文件检出超时规范 (Non-Interactive Merge & Extended Timeout Spec)
+
+### 13.1 杜绝交互式编辑器挂起 (`--no-edit`)
+- **故障根因**：当本地分支与远端分支分叉时，`git merge origin/<branch>` 在能够自动快进或自动合并生成 Merge Commit 时，默认行为是触发 `launch_editor()` 提示输入提交注释。后台守护进程缺乏 TTY 输入环境，导致进程无限期等待标准输入，最终触发 120 秒超时被强行终止。
+- **环境与参数加固**：
+  1. 在 `SyncEngine` 执行合并时强制挂载 `--no-edit` 参数：`["merge", "--no-edit", "--allow-unrelated-histories", "origin/\(branch)"]`。
+  2. 在 `GitRunner` 子进程环境变量中强制注入 `GIT_MERGE_AUTOEDIT=no` 与 `GIT_EDITOR=true`，双重锁死任何编辑器的弹出可能。
+
+### 13.2 Git LFS 大对象流式检出超时扩容 (600s)
+- **故障根因**：若合并分支涉及大文件（如数百兆的 `.mp4` 视频或模型权重），`git merge` 在检出工作区时会自动触发 `git-lfs filter-process`（Smudge 过滤）经由 CDN 下载真实大文件。在默认 120 秒超时限制下，大文件往往未下载完毕即遭 `process.terminate()` 击杀，且在 `.git/lfs/incomplete/` 残留大量碎片。
+- **超时放宽**：将 `merge`、`pull` 及后续 `push` 操作的超时上限统一扩容至 600 秒（10 分钟），保障百兆至吉字节级别大对象的顺利拉取与推送。
+
+---
+
+## 14. GitHub 规则集与 Secret 拦截诊断规范 (GH013 Push Protection Spec)
+
+### 14.1 敏感凭据推送拦截与友好诊断
+- **故障背景**：GitHub 开启 Push Protection 后，若提交历史中包含未脱敏的 API 密钥（如 Cloudflare Token、AWS Key 等），远端拒绝推送并返回 `GH013: Repository rule violations`。
+- **诊断识别**：在 `GitRunner` 错误拦截层匹配 `GH013`，精准提取 `PUSH PROTECTION` / `Push cannot contain secrets` 关键字，在前端 UI 呈现直观提示：
+  `GitHub 安全拦截 (GH013: 发现敏感凭据/Token): 推送分支中包含被 GitHub 拦截的 Secret 密钥，请在提交历史中移除或至 GitHub 安全页面解除拦截。`
