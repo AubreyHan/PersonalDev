@@ -1092,7 +1092,17 @@
 
     this.showToast('✅ 油耗记录已保存！(本地已缓存)', 'success');
     this.resetTriCalc('fuel');
-    document.getElementById('fuel-mileage').value = '';
+    const fuelMileageEl = document.getElementById('fuel-mileage');
+    if (fuelMileageEl) {
+      fuelMileageEl.value = '';
+      fuelMileageEl.dataset.isDefault = 'true';
+    }
+    const fuelPreEl = document.getElementById('fuel-pre-percent');
+    if (fuelPreEl) fuelPreEl.dataset.isDefault = 'true';
+    const fuelPostEl = document.getElementById('fuel-post-percent');
+    if (fuelPostEl) fuelPostEl.dataset.isDefault = 'true';
+    const fuelBatEl = document.getElementById('fuel-battery-percent');
+    if (fuelBatEl) fuelBatEl.dataset.isDefault = 'true';
     document.getElementById('fuel-station').value = '';
     const clearBtn = document.getElementById('fuel-station-clear-btn');
     if (clearBtn) clearBtn.classList.add('hidden');
@@ -1100,6 +1110,7 @@
     await this.extractFuelStationsHistory();
     this.renderFuelStationPills();
     document.getElementById('fuel-notes').value = '';
+    await this.syncActiveVehicleToForms(true);
 
     // 若联网则触发静默同步
     if (navigator.onLine && window.CarSync) {
@@ -1204,7 +1215,23 @@
 
     this.showToast('⚡ 电耗记录已保存！(本地已缓存)', 'success');
     this.resetTriCalc('elec');
-    document.getElementById('elec-mileage').value = '';
+    const elecMileageEl = document.getElementById('elec-mileage');
+    if (elecMileageEl) {
+      elecMileageEl.value = '';
+      elecMileageEl.dataset.isDefault = 'true';
+    }
+    const elecStartEl = document.getElementById('elec-start-soc');
+    if (elecStartEl) {
+      elecStartEl.value = '';
+      elecStartEl.dataset.isDefault = 'true';
+    }
+    const elecEndEl = document.getElementById('elec-end-soc');
+    if (elecEndEl) {
+      elecEndEl.value = '';
+      elecEndEl.dataset.isDefault = 'true';
+    }
+    const elecFuelEl = document.getElementById('elec-fuel-percent');
+    if (elecFuelEl) elecFuelEl.dataset.isDefault = 'true';
     document.getElementById('elec-station').value = '';
     const clearBtn = document.getElementById('elec-station-clear-btn');
     if (clearBtn) clearBtn.classList.add('hidden');
@@ -1212,12 +1239,11 @@
     await this.extractElecStationsHistory();
     this.renderElecStationPills();
     document.getElementById('elec-notes').value = '';
-    document.getElementById('elec-start-soc').value = '';
-    document.getElementById('elec-end-soc').value = '';
     const calToggle = document.getElementById('elec-battery-calibrate-toggle');
     if (calToggle) calToggle.checked = false;
     this.toggleBatteryCalibration(false);
     this.updateSocBar();
+    await this.syncActiveVehicleToForms(true);
 
     if (navigator.onLine && window.CarSync) {
       CarSync.sync(true);

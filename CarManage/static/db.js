@@ -481,7 +481,7 @@ const CarSync = {
     // 监听网络状态
     window.addEventListener('online', () => {
       console.log('[CarSync] 恢复网络连接，触发自动后台静默同步');
-      this.sync();
+      this.sync(true);
     });
 
     window.addEventListener('offline', () => {
@@ -499,6 +499,16 @@ const CarSync = {
     // 周期性同步 (每 3 分钟自动检查一次)
     setInterval(() => {
       if (navigator.onLine && this.status !== 'syncing') {
+        // 若用户正处于油耗、电耗、费用录入界面或弹窗编辑中，且无待上传离线队列，暂停后台自动拉取，避免刷新重置用户输入
+        if (
+          typeof window !== 'undefined' &&
+          window.App &&
+          typeof window.App.isUserInEntryOrModal === 'function' &&
+          window.App.isUserInEntryOrModal() &&
+          this.pendingCount === 0
+        ) {
+          return;
+        }
         this.sync(true); // silent
       }
     }, 180000);
@@ -644,24 +654,33 @@ const CarSync = {
       this.setStatus(this.pendingCount > 0 ? 'offline' : 'synced');
 
       if (window.App) {
-        if (!silent) {
-          await window.App.loadVehicles();
-        }
-        if (window.App.extractStationsFromHistory) {
-          await window.App.extractStationsFromHistory();
+        const inEntryOrModal =
+          typeof window.App.isUserInEntryOrModal === 'function' && window.App.isUserInEntryOrModal();
+        if (inEntryOrModal) {
+          // 当用户处于油耗、电耗、费用录入界面或正在编辑弹窗时，绝不触发 loadVehicles / syncActiveVehicleToForms 自动刷新表单，保护用户输入不被重置
+          if (window.CarDB && CarDB.db) {
+            const latestVehicles = await CarDB.getAll('vehicles');
+            if (latestVehicles && latestVehicles.length > 0) {
+              window.App.vehicles = latestVehicles;
+            }
+          }
         } else {
-          if (window.App.extractFuelStationsHistory) await window.App.extractFuelStationsHistory();
-          if (window.App.extractElecStationsHistory) await window.App.extractElecStationsHistory();
-        }
-        if (window.App.extractExpenseItemsFromHistory) {
-          await window.App.extractExpenseItemsFromHistory();
-          window.App.renderExpenseItemsPills();
-        }
-        if (window.App.currentTab === 'overview') window.App.loadOverview();
-        else if (window.App.currentTab === 'energy') window.App.loadEnergyAnalysis();
-        else if (window.App.currentTab === 'history') window.App.loadHistory();
-        else if (['fuel', 'electricity', 'maintenance'].includes(window.App.currentTab)) {
-          window.App.syncActiveVehicleToForms();
+          if (!silent) {
+            await window.App.loadVehicles();
+          }
+          if (window.App.extractStationsFromHistory) {
+            await window.App.extractStationsFromHistory();
+          } else {
+            if (window.App.extractFuelStationsHistory) await window.App.extractFuelStationsHistory();
+            if (window.App.extractElecStationsHistory) await window.App.extractElecStationsHistory();
+          }
+          if (window.App.extractExpenseItemsFromHistory) {
+            await window.App.extractExpenseItemsFromHistory();
+            window.App.renderExpenseItemsPills();
+          }
+          if (window.App.currentTab === 'overview') window.App.loadOverview();
+          else if (window.App.currentTab === 'energy') window.App.loadEnergyAnalysis();
+          else if (window.App.currentTab === 'history') window.App.loadHistory();
         }
       }
     } catch (err) {
