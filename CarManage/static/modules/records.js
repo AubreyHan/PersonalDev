@@ -117,6 +117,77 @@
     }
   },
 
+  // 判断当前是否处于录入页面或弹窗编辑状态（禁止后台自动刷新或重置输入内容）
+  isUserInEntryOrModal() {
+    if (['fuel', 'electricity', 'maintenance'].includes(this.currentTab)) {
+      return true;
+    }
+    const modalIds = ['record-edit-modal', 'current-status-modal', 'vehicle-modal'];
+    for (const id of modalIds) {
+      const el = document.getElementById(id);
+      if (el && !el.classList.contains('hidden')) {
+        return true;
+      }
+    }
+    return this.hasUnsavedEntryInput();
+  },
+
+  // 检查录入表单是否已有用户输入的内容（保护已填内容不被重置）
+  hasUnsavedEntryInput(tab = null) {
+    const checkFuel = !tab || tab === 'fuel';
+    const checkElec = !tab || tab === 'electricity';
+    const checkMaint = !tab || tab === 'maintenance';
+
+    const hasVal = (id) => {
+      const el = document.getElementById(id);
+      return Boolean(el && String(el.value || '').trim() !== '');
+    };
+    const isEdited = (id) => {
+      const el = document.getElementById(id);
+      return Boolean(el && el.dataset && el.dataset.isDefault === 'false' && String(el.value || '').trim() !== '');
+    };
+
+    if (checkFuel) {
+      if (
+        hasVal('fuel-amount') ||
+        hasVal('fuel-unit-price') ||
+        hasVal('fuel-total-price') ||
+        hasVal('fuel-station') ||
+        hasVal('fuel-notes') ||
+        isEdited('fuel-mileage') ||
+        isEdited('fuel-pre-percent') ||
+        isEdited('fuel-post-percent') ||
+        isEdited('fuel-battery-percent')
+      ) {
+        return true;
+      }
+    }
+
+    if (checkElec) {
+      if (
+        hasVal('elec-amount') ||
+        hasVal('elec-unit-price') ||
+        hasVal('elec-total-price') ||
+        hasVal('elec-station') ||
+        hasVal('elec-notes') ||
+        isEdited('elec-mileage') ||
+        isEdited('elec-start-soc') ||
+        isEdited('elec-end-soc') ||
+        isEdited('elec-fuel-percent')
+      ) {
+        return true;
+      }
+    }
+
+    if (checkMaint) {
+      if (hasVal('maint-item-type') || hasVal('maint-cost') || hasVal('maint-notes')) {
+        return true;
+      }
+    }
+
+    return false;
+  },
+
   populateVehicleUI() {
     const select = document.getElementById('vehicle-select');
     if (!select) return;
@@ -132,9 +203,11 @@
 
     document.getElementById('no-vehicle-notice').classList.add('hidden');
 
+    const prevActiveVid = this.activeVehicleId;
     const savedVid = localStorage.getItem('car_tracker_active_vid');
     const foundSaved = this.vehicles.find(v => v.id == savedVid);
     this.activeVehicleId = foundSaved ? foundSaved.id : this.vehicles[0].id;
+    const vidChanged = prevActiveVid !== this.activeVehicleId;
 
     this.vehicles.forEach(v => {
       const opt = document.createElement('option');
@@ -144,9 +217,12 @@
       select.appendChild(opt);
     });
 
-    this.syncActiveVehicleToForms();
+    // 若用户正处于录入界面且当前激活车辆未变化，禁止重置表单输入内容
+    this.syncActiveVehicleToForms(vidChanged);
     this.syncVehiclePowerUI();
-    this.loadOverview();
+    if (!['fuel', 'electricity', 'maintenance'].includes(this.currentTab)) {
+      this.loadOverview();
+    }
     this.renderVehiclesList();
   },
 
@@ -230,7 +306,7 @@
     if (!vid) return;
     this.activeVehicleId = parseInt(vid);
     localStorage.setItem('car_tracker_active_vid', this.activeVehicleId);
-    this.syncActiveVehicleToForms();
+    this.syncActiveVehicleToForms(true);
     this.syncVehiclePowerUI();
 
     const v = this.getActiveVehicle();
@@ -256,9 +332,16 @@
     return this.vehicles.find(v => v.id === this.activeVehicleId) || null;
   },
 
-  async syncActiveVehicleToForms() {
+  async syncActiveVehicleToForms(forceReset = false) {
     const v = this.getActiveVehicle();
     if (!v) return;
+
+    const vehicleChanged = this._lastSyncedFormVehicleId !== v.id;
+    const shouldForce = Boolean(forceReset || vehicleChanged);
+    this._lastSyncedFormVehicleId = v.id;
+
+    const fuelDirty = !shouldForce && this.hasUnsavedEntryInput('fuel');
+    const elecDirty = !shouldForce && this.hasUnsavedEntryInput('electricity');
 
     const label = `${v.plate_number || v.name} · ${v.brand} ${v.model}`;
 
@@ -283,85 +366,102 @@
     const elecPrev = document.getElementById('elec-prev-mileage');
     if (elecPrev) elecPrev.textContent = this.formatThousands(benchmarkMileage);
 
+    const bindDefaultTracker = (el) => {
+      if (el && !el.dataset.hasListener) {
+        el.addEventListener('input', () => {
+          el.dataset.isDefault = 'false';
+        });
+        el.dataset.hasListener = 'true';
+      }
+    };
+
     const fuelMileage = document.getElementById('fuel-mileage');
     if (fuelMileage) {
       fuelMileage.placeholder = '当前基准 ' + this.formatThousands(benchmarkMileage);
-      if (!fuelMileage.value || fuelMileage.dataset.isDefault === 'true') {
+      if (shouldForce || ((!fuelMileage.value || fuelMileage.dataset.isDefault === 'true') && !fuelDirty)) {
         fuelMileage.value = benchmarkMileage;
         fuelMileage.dataset.isDefault = 'true';
       }
-      if (!fuelMileage.dataset.hasListener) {
-        fuelMileage.addEventListener('input', () => {
-          fuelMileage.dataset.isDefault = 'false';
-        });
-        fuelMileage.dataset.hasListener = 'true';
-      }
+      bindDefaultTracker(fuelMileage);
     }
 
     const elecMileage = document.getElementById('elec-mileage');
     if (elecMileage) {
       elecMileage.placeholder = '当前基准 ' + this.formatThousands(benchmarkMileage);
-      if (!elecMileage.value || elecMileage.dataset.isDefault === 'true') {
+      if (shouldForce || ((!elecMileage.value || elecMileage.dataset.isDefault === 'true') && !elecDirty)) {
         elecMileage.value = benchmarkMileage;
         elecMileage.dataset.isDefault = 'true';
       }
-      if (!elecMileage.dataset.hasListener) {
-        elecMileage.addEventListener('input', () => {
-          elecMileage.dataset.isDefault = 'false';
-        });
-        elecMileage.dataset.hasListener = 'true';
-      }
+      bindDefaultTracker(elecMileage);
     }
 
-    // 1. 油耗表单：加前起步油量（默认为最后一次油量）并自动计算加后油量
+    // 1. 油耗表单：加前起步油量（默认为最后一次油量）并自动计算加后油量（仅在未修改或强制重置时更新）
     const fuelPreInput = document.getElementById('fuel-pre-percent');
-    if (fuelPreInput) {
+    const fuelPostInput = document.getElementById('fuel-post-percent');
+    bindDefaultTracker(fuelPreInput);
+    bindDefaultTracker(fuelPostInput);
+    if (fuelPreInput && (shouldForce || (!fuelDirty && (!fuelPreInput.value || fuelPreInput.dataset.isDefault !== 'false')))) {
       const lastFuel = await this.getLastKnownFuelPercent(v.id);
       fuelPreInput.value = lastFuel;
+      fuelPreInput.dataset.isDefault = 'true';
+      if (shouldForce && fuelPostInput) {
+        fuelPostInput.dataset.isDefault = 'true';
+      }
       this.calcFuelPostPercent();
     }
 
     // 1.1 油耗表单：当前电量输入框（纯燃油车自动隐藏，混动/增程车默认带出最后一次电量）
     const fuelBatBox = document.getElementById('fuel-battery-percent-box');
     const fuelBatInput = document.getElementById('fuel-battery-percent');
+    bindDefaultTracker(fuelBatInput);
     if (fuelBatBox) {
       if (v.power_type === 'gas') {
         fuelBatBox.classList.add('hidden');
       } else {
         fuelBatBox.classList.remove('hidden');
-        if (fuelBatInput) {
+        if (fuelBatInput && (shouldForce || (!fuelDirty && (!fuelBatInput.value || fuelBatInput.dataset.isDefault !== 'false')))) {
           const lastSoc = await this.getLastKnownBatterySoc(v.id);
           fuelBatInput.value = (lastSoc !== null && lastSoc !== undefined) ? lastSoc : '';
+          fuelBatInput.dataset.isDefault = 'true';
         }
       }
     }
 
-    // 1.2 油耗表单：油品标号（默认使用上次录入的值）
+    // 1.2 油耗表单：油品标号（默认使用上次录入的值，若用户正在填写油耗表单则不覆盖）
     const fuelTypeInput = document.getElementById('fuel-type');
-    if (fuelTypeInput) {
+    if (fuelTypeInput && (shouldForce || (!fuelDirty && !fuelTypeInput.value))) {
       const lastFuelType = await this.getLastKnownFuelType(v.id);
       this.setFuelType(lastFuelType);
     }
 
-    // 2. 电耗表单：起始电量（默认为最后一次电量）并自动推算结束电量
+    // 2. 电耗表单：起始电量（默认为最后一次电量）并自动推算结束电量（仅在未修改或强制重置时更新）
     const elecStartInput = document.getElementById('elec-start-soc');
-    if (elecStartInput) {
+    const elecEndInput = document.getElementById('elec-end-soc');
+    bindDefaultTracker(elecStartInput);
+    bindDefaultTracker(elecEndInput);
+    if (elecStartInput && (shouldForce || (!elecDirty && (!elecStartInput.value || elecStartInput.dataset.isDefault !== 'false')))) {
       const lastSoc = await this.getLastKnownBatterySoc(v.id);
       elecStartInput.value = lastSoc;
+      elecStartInput.dataset.isDefault = 'true';
+      if (shouldForce && elecEndInput) {
+        elecEndInput.dataset.isDefault = 'true';
+      }
       this.calcElecEndSoc();
     }
 
     // 3. 电耗表单：油量百分比输入框（纯电车自动隐藏，混动/增程车默认带出最后一次油量）
     const elecFuelBox = document.getElementById('elec-fuel-box');
     const elecFuelInput = document.getElementById('elec-fuel-percent');
+    bindDefaultTracker(elecFuelInput);
     if (elecFuelBox) {
       if (v.power_type === 'ev') {
         elecFuelBox.classList.add('hidden');
       } else {
         elecFuelBox.classList.remove('hidden');
-        if (elecFuelInput) {
+        if (elecFuelInput && (shouldForce || (!elecDirty && (!elecFuelInput.value || elecFuelInput.dataset.isDefault !== 'false')))) {
           const lastFuel = await this.getLastKnownFuelPercent(v.id);
           elecFuelInput.value = lastFuel;
+          elecFuelInput.dataset.isDefault = 'true';
         }
       }
     }
