@@ -9,6 +9,10 @@
     if ('serviceWorker' in navigator) {
       let refreshing = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (typeof this.isUserInEntryOrModal === 'function' && this.isUserInEntryOrModal()) {
+          console.log('[PWA] 检测到 Service Worker 控制器更新，当前处于录入界面，已阻止自动重载以保护输入内容');
+          return;
+        }
         if (!refreshing) {
           refreshing = true;
           console.log('[PWA] 检测到 Service Worker 控制器更新，自动重载页面以激活最新功能');
