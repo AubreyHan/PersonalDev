@@ -306,10 +306,10 @@ func TestWatchDirCopyModeAndSilentSkipOnRescan(t *testing.T) {
 	// Put files in watchDir:
 	// 1. sub/IMG_0001.JPG: same name in target date dir, different content -> copied as IMG_0001_1.JPG
 	// 2. sub/photo.jpg: brand new -> copied as photo.jpg
-	// 3. sub/dup_of_photo.jpg: same content in same batch -> silently skipped
+	// 3. sub/z_dup_of_photo.jpg: same content in same batch -> silently skipped
 	put(t, watch, "sub/IMG_0001.JPG", "watch-content-1")
 	put(t, watch, "sub/photo.jpg", "watch-content-2")
-	put(t, watch, "sub/dup_of_photo.jpg", "watch-content-2")
+	put(t, watch, "sub/z_dup_of_photo.jpg", "watch-content-2")
 	e.im.ReadMeta = func(p string, _ *time.Location) (metadata.Info, error) {
 		return metadata.Info{Taken: day(7)}, nil
 	}
@@ -331,7 +331,7 @@ func TestWatchDirCopyModeAndSilentSkipOnRescan(t *testing.T) {
 	if hashCalls != 3 {
 		t.Fatalf("expected 3 hash calls on scan 1, got %d", hashCalls)
 	}
-	for _, rel := range []string{"sub/IMG_0001.JPG", "sub/photo.jpg", "sub/dup_of_photo.jpg"} {
+	for _, rel := range []string{"sub/IMG_0001.JPG", "sub/photo.jpg", "sub/z_dup_of_photo.jpg"} {
 		if _, err := os.Stat(filepath.Join(watch, rel)); err != nil {
 			t.Fatalf("source file %s was removed from watchDir: %v", rel, err)
 		}
