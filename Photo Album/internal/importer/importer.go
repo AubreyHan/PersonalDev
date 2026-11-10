@@ -37,6 +37,7 @@ type Importer struct {
 	Log       *importlog.Logger
 	AlbumDir  string
 	ImportDir string
+	WatchDir  string // optional; if empty, read from Store(KeyWatchDir) on each scan
 	Loc       *time.Location
 
 	// WriteWait is the pause between the two write-detection snapshots.
@@ -90,8 +91,13 @@ func (e errAbort) Error() string { return e.reason }
 func (im *Importer) Run(ctx context.Context, start time.Time) (Result, error) {
 	var res Result
 
-	// 1. Write detection.
-	writing, err := im.writeActivity(ctx)
+	watchDir := im.WatchDir
+	if watchDir == "" && im.Store != nil {
+		watchDir, _ = im.Store.Get(store.KeyWatchDir)
+	}
+
+	// 1. Write detection (covers both importDir and optional watchDir in one 30s window).
+	writing, err := im.writeActivity(ctx, watchDir)
 	if err != nil {
 		return res, err
 	}
@@ -105,7 +111,7 @@ func (im *Importer) Run(ctx context.Context, start time.Time) (Result, error) {
 		return res, fmt.Errorf("incremental index: %w", err)
 	}
 
-	// 3. Collect files and metadata.
+	// 3. Collect files and metadata in importDir (move mode).
 	entries, _, err := walk.Walk(im.ImportDir, walk.Options{ExcludeTop: ExcludeTop})
 	if err != nil {
 		return res, err
@@ -127,7 +133,7 @@ func (im *Importer) Run(ctx context.Context, start time.Time) (Result, error) {
 		batch: map[string]string{},
 	}
 
-	// 4. Process units.
+	// 4. Process units in importDir (move mode).
 	for _, u := range buildUnits(files) {
 		if err := ctx.Err(); err != nil {
 			sc.abort = "已取消"
@@ -144,7 +150,19 @@ func (im *Importer) Run(ctx context.Context, start time.Time) (Result, error) {
 		}
 	}
 
-	// 5. Log and prune.
+	// 5. Process optional watchDir (copy mode, source files preserved, duplicates silently skipped).
+	if sc.abort == "" && watchDir != "" {
+		if err := sc.runWatch(ctx, watchDir); err != nil {
+			var ab errAbort
+			if errors.As(err, &ab) {
+				sc.abort = ab.reason
+			} else {
+				sc.abort = err.Error()
+			}
+		}
+	}
+
+	// 6. Log and prune.
 	res.Imported, res.Duplicates, res.Failed, res.Aborted = sc.imported, sc.dups, sc.failed, sc.abort
 	if err := im.Log.WriteScan(start, im.Now(), sc.abort, sc.entries); err != nil {
 		return res, err
@@ -157,28 +175,37 @@ type snapEntry struct {
 	mtime int64
 }
 
-func (im *Importer) snapshot() (map[string]snapEntry, error) {
+func (im *Importer) snapshot(watchDir string) (map[string]snapEntry, error) {
 	entries, _, err := walk.Walk(im.ImportDir, walk.Options{ExcludeTop: ExcludeTop, AllFiles: true})
 	if err != nil {
 		return nil, err
 	}
 	m := make(map[string]snapEntry, len(entries))
 	for _, e := range entries {
-		m[e.Rel] = snapEntry{e.Size, e.ModTime.UnixNano()}
+		m["I:"+e.Rel] = snapEntry{e.Size, e.ModTime.UnixNano()}
+	}
+	if watchDir != "" {
+		wEntries, _, err := walk.Walk(watchDir, walk.Options{AllFiles: true})
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range wEntries {
+			m["W:"+e.Rel] = snapEntry{e.Size, e.ModTime.UnixNano()}
+		}
 	}
 	return m, nil
 }
 
 // writeActivity compares two snapshots taken WriteWait apart.
-func (im *Importer) writeActivity(ctx context.Context) (bool, error) {
-	a, err := im.snapshot()
+func (im *Importer) writeActivity(ctx context.Context, watchDir string) (bool, error) {
+	a, err := im.snapshot(watchDir)
 	if err != nil {
 		return false, err
 	}
 	if err := im.Sleep(ctx, im.WriteWait); err != nil {
 		return false, err
 	}
-	b, err := im.snapshot()
+	b, err := im.snapshot(watchDir)
 	if err != nil {
 		return false, err
 	}
