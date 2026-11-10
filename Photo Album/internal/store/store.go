@@ -216,3 +216,52 @@ func (s *Store) CountFiles() (int64, error) {
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM files`).Scan(&n)
 	return n, err
 }
+
+// WatchFileRec caches metadata and MD5 for a file in the copy-watched directory.
+type WatchFileRec struct {
+	RelPath   string
+	Size      int64
+	MtimeNs   int64
+	MD5       string
+	TakenNs   int64
+	ContentID string
+}
+
+// UpsertWatchFile inserts or replaces a cached watch-directory file row.
+func (s *Store) UpsertWatchFile(r WatchFileRec) error {
+	_, err := s.db.Exec(`INSERT INTO watch_files(rel_path,size,mtime_ns,md5,taken_ns,content_id) VALUES(?,?,?,?,?,?)
+		ON CONFLICT(rel_path) DO UPDATE SET size=excluded.size, mtime_ns=excluded.mtime_ns,
+		md5=excluded.md5, taken_ns=excluded.taken_ns, content_id=excluded.content_id`,
+		r.RelPath, r.Size, r.MtimeNs, r.MD5, r.TakenNs, r.ContentID)
+	return err
+}
+
+// DeleteWatchFile removes a cached watch-directory file row.
+func (s *Store) DeleteWatchFile(rel string) error {
+	_, err := s.db.Exec(`DELETE FROM watch_files WHERE rel_path=?`, rel)
+	return err
+}
+
+// AllWatchFiles returns every cached watch-directory file row keyed by rel_path.
+func (s *Store) AllWatchFiles() (map[string]WatchFileRec, error) {
+	rows, err := s.db.Query(`SELECT rel_path,size,mtime_ns,md5,taken_ns,content_id FROM watch_files`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	m := map[string]WatchFileRec{}
+	for rows.Next() {
+		var r WatchFileRec
+		if err := rows.Scan(&r.RelPath, &r.Size, &r.MtimeNs, &r.MD5, &r.TakenNs, &r.ContentID); err != nil {
+			return nil, err
+		}
+		m[r.RelPath] = r
+	}
+	return m, rows.Err()
+}
+
+// ClearWatchFiles deletes all cached watch-directory file rows.
+func (s *Store) ClearWatchFiles() error {
+	_, err := s.db.Exec(`DELETE FROM watch_files`)
+	return err
+}

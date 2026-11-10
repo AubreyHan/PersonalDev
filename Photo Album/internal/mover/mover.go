@@ -74,7 +74,14 @@ func Move(src, dst string, spec *perm.Spec) error {
 
 func isCrossDevice(err error) bool { return errors.Is(err, syscall.EXDEV) }
 
-func copyMove(src, dst string, spec *perm.Spec) (err error) {
+// Copy copies src to dst via a temporary file in dst's directory, preserving
+// modification time and applying spec, without removing src.
+func Copy(src, dst string, spec *perm.Spec) (err error) {
+	if _, err := os.Lstat(dst); err == nil {
+		return ErrExists
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
 	st, err := os.Stat(src)
 	if err != nil {
 		return err
@@ -120,7 +127,13 @@ func copyMove(src, dst string, spec *perm.Spec) (err error) {
 	if err = os.Rename(tmp, dst); err != nil {
 		return err
 	}
-	in.Close()
+	return nil
+}
+
+func copyMove(src, dst string, spec *perm.Spec) error {
+	if err := Copy(src, dst, spec); err != nil {
+		return err
+	}
 	if e := os.Remove(src); e != nil {
 		// The copy is complete; report but keep the imported file.
 		return fmt.Errorf("mover: copied but could not remove source: %w", e)
