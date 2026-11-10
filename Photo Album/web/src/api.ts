@@ -5,6 +5,7 @@ export interface Status {
   error?: string
   album_dir?: string
   import_dir?: string
+  watch_dir?: string
   interval_minutes?: number
   initial_index_done: boolean
   index_done: number
@@ -46,8 +47,10 @@ export const api = {
   status: () => call<Status>('GET', '/api/status'),
   list: (path: string) =>
     call<{ root: string; dirs: Dir[] }>('GET', '/api/fs/list?path=' + encodeURIComponent(path)),
-  setup: (album_dir: string, import_dir: string, interval_minutes: number) =>
-    call<{ ok: boolean }>('POST', '/api/setup', { album_dir, import_dir, interval_minutes }),
+  setup: (album_dir: string, import_dir: string, interval_minutes: number, watch_dir?: string) =>
+    call<{ ok: boolean }>('POST', '/api/setup', { album_dir, import_dir, watch_dir, interval_minutes }),
   setInterval: (interval_minutes: number) =>
     call<Status>('PUT', '/api/settings/interval', { interval_minutes }),
+  setWatchDir: (watch_dir: string) =>
+    call<Status>('PUT', '/api/settings/watch-dir', { watch_dir }),
 }

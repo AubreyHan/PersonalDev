@@ -8,6 +8,7 @@ const MAX = 1440
 export default function SetupPage({ onDone }: { onDone: () => void }) {
   const [album, setAlbum] = useState('')
   const [inbox, setInbox] = useState('')
+  const [watch, setWatch] = useState('')
   const [interval, setIntervalText] = useState('60')
   const [errors, setErrors] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
@@ -27,7 +28,7 @@ export default function SetupPage({ onDone }: { onDone: () => void }) {
     }
     setBusy(true)
     try {
-      await api.setup(album, inbox, minutes)
+      await api.setup(album, inbox, minutes, watch)
       setErrors([])
       onDone()
     } catch (err) {
@@ -40,9 +41,10 @@ export default function SetupPage({ onDone }: { onDone: () => void }) {
   return (
     <form className="card" onSubmit={submit}>
       <h2>首次运行配置</h2>
-      <p className="muted">请选择相册目录和临时导入目录。放入临时导入目录的照片会按扫描间隔自动导入相册。</p>
+      <p className="muted">请选择相册目录和临时导入目录。放入临时导入目录的照片会按扫描间隔自动移动导入相册；同时可选配置一个拷贝监控目录（只拷贝到相册，不删除源文件）。</p>
       <DirPicker label="相册目录" value={album} onChange={setAlbum} />
-      <DirPicker label="临时导入目录" value={inbox} onChange={setInbox} />
+      <DirPicker label="临时导入目录（移动导入，导入后删除源文件）" value={inbox} onChange={setInbox} />
+      <DirPicker label="拷贝监控目录（可选，只拷贝到相册，不删除源文件）" value={watch} onChange={setWatch} allowClear />
       <label className="field">
         扫描间隔（分钟，{MIN}–{MAX}）
         <input type="number" min={MIN} max={MAX} step={1} value={interval} onChange={(e) => setIntervalText(e.target.value)} />

@@ -5,10 +5,11 @@ interface Props {
   label: string
   value: string
   onChange: (path: string) => void
+  allowClear?: boolean
 }
 
 /** Tree-style browser over the NAS shared folders (/share). */
-export default function DirPicker({ label, value, onChange }: Props) {
+export default function DirPicker({ label, value, onChange, allowClear }: Props) {
   const [cwd, setCwd] = useState('')
   const [root, setRoot] = useState('')
   const [dirs, setDirs] = useState<Dir[]>([])
@@ -67,6 +68,14 @@ export default function DirPicker({ label, value, onChange }: Props) {
       </ul>
       <div className="picker-value">
         已选择：{value ? <code>{value}</code> : <span className="muted">未选择</span>}
+        {allowClear && value && (
+          <>
+            {' '}
+            <button type="button" className="small" onClick={() => onChange('')}>
+              清除选择
+            </button>
+          </>
+        )}
       </div>
     </fieldset>
   )
