@@ -37,19 +37,21 @@ func TestValidate(t *testing.T) {
 	os.Symlink(filepath.Join(root, "CACHEDEV1_DATA/Inbox"), filepath.Join(root, "Inbox"))
 	P := func(r string) string { return filepath.Join(root, r) }
 
-	if _, _, err := Validate(root, Request{P("Photos"), P("Inbox"), 60}); err != nil {
+	if _, _, _, err := Validate(root, Request{AlbumDir: P("Photos"), ImportDir: P("Inbox"), IntervalMinutes: 60}); err != nil {
 		t.Fatal(err)
 	}
 	cases := map[string]Request{
-		"不能相同":      {P("Photos"), P("CACHEDEV1_DATA/Photos"), 60},
-		"不能互相包含":    {P("Photos"), P("CACHEDEV1_DATA/Photos/sub"), 60},
-		"扫描间隔":      {P("Photos"), P("Inbox"), 4},
-		"不存在":       {P("Photos"), P("nope"), 60},
-		"共享文件夹":     {P("Photos"), "/tmp", 60},
-		"临时导入目录未选择": {P("Photos"), "", 1441},
+		"不能相同":            {AlbumDir: P("Photos"), ImportDir: P("CACHEDEV1_DATA/Photos"), IntervalMinutes: 60},
+		"不能互相包含":          {AlbumDir: P("Photos"), ImportDir: P("CACHEDEV1_DATA/Photos/sub"), IntervalMinutes: 60},
+		"拷贝监控目录和相册目录不能相同": {AlbumDir: P("Photos"), ImportDir: P("Inbox"), WatchDir: P("CACHEDEV1_DATA/Photos"), IntervalMinutes: 60},
+		"拷贝监控目录和临时导入目录不能相同": {AlbumDir: P("Photos"), ImportDir: P("Inbox"), WatchDir: P("Inbox"), IntervalMinutes: 60},
+		"扫描间隔":            {AlbumDir: P("Photos"), ImportDir: P("Inbox"), IntervalMinutes: 4},
+		"不存在":             {AlbumDir: P("Photos"), ImportDir: P("nope"), IntervalMinutes: 60},
+		"共享文件夹":           {AlbumDir: P("Photos"), ImportDir: "/tmp", IntervalMinutes: 60},
+		"临时导入目录未选择":       {AlbumDir: P("Photos"), ImportDir: "", IntervalMinutes: 1441},
 	}
 	for want, req := range cases {
-		_, _, err := Validate(root, req)
+		_, _, _, err := Validate(root, req)
 		if !strings.Contains(msgs(err), want) {
 			t.Errorf("%s: got %q", want, msgs(err))
 		}
@@ -59,8 +61,12 @@ func TestValidate(t *testing.T) {
 		mk(t, root, "CACHEDEV1_DATA/ro")
 		os.Chmod(ro, 0o555)
 		defer os.Chmod(ro, 0o755)
-		if _, _, err := Validate(root, Request{P("Photos"), ro, 60}); !strings.Contains(msgs(err), "没有读写权限") {
-			t.Errorf("read-only: %q", msgs(err))
+		if _, _, _, err := Validate(root, Request{AlbumDir: P("Photos"), ImportDir: ro, IntervalMinutes: 60}); !strings.Contains(msgs(err), "没有读写权限") {
+			t.Errorf("read-only import: %q", msgs(err))
+		}
+		// Read-only watch directory IS allowed since files are only copied out of it.
+		if _, _, w, err := Validate(root, Request{AlbumDir: P("Photos"), ImportDir: P("Inbox"), WatchDir: ro, IntervalMinutes: 60}); err != nil || w != ro {
+			t.Errorf("read-only watch should succeed: w=%q err=%v", w, err)
 		}
 	}
 
