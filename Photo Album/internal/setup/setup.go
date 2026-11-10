@@ -17,6 +17,7 @@ import (
 type Request struct {
 	AlbumDir        string `json:"album_dir"`
 	ImportDir       string `json:"import_dir"`
+	WatchDir        string `json:"watch_dir,omitempty"`
 	IntervalMinutes int64  `json:"interval_minutes"`
 }
 
@@ -28,7 +29,7 @@ type ValidationError struct {
 func (e *ValidationError) Error() string { return strings.Join(e.Messages, "；") }
 
 // Validate checks the request and returns cleaned directory paths.
-func Validate(shareRoot string, r Request) (album, imp string, err error) {
+func Validate(shareRoot string, r Request) (album, imp, watch string, err error) {
 	var msgs []string
 	album, aerr := checkDir(shareRoot, "相册目录", r.AlbumDir)
 	imp, ierr := checkDir(shareRoot, "临时导入目录", r.ImportDir)
@@ -55,14 +56,64 @@ func Validate(shareRoot string, r Request) (album, imp string, err error) {
 		if m := probeWritable("临时导入目录", imp); m != "" {
 			msgs = append(msgs, m)
 		}
+		if strings.TrimSpace(r.WatchDir) != "" {
+			w, werr := ValidateWatchDir(shareRoot, album, imp, r.WatchDir)
+			if werr != nil {
+				var ve *ValidationError
+				if errors.As(werr, &ve) {
+					msgs = append(msgs, ve.Messages...)
+				} else {
+					msgs = append(msgs, werr.Error())
+				}
+			} else {
+				watch = w
+			}
+		}
 	}
 	if !scheduler.ValidInterval(r.IntervalMinutes) {
 		msgs = append(msgs, fmt.Sprintf("扫描间隔必须是 %d–%d 之间的整数（分钟）", scheduler.MinInterval, scheduler.MaxInterval))
 	}
 	if len(msgs) > 0 {
-		return "", "", &ValidationError{Messages: msgs}
+		return "", "", "", &ValidationError{Messages: msgs}
 	}
-	return album, imp, nil
+	return album, imp, watch, nil
+}
+
+// ValidateWatchDir checks an optional copy-watched directory against shareRoot,
+// albumDir, and importDir. An empty watchDir is valid (disables the watch dir).
+func ValidateWatchDir(shareRoot, albumDir, importDir, watchDir string) (string, error) {
+	if strings.TrimSpace(watchDir) == "" {
+		return "", nil
+	}
+	var msgs []string
+	watch, werr := checkDir(shareRoot, "拷贝监控目录", watchDir)
+	if werr != "" {
+		return "", &ValidationError{Messages: []string{werr}}
+	}
+	rw, ew := filepath.EvalSymlinks(watch)
+	ra, ea := filepath.EvalSymlinks(albumDir)
+	ri, ei := filepath.EvalSymlinks(importDir)
+	if ew != nil || ea != nil || ei != nil {
+		msgs = append(msgs, "无法解析目录的真实路径")
+	} else {
+		if rw == ra {
+			msgs = append(msgs, "拷贝监控目录和相册目录不能相同")
+		} else if fsbrowse.Within(rw, ra) || fsbrowse.Within(ra, rw) {
+			msgs = append(msgs, "拷贝监控目录和相册目录不能互相包含")
+		}
+		if rw == ri {
+			msgs = append(msgs, "拷贝监控目录和临时导入目录不能相同")
+		} else if fsbrowse.Within(rw, ri) || fsbrowse.Within(ri, rw) {
+			msgs = append(msgs, "拷贝监控目录和临时导入目录不能互相包含")
+		}
+	}
+	if _, err := os.ReadDir(watch); err != nil {
+		msgs = append(msgs, "拷贝监控目录没有读取权限")
+	}
+	if len(msgs) > 0 {
+		return "", &ValidationError{Messages: msgs}
+	}
+	return watch, nil
 }
 
 func checkDir(root, label, p string) (string, string) {
