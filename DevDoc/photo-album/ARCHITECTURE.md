@@ -99,7 +99,7 @@ CREATE TABLE settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
--- keys: album_dir, import_dir, interval_minutes,
+-- keys: album_dir, import_dir, watch_dir, interval_minutes,
 --       initial_index_done, index_total, index_done,
 --       last_scan_started_at, last_scan_finished_at, next_scan_at
 
@@ -111,6 +111,15 @@ CREATE TABLE files (
   indexed_at INTEGER NOT NULL
 );
 CREATE INDEX idx_files_md5 ON files(md5);
+
+CREATE TABLE watch_files (
+  rel_path   TEXT PRIMARY KEY,   -- 相对拷贝监控目录，缓存已扫描文件的 MD5 与元数据以避免重复读取
+  size       INTEGER NOT NULL,
+  mtime_ns   INTEGER NOT NULL,
+  md5        TEXT NOT NULL,
+  taken_ns   INTEGER NOT NULL,
+  content_id TEXT NOT NULL
+);
 ```
 
 时间统一按 Unix 秒存储。所有路径在存储和比较前都先做 `filepath.EvalSymlinks`（QTS 的 `/share/<共享名>` 是指向 `/share/CACHEDEV1_DATA/...` 的符号链接）。
@@ -261,9 +270,10 @@ Live Photo 部分重复 | /share/Inbox/IMG_0004.MOV | /share/Photos/2026/2026-11
 | --- | --- | --- |
 | GET | `/api/state` | `{ phase: unconfigured \| storage_unavailable \| indexing \| running }` |
 | GET | `/api/fs/list?path=` | 列出子目录；`path` 为空时列出 `/share` 下的共享文件夹 |
-| POST | `/api/setup` | `{ album_dir, import_dir, interval_minutes }`，返回校验错误或成功 |
-| GET | `/api/status` | 两个目录、索引进度（`done/total`）、上次/下次扫描时间、扫描间隔、是否正在扫描 |
+| POST | `/api/setup` | `{ album_dir, import_dir, watch_dir?, interval_minutes }`，返回校验错误或成功 |
+| GET | `/api/status` | 相册目录、临时导入目录、拷贝监控目录、索引进度（`done/total`）、上次/下次扫描时间、扫描间隔、是否正在扫描 |
 | PUT | `/api/settings/interval` | `{ interval_minutes }`（5–1440） |
+| PUT | `/api/settings/watch-dir` | `{ watch_dir }`（设置、修改或传空字符串停用拷贝监控目录） |
 
 `POST /api/setup` 只在“未配置”状态下可用。前端为 SPA，路由有 `/setup` 和 `/status`，根据 `/api/state` 自动跳转。
 
