@@ -193,7 +193,7 @@ func (a *App) Setup(req setup.Request) error {
 	if _, err := bootstrap.Load(a.DataDir); !errors.Is(err, bootstrap.ErrNotConfigured) {
 		return ErrAlreadyConfigured
 	}
-	album, imp, err := setup.Validate(a.ShareRoot, req)
+	album, imp, watch, err := setup.Validate(a.ShareRoot, req)
 	if err != nil {
 		return err
 	}
@@ -204,6 +204,7 @@ func (a *App) Setup(req setup.Request) error {
 	for k, v := range map[string]string{
 		store.KeyAlbumDir:  album,
 		store.KeyImportDir: imp,
+		store.KeyWatchDir:  watch,
 	} {
 		if err := st.Set(k, v); err != nil {
 			st.Close()
@@ -249,12 +250,43 @@ func (a *App) SetInterval(minutes int64) error {
 	return st.SetInt(store.KeyIntervalMinutes, minutes)
 }
 
+// SetWatchDir sets or clears the optional copy-watched directory.
+func (a *App) SetWatchDir(watchDir string) error {
+	a.mu.RLock()
+	st := a.st
+	a.mu.RUnlock()
+	if st == nil {
+		return errors.New("尚未完成配置")
+	}
+	albumDir, err := st.Get(store.KeyAlbumDir)
+	if err != nil {
+		return err
+	}
+	importDir, err := st.Get(store.KeyImportDir)
+	if err != nil {
+		return err
+	}
+	clean, err := setup.ValidateWatchDir(a.ShareRoot, albumDir, importDir, watchDir)
+	if err != nil {
+		return err
+	}
+	prev, _ := st.Get(store.KeyWatchDir)
+	if err := st.Set(store.KeyWatchDir, clean); err != nil {
+		return err
+	}
+	if prev != clean {
+		_ = st.ClearWatchFiles()
+	}
+	return nil
+}
+
 // Status is the status-page payload.
 type Status struct {
 	Phase              Phase      `json:"phase"`
 	Error              string     `json:"error,omitempty"`
 	AlbumDir           string     `json:"album_dir,omitempty"`
 	ImportDir          string     `json:"import_dir,omitempty"`
+	WatchDir           string     `json:"watch_dir,omitempty"`
 	IntervalMinutes    int64      `json:"interval_minutes,omitempty"`
 	InitialIndexDone   bool       `json:"initial_index_done"`
 	IndexDone          int64      `json:"index_done"`
@@ -283,6 +315,7 @@ func (a *App) Status() Status {
 	}
 	s.AlbumDir, _ = st.Get(store.KeyAlbumDir)
 	s.ImportDir, _ = st.Get(store.KeyImportDir)
+	s.WatchDir, _ = st.Get(store.KeyWatchDir)
 	s.IntervalMinutes, _ = st.GetInt(store.KeyIntervalMinutes)
 	s.InitialIndexDone, _ = st.GetBool(store.KeyInitialIndexDone)
 	s.IndexDone, _ = st.GetInt(store.KeyIndexDone)

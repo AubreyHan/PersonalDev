@@ -32,6 +32,7 @@ func New(a *app.App, browse *fsbrowse.Browser, static fs.FS) *Server {
 	s.mux.HandleFunc("GET /api/fs/list", s.list)
 	s.mux.HandleFunc("POST /api/setup", s.setup)
 	s.mux.HandleFunc("PUT /api/settings/interval", s.interval)
+	s.mux.HandleFunc("PUT /api/settings/watch-dir", s.watchDir)
 	s.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { writeErr(w, 404, "not found") })
 	s.mux.HandleFunc("/", s.spa)
 	return s
@@ -102,6 +103,27 @@ func (s *Server) interval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.App.SetInterval(req.IntervalMinutes); err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	writeJSON(w, 200, s.App.Status())
+}
+
+func (s *Server) watchDir(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		WatchDir string `json:"watch_dir"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<14)).Decode(&req); err != nil {
+		writeErr(w, 400, "请求格式错误")
+		return
+	}
+	err := s.App.SetWatchDir(req.WatchDir)
+	var ve *setup.ValidationError
+	if errors.As(err, &ve) {
+		writeErr(w, 400, ve.Messages...)
+		return
+	}
+	if err != nil {
 		writeErr(w, 400, err.Error())
 		return
 	}
