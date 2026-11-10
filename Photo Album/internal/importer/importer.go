@@ -474,3 +474,174 @@ func (sc *scan) importUnit(u unit, sums []string, dateRel, targetDir string, nam
 	}
 	return nil
 }
+
+// runWatch scans the copy-watched directory: new files are copied into the
+// album (preserving source files in watchDir), while files whose MD5 already
+// exists in the album or the current scan are silently skipped.
+func (sc *scan) runWatch(ctx context.Context, watchDir string) error {
+	entries, _, err := walk.Walk(watchDir, walk.Options{})
+	if err != nil {
+		return err
+	}
+	cached, err := sc.im.Store.AllWatchFiles()
+	if err != nil {
+		return err
+	}
+	seen := make(map[string]bool, len(entries))
+	watchFiles := make([]*file, 0, len(entries))
+	watchSums := make(map[string]string, len(entries))
+
+	for _, e := range entries {
+		if err := ctx.Err(); err != nil {
+			return errAbort{"已取消"}
+		}
+		seen[e.Rel] = true
+		mtimeNs := e.ModTime.UnixNano()
+		if c, ok := cached[e.Rel]; ok && c.Size == e.Size && c.MtimeNs == mtimeNs {
+			var taken time.Time
+			if c.TakenNs != 0 {
+				taken = time.Unix(0, c.TakenNs)
+			}
+			watchFiles = append(watchFiles, &file{
+				Entry: e,
+				Info:  metadata.Info{Taken: taken, ContentID: c.ContentID},
+			})
+			watchSums[e.Rel] = c.MD5
+			continue
+		}
+		sum, err := sc.im.Hash(e.Abs)
+		if err != nil {
+			sc.logf(importlog.TypeFailed, e.Abs, err.Error())
+			sc.failed++
+			continue
+		}
+		info, _ := sc.im.ReadMeta(e.Abs, sc.im.Loc)
+		var takenNs int64
+		if !info.Taken.IsZero() {
+			takenNs = info.Taken.UnixNano()
+		}
+		if err := sc.im.Store.UpsertWatchFile(store.WatchFileRec{
+			RelPath:   e.Rel,
+			Size:      e.Size,
+			MtimeNs:   mtimeNs,
+			MD5:       sum,
+			TakenNs:   takenNs,
+			ContentID: info.ContentID,
+		}); err != nil {
+			return err
+		}
+		watchFiles = append(watchFiles, &file{Entry: e, Info: info})
+		watchSums[e.Rel] = sum
+	}
+	for rel := range cached {
+		if !seen[rel] {
+			_ = sc.im.Store.DeleteWatchFile(rel)
+		}
+	}
+
+	for _, u := range buildUnits(watchFiles) {
+		if err := ctx.Err(); err != nil {
+			return errAbort{"已取消"}
+		}
+		if err := sc.processWatchUnit(u, watchSums); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (sc *scan) processWatchUnit(u unit, watchSums map[string]string) error {
+	sums := make([]string, len(u.files))
+	for i, f := range u.files {
+		sums[i] = watchSums[f.Rel]
+	}
+	dateRel := DateDir(sc.unitDate(u))
+	targetDir := sc.albumAbs(dateRel)
+	names := listNames(targetDir)
+
+	anyDup, anyRename := false, false
+	for i, f := range u.files {
+		v, err := sc.classify(f, sums[i], dateRel, names)
+		if err != nil {
+			return err
+		}
+		if v.dupType != "" {
+			anyDup = true
+		}
+		anyRename = anyRename || v.rename
+	}
+	if anyDup {
+		// Copy-watched directory: silently skip already-imported / duplicate files.
+		return nil
+	}
+	return sc.copyUnit(u, sums, dateRel, targetDir, names, anyRename)
+}
+
+func (sc *scan) copyUnit(u unit, sums []string, dateRel, targetDir string, names map[string]string, rename bool) error {
+	final := make([]string, len(u.files))
+	for i, f := range u.files {
+		final[i] = f.name()
+	}
+	if rename {
+		for n := 1; ; n++ {
+			free := true
+			for i, f := range u.files {
+				stem, ext := splitExt(f.name())
+				final[i] = fmt.Sprintf("%s_%d%s", stem, n, ext)
+				if _, taken := names[strings.ToLower(final[i])]; taken {
+					free = false
+				}
+			}
+			if free {
+				break
+			}
+		}
+	}
+
+	if err := mover.MkdirAll(targetDir, sc.im.AlbumDir, sc.spec); err != nil {
+		sc.fail(u, u.files[0], err)
+		if mover.IsDiskFull(err) {
+			return errAbort{abortDiskFull}
+		}
+		return nil
+	}
+
+	var done []string
+	for i, f := range u.files {
+		dst := filepath.Join(targetDir, final[i])
+		if err := mover.Copy(f.Abs, dst, sc.spec); err != nil {
+			for j := len(done) - 1; j >= 0; j-- {
+				_ = os.Remove(done[j])
+			}
+			sc.fail(u, f, err)
+			if mover.IsDiskFull(err) {
+				return errAbort{abortDiskFull}
+			}
+			return nil
+		}
+		done = append(done, dst)
+	}
+
+	for i, f := range u.files {
+		dst := filepath.Join(targetDir, final[i])
+		rel := dateRel + "/" + final[i]
+		st, err := os.Stat(dst)
+		if err != nil {
+			return err
+		}
+		if err := sc.im.Store.UpsertFile(store.FileRec{RelPath: rel, Size: st.Size(), MtimeNs: st.ModTime().UnixNano(), MD5: sums[i]}); err != nil {
+			return err
+		}
+		sc.batch[sums[i]] = dst
+		names[strings.ToLower(final[i])] = final[i]
+		sc.imported++
+		if final[i] != f.name() {
+			typ := importlog.TypeRenamed
+			if u.live {
+				typ = importlog.LivePrefix + typ
+			}
+			sc.logf(typ, f.Abs, dst)
+		}
+	}
+	return nil
+}
