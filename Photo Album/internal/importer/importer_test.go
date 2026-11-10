@@ -291,3 +291,67 @@ func TestImmediateDirCleanupAndM4V(t *testing.T) {
 		t.Fatalf("m4v not imported: %v", err)
 	}
 }
+
+func TestWatchDirCopyModeAndSilentSkipOnRescan(t *testing.T) {
+	e := newEnv(t)
+	watch := t.TempDir()
+	if err := e.st.Set(store.KeyWatchDir, watch); err != nil {
+		t.Fatal(err)
+	}
+	put(t, e.album, "2026/2026-11/2026-11-07/IMG_0001.JPG", "existing-diff-content")
+	if err := e.im.Indexer.Initial(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Put files in watchDir:
+	// 1. sub/IMG_0001.JPG: same name in target date dir, different content -> copied as IMG_0001_1.JPG
+	// 2. sub/photo.jpg: brand new -> copied as photo.jpg
+	// 3. sub/dup_of_photo.jpg: same content in same batch -> silently skipped
+	put(t, watch, "sub/IMG_0001.JPG", "watch-content-1")
+	put(t, watch, "sub/photo.jpg", "watch-content-2")
+	put(t, watch, "sub/dup_of_photo.jpg", "watch-content-2")
+	e.im.ReadMeta = func(p string, _ *time.Location) (metadata.Info, error) {
+		return metadata.Info{Taken: day(7)}, nil
+	}
+
+	hashCalls := 0
+	origHash := e.im.Hash
+	e.im.Hash = func(p string) (string, error) {
+		if strings.HasPrefix(p, watch) {
+			hashCalls++
+		}
+		return origHash(p)
+	}
+
+	// First scan: copies IMG_0001_1.JPG and photo.jpg, keeps all source files in watchDir.
+	res1, err := e.im.Run(context.Background(), time.Date(2026, 11, 7, 14, 0, 0, 0, cst))
+	if err != nil || res1.Imported != 2 || res1.Duplicates != 0 || res1.Failed != 0 {
+		t.Fatalf("scan 1: %+v err=%v", res1, err)
+	}
+	if hashCalls != 3 {
+		t.Fatalf("expected 3 hash calls on scan 1, got %d", hashCalls)
+	}
+	for _, rel := range []string{"sub/IMG_0001.JPG", "sub/photo.jpg", "sub/dup_of_photo.jpg"} {
+		if _, err := os.Stat(filepath.Join(watch, rel)); err != nil {
+			t.Fatalf("source file %s was removed from watchDir: %v", rel, err)
+		}
+	}
+	for _, name := range []string{"IMG_0001.JPG", "IMG_0001_1.JPG", "photo.jpg"} {
+		if _, err := os.Stat(filepath.Join(e.album, "2026/2026-11/2026-11-07", name)); err != nil {
+			t.Fatalf("album file %s missing: %v", name, err)
+		}
+	}
+
+	// Second scan: source files are still in watchDir; must NOT re-hash, re-copy, or log duplicates.
+	hashCalls = 0
+	res2, err := e.im.Run(context.Background(), time.Date(2026, 11, 7, 15, 0, 0, 0, cst))
+	if err != nil || res2.Imported != 0 || res2.Duplicates != 0 || res2.Failed != 0 {
+		t.Fatalf("scan 2: %+v err=%v", res2, err)
+	}
+	if hashCalls != 0 {
+		t.Fatalf("expected 0 hash calls on scan 2 (cached), got %d", hashCalls)
+	}
+	if _, err := os.Stat(filepath.Join(e.album, "2026/2026-11/2026-11-07/IMG_0001_2.JPG")); !os.IsNotExist(err) {
+		t.Fatal("IMG_0001.JPG should not have been copied a second time as _2")
+	}
+}

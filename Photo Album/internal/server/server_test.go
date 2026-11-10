@@ -151,6 +151,21 @@ func TestEndToEnd(t *testing.T) {
 		t.Fatal(d)
 	}
 
+	// Watch directory change and clear.
+	watch := filepath.Join(share, "Watch")
+	os.MkdirAll(watch, 0o755)
+	if code, _ := do(t, h, "PUT", "/api/settings/watch-dir", map[string]any{"watch_dir": album}); code != 400 {
+		t.Fatal("overlapping watch_dir must be rejected", code)
+	}
+	code, m = do(t, h, "PUT", "/api/settings/watch-dir", map[string]any{"watch_dir": watch})
+	if code != 200 || m["watch_dir"] != watch {
+		t.Fatal(code, m)
+	}
+	code, m = do(t, h, "PUT", "/api/settings/watch-dir", map[string]any{"watch_dir": ""})
+	if code != 200 || m["watch_dir"] != nil {
+		t.Fatal(code, m)
+	}
+
 	// SPA fallback.
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/status", nil))
