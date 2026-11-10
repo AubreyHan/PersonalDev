@@ -23,6 +23,7 @@ const DBName = "photo-album.db"
 const (
 	KeyAlbumDir           = "album_dir"
 	KeyImportDir          = "import_dir"
+	KeyWatchDir           = "watch_dir"
 	KeyIntervalMinutes    = "interval_minutes"
 	KeyInitialIndexDone   = "initial_index_done"
 	KeyIndexTotal         = "index_total"
@@ -45,6 +46,14 @@ CREATE TABLE IF NOT EXISTS files (
   indexed_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_files_md5 ON files(md5);
+CREATE TABLE IF NOT EXISTS watch_files (
+  rel_path   TEXT PRIMARY KEY,
+  size       INTEGER NOT NULL,
+  mtime_ns   INTEGER NOT NULL,
+  md5        TEXT NOT NULL,
+  taken_ns   INTEGER NOT NULL,
+  content_id TEXT NOT NULL
+);
 `
 
 // Store is the application database.
