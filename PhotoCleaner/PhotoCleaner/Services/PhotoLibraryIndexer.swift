@@ -33,7 +33,7 @@ public final class PhotoLibraryIndexer: NSObject, PHPhotoLibraryChangeObserver {
 
     private var changeListeners: [UUID: @MainActor () -> Void] = [:]
     private var lastFetchResult: PHFetchResult<PHAsset>?
-    private var isObserverRegistered: Bool = false
+    @ObservationIgnored nonisolated(unsafe) private var isObserverRegistered: Bool = false
 
     public override init() {
         super.init()
