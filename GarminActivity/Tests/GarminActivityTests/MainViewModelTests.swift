@@ -208,9 +208,9 @@ final class MainViewModelTests: XCTestCase {
         vm.selectAllFilteredActivities()
         XCTAssertEqual(vm.selectedActivityIDs, Set([101, 102, 103]))
 
-        // 取消勾选 cycling 类型 -> 列表仅剩 2 条 running，且 cycling(102) 自动从已勾选集合中移除
+        // 取消勾选 cycling 类型 -> 列表仅剩 2 条 running（默认按时间降序 103, 101），且 cycling(102) 自动从已勾选集合中移除
         vm.toggleType("cycling")
-        XCTAssertEqual(vm.filteredActivities.map(\.activityId), [101, 103])
+        XCTAssertEqual(vm.filteredActivities.map(\.activityId), [103, 101])
         XCTAssertEqual(vm.selectedActivityIDs, Set([101, 103]))
 
         // 取消全选类型 -> 列表为空，勾选项自动清空
@@ -567,5 +567,81 @@ final class MainViewModelTests: XCTestCase {
         // 单个活动同时导出 GPX 和 FIT 两个文件
         XCTAssertEqual(vm.lastExportedURLs.count, 2)
         XCTAssertEqual(Set(vm.lastExportedURLs.map(\.pathExtension)), ["gpx", "fit"])
+    }
+
+    // MARK: 8. 列表 5 个字段点击排序测试
+
+    func testColumnSortingAcrossAllFiveFields() {
+        let vm = MainViewModel(
+            keychainService: MockKeychainStore(),
+            authService: MockAuthService(),
+            apiClient: MockGarminApiClient(),
+            exporter: SpyActivityExporter()
+        )
+
+        let a1 = ActivityItem(
+            activityId: 1,
+            activityName: "B Run",
+            startTimeLocal: "2026-11-10 08:00:00",
+            activityType: ActivityTypeDTO(typeKey: "running"),
+            distance: 5000,
+            duration: 1500
+        )
+        let a2 = ActivityItem(
+            activityId: 2,
+            activityName: "A Ride",
+            startTimeLocal: "2026-11-11 09:00:00",
+            activityType: ActivityTypeDTO(typeKey: "cycling"),
+            distance: 20000,
+            duration: 3600
+        )
+        let a3 = ActivityItem(
+            activityId: 3,
+            activityName: "C Swim",
+            startTimeLocal: "2026-11-09 07:00:00",
+            activityType: ActivityTypeDTO(typeKey: "swimming"),
+            distance: 1500,
+            duration: 2400
+        )
+
+        vm.allActivities = [a1, a2, a3]
+
+        // 默认按日期/时间降序 (最新在前: a2 -> a1 -> a3)
+        XCTAssertEqual(vm.sortField, .dateTime)
+        XCTAssertFalse(vm.sortAscending)
+        XCTAssertEqual(vm.filteredActivities.map(\.activityId), [2, 1, 3])
+
+        // 再次点击日期/时间 -> 升序 (a3 -> a1 -> a2)
+        vm.toggleSort(by: .dateTime)
+        XCTAssertTrue(vm.sortAscending)
+        XCTAssertEqual(vm.filteredActivities.map(\.activityId), [3, 1, 2])
+
+        // 点击名称 -> 默认升序 (A Ride -> B Run -> C Swim)
+        vm.toggleSort(by: .name)
+        XCTAssertEqual(vm.sortField, .name)
+        XCTAssertTrue(vm.sortAscending)
+        XCTAssertEqual(vm.filteredActivities.map(\.activityId), [2, 1, 3])
+
+        // 点击类型 -> 默认升序 (cycling -> running -> swimming)
+        vm.toggleSort(by: .type)
+        XCTAssertEqual(vm.sortField, .type)
+        XCTAssertTrue(vm.sortAscending)
+        XCTAssertEqual(vm.filteredActivities.map(\.activityId), [2, 1, 3])
+
+        // 点击距离 -> 默认降序 (20000 -> 5000 -> 1500: a2 -> a1 -> a3)
+        vm.toggleSort(by: .distance)
+        XCTAssertEqual(vm.sortField, .distance)
+        XCTAssertFalse(vm.sortAscending)
+        XCTAssertEqual(vm.filteredActivities.map(\.activityId), [2, 1, 3])
+        // 再点一次距离 -> 升序 (1500 -> 5000 -> 20000: a3 -> a1 -> a2)
+        vm.toggleSort(by: .distance)
+        XCTAssertTrue(vm.sortAscending)
+        XCTAssertEqual(vm.filteredActivities.map(\.activityId), [3, 1, 2])
+
+        // 点击时长 -> 默认降序 (3600 -> 2400 -> 1500: a2 -> a3 -> a1)
+        vm.toggleSort(by: .duration)
+        XCTAssertEqual(vm.sortField, .duration)
+        XCTAssertFalse(vm.sortAscending)
+        XCTAssertEqual(vm.filteredActivities.map(\.activityId), [2, 3, 1])
     }
 }
