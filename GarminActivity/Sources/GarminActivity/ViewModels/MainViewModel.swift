@@ -45,10 +45,33 @@ public final class MainViewModel {
 
     // MARK: - Date Filter State
 
-    /// 每次打开软件（初始化 MainViewModel）时，默认固定设为当天 00:00:00（绝不持久化上一次的日期）
+    private var isAdjustingDateBounds = false
+
+    /// 每次打开软件（初始化 MainViewModel）时，起始日期与结束日期默认固定设为当天 00:00:00（绝不持久化上一次的日期）
     public var startDate: Date {
         didSet {
-            guard startDate != oldValue, isAuthenticated else { return }
+            guard startDate != oldValue, !isAdjustingDateBounds else { return }
+            if startDate > endDate {
+                isAdjustingDateBounds = true
+                endDate = startDate
+                isAdjustingDateBounds = false
+            }
+            guard isAuthenticated else { return }
+            Task { [weak self] in
+                await self?.loadActivities()
+            }
+        }
+    }
+
+    public var endDate: Date {
+        didSet {
+            guard endDate != oldValue, !isAdjustingDateBounds else { return }
+            if endDate < startDate {
+                isAdjustingDateBounds = true
+                startDate = endDate
+                isAdjustingDateBounds = false
+            }
+            guard isAuthenticated else { return }
             Task { [weak self] in
                 await self?.loadActivities()
             }
@@ -125,7 +148,17 @@ public final class MainViewModel {
         }
     }
 
-    public var exportFormat: ExportFormat = .gpx
+    public var selectedExportFormats: Set<ExportFormat> = [.gpx]
+
+    public var orderedSelectedExportFormats: [ExportFormat] {
+        ExportFormat.allCases.filter { selectedExportFormats.contains($0) }
+    }
+
+    public var exportFormat: ExportFormat {
+        get { orderedSelectedExportFormats.first ?? .gpx }
+        set { selectedExportFormats = [newValue] }
+    }
+
     public var isDownloading: Bool = false
     public var statusMessage: String? = nil
     public var lastExportedURLs: [URL] = []
@@ -163,7 +196,9 @@ public final class MainViewModel {
         }
 
         // 每次冷启动固定设为当天 00:00:00
-        self.startDate = Calendar.current.startOfDay(for: Date())
+        let today = Calendar.current.startOfDay(for: Date())
+        self.startDate = today
+        self.endDate = today
 
         let defaultDownloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
@@ -301,6 +336,7 @@ public final class MainViewModel {
             do {
                 fetched = try await apiClient.fetchActivities(
                     from: startDate,
+                    to: endDate,
                     region: region,
                     accessToken: session.accessToken
                 )
@@ -312,6 +348,7 @@ public final class MainViewModel {
                 )
                 fetched = try await apiClient.fetchActivities(
                     from: startDate,
+                    to: endDate,
                     region: region,
                     accessToken: refreshed.accessToken
                 )
@@ -339,6 +376,24 @@ public final class MainViewModel {
 
     public func deselectAllTypes() {
         selectedTypes.removeAll()
+    }
+
+    // MARK: - Export Format Multi-Select
+
+    public func toggleExportFormat(_ format: ExportFormat) {
+        if selectedExportFormats.contains(format) {
+            selectedExportFormats.remove(format)
+        } else {
+            selectedExportFormats.insert(format)
+        }
+    }
+
+    public func selectAllExportFormats() {
+        selectedExportFormats = Set(ExportFormat.allCases)
+    }
+
+    public func deselectAllExportFormats() {
+        selectedExportFormats.removeAll()
     }
 
     // MARK: - Activity Selection
@@ -404,11 +459,17 @@ public final class MainViewModel {
         }
     }
 
-    /// 下载当前勾选项并导出为选定格式（支持同类型多选合并）
+    /// 下载当前勾选项并导出为选定格式（支持多格式同时导出与同类型多选合并）
     public func downloadSelected() async {
         let itemsToDownload = selectedActivities
         guard !itemsToDownload.isEmpty else {
             errorMessage = ExportError.noActivitiesSelected.localizedDescription
+            return
+        }
+
+        let formatsToExport = orderedSelectedExportFormats
+        guard !formatsToExport.isEmpty else {
+            errorMessage = "请至少选择一种下载类型"
             return
         }
 
@@ -457,25 +518,45 @@ public final class MainViewModel {
                 parsedPairs.append((activity: activity, parsed: parsed))
             }
 
+            if formatsToExport.contains(.gpx) {
+                let missingNames = parsedPairs
+                    .filter { !$0.parsed.hasValidGPSCoordinates }
+                    .map { $0.activity.displayName }
+                if !missingNames.isEmpty {
+                    throw ExportError.missingGPSForGPX(activityNames: missingNames)
+                }
+            }
+
+            var exportedURLs: [URL] = []
+
             if canMerge && isMergeEnabled {
-                let mergedURL = try exporter.exportMerged(
-                    items: parsedPairs,
-                    format: exportFormat,
-                    to: saveDirectoryURL
-                )
-                lastExportedURLs = [mergedURL]
-                statusMessage = "已合并导出 1 个文件：\(mergedURL.lastPathComponent)"
+                for format in formatsToExport {
+                    let mergedURL = try exporter.exportMerged(
+                        items: parsedPairs,
+                        format: format,
+                        to: saveDirectoryURL
+                    )
+                    exportedURLs.append(mergedURL)
+                }
+                lastExportedURLs = exportedURLs
+                if exportedURLs.count == 1 {
+                    statusMessage = "已合并导出 1 个文件：\(exportedURLs[0].lastPathComponent)"
+                } else {
+                    let names = exportedURLs.map(\.lastPathComponent).joined(separator: "、")
+                    statusMessage = "已合并导出 \(exportedURLs.count) 个文件：\(names)"
+                }
             } else {
-                var exportedURLs: [URL] = []
                 do {
                     for pair in parsedPairs {
-                        let fileURL = try exporter.exportSingle(
-                            parsed: pair.parsed,
-                            activity: pair.activity,
-                            format: exportFormat,
-                            to: saveDirectoryURL
-                        )
-                        exportedURLs.append(fileURL)
+                        for format in formatsToExport {
+                            let fileURL = try exporter.exportSingle(
+                                parsed: pair.parsed,
+                                activity: pair.activity,
+                                format: format,
+                                to: saveDirectoryURL
+                            )
+                            exportedURLs.append(fileURL)
+                        }
                     }
                 } catch let error as ExportError {
                     if case .missingGPSForGPX(let thrownNames) = error {
@@ -509,9 +590,10 @@ public final class MainViewModel {
         }
     }
 
-    /// 当 GPX 遇到无 GPS 活动时，一键切换为 TCX 或 FIT 格式重试下载
+    /// 当 GPX 遇到无 GPS 活动时，一键将 GPX 替换为 TCX 或 FIT 格式重试下载
     public func retryDownloadWithFormat(_ format: ExportFormat) async {
-        exportFormat = format
+        selectedExportFormats.remove(.gpx)
+        selectedExportFormats.insert(format)
         showMissingGPSAlert = false
         missingGPSActivityNames = []
         await downloadSelected()
