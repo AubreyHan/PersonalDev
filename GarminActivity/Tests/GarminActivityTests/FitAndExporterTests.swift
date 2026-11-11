@@ -24,19 +24,22 @@ final class FitAndExporterTests: XCTestCase {
 
     func testZipExtractorPackAndExtractFitData() throws {
         let baseDate = Date(timeIntervalSince1970: 1_762_800_000) // 2025-11-10T18:40:00Z
-        let points = (0..<25).map { idx in
-            TrackPoint(
-                timestamp: baseDate.addingTimeInterval(Double(idx) * 5.0),
-                latitudeDegrees: 31.2304 + Double(idx) * 0.0001,
-                longitudeDegrees: 121.4737 + Double(idx) * 0.0001,
-                altitudeMeters: 12.0 + Double(idx) * 0.2,
-                distanceMeters: Double(idx) * 15.0,
+        var points: [TrackPoint] = []
+        for idx in 0..<25 {
+            let step = Double(idx)
+            let point = TrackPoint(
+                timestamp: baseDate.addingTimeInterval(step * 5.0),
+                latitudeDegrees: 31.2304 + step * 0.0001,
+                longitudeDegrees: 121.4737 + step * 0.0001,
+                altitudeMeters: 12.0 + step * 0.2,
+                distanceMeters: step * 15.0,
                 heartRateBpm: UInt8(135 + (idx % 20)),
                 cadenceRpm: 88,
                 powerWatts: 220,
                 speedMps: 3.1,
                 temperatureCelsius: 18
             )
+            points.append(point)
         }
 
         let syntheticFit = FitParser.buildSyntheticFit(records: points, sport: 1)
