@@ -385,8 +385,8 @@ void ToolSettings::updateBrightnessFromTouchX(int16_t localX, bool persistNvs) {
     if (ratio > 1.0f) ratio = 1.0f;
 
     const uint8_t newBright = static_cast<uint8_t>(roundf(10.0f + ratio * 245.0f));
-    M5.Display.setBrightness(newBright);
 
+    // Delegate actual hardware M5.Display.setBrightness() exclusively to UiManager::updateBacklightAndAudio()
     StateGuard lock(SystemState::instance());
     if (lock.locked()) {
         auto& cfg            = SystemState::instance().data().settings;
@@ -473,7 +473,7 @@ bool ToolSettings::onTouch(const TouchEvent& event, const SystemStateSnapshot& s
             return true;
         }
 
-        // Manual SUB Start or Segment Break
+        // Manual SUB Start or SUB-only Segment Break (decoupled from SINGLE trip reset)
         if (event.hitTestLocal(BTN_SUB_ACT_X, BTN_SUB_ACT_Y, BTN_SUB_ACT_W, BTN_SUB_ACT_H)) {
             _armedSubReset = false;
             {
@@ -481,10 +481,10 @@ bool ToolSettings::onTouch(const TouchEvent& event, const SystemStateSnapshot& s
                 if (lock.locked()) {
                     auto& tc = SystemState::instance().data().tripControl;
                     if (tc.manualTripActive) {
-                        tc.cmdGpxBreakSegment = true;
+                        tc.cmdSplitManualTrip = true;
                     } else {
                         tc.cmdStartManualTrip = true;
-                        tc.manualTripActive   = true;
+                        tc.activeViewCategory = TRIP_MANUAL;
                     }
                 }
             }
@@ -492,30 +492,20 @@ bool ToolSettings::onTouch(const TouchEvent& event, const SystemStateSnapshot& s
             return true;
         }
 
-        // Manual SUB Stop & Reset (2-step anti-mistouch)
+        // Manual SUB Stop & Settle (2-step anti-mistouch; TrackLogger settles CSV/GPX before zeroing)
         if (event.hitTestLocal(BTN_SUB_RESET_X, BTN_SUB_RESET_Y, BTN_SUB_RESET_W, BTN_SUB_RESET_H)) {
             if (_armedSubReset) {
                 _armedSubReset = false;
                 {
                     StateGuard lock(SystemState::instance());
                     if (lock.locked()) {
-                        auto& st = SystemState::instance().data();
-                        st.tripControl.cmdStopManualTrip = true;
-                        st.tripControl.manualTripActive  = false;
-                        if (st.tripControl.activeViewCategory == TRIP_MANUAL) {
-                            st.tripControl.activeViewCategory = TRIP_SINGLE;
+                        auto& tc = SystemState::instance().data().tripControl;
+                        tc.cmdStopManualTrip = true;
+                        if (tc.activeViewCategory == TRIP_MANUAL) {
+                            tc.activeViewCategory = TRIP_SINGLE;
                         }
-                        st.trips[TRIP_MANUAL].resetWithAnchor(
-                            st.time.epochUtc,
-                            st.gnss.latitude,
-                            st.gnss.longitude,
-                            st.gnss.isValid,
-                            st.baro.fusedAltitudeM,
-                            st.gnss.speedKmh
-                        );
                     }
                 }
-                SystemState::instance().resetTrail(TRIP_MANUAL);
                 playFeedbackTone(state, HapticConfig::TONE_TRIP_RESET_HZ, HapticConfig::TONE_TRIP_RESET_MS);
             } else {
                 _armedSubReset   = true;

@@ -835,14 +835,13 @@ bool Page1Dashboard::onTouch(const TouchEvent& event, const SystemStateSnapshot&
                     }
                     return true;
                 }
-                // [+ 小记开始]
+                // [+ 小记开始] (TrackLogger owns manualTripActive transition & reset)
                 playFeedbackTone(state, HapticConfig::TONE_CONFIRM_1_HZ, HapticConfig::TONE_CONFIRM_MS);
                 {
                     StateGuard guard(SystemState::instance());
                     if (guard.locked()) {
                         auto& tc              = SystemState::instance().data().tripControl;
                         tc.cmdStartManualTrip = true;
-                        tc.manualTripActive   = true;
                         tc.activeViewCategory = TRIP_MANUAL;
                     }
                 }
@@ -860,14 +859,13 @@ bool Page1Dashboard::onTouch(const TouchEvent& event, const SystemStateSnapshot&
                         return true;
                     }
                 }
-                // [■ 结束小记]
+                // [■ 结束小记] (TrackLogger settles CSV/GPX before clearing manualTripActive & zeroing)
                 playFeedbackTone(state, HapticConfig::TONE_WARN_HZ, HapticConfig::TONE_CONFIRM_MS);
                 {
                     StateGuard guard(SystemState::instance());
                     if (guard.locked()) {
                         auto& tc             = SystemState::instance().data().tripControl;
                         tc.cmdStopManualTrip = true;
-                        tc.manualTripActive  = false;
                         if (tc.activeViewCategory == TRIP_MANUAL) {
                             tc.activeViewCategory = TRIP_SINGLE;
                         }

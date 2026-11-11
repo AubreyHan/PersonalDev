@@ -333,21 +333,26 @@ void UiManager::updateBacklightAndAudio(uint32_t nowMs) {
         _lastSpeakerVol = _snap.settings.speakerVolume;
     }
 
-    // Standby phase sleep / wake backlight guard
+    // Standby phase sleep / wake backlight & MIPI-DSI panel sleep guard (exclusively owned by uiTask)
     if (_snap.power.standbyPhase == STANDBY_PHASE_SLEEPING || _snap.power.lowBattCutoffActive) {
         if (!_displaySleeping || _appliedBrightness != 0U) {
             M5.Display.setBrightness(0);
+            M5.Display.sleep();
             _appliedBrightness = 0;
             _displaySleeping   = true;
         }
         return;
     }
 
-    _displaySleeping = false;
+    const bool justWokeDisplay = _displaySleeping;
+    if (_displaySleeping) {
+        M5.Display.wakeup();
+        _displaySleeping = false;
+    }
 
-    // Compute target brightness (manual vs auto day/night/tunnel)
+    // Compute target brightness (user screenBrightness is the daylight baseline; night/tunnel scale down)
     uint8_t base = _snap.settings.screenBrightness;
-    if (base < 15U) base = 15U;
+    if (base < 10U) base = 10U;
 
     uint8_t target = base;
     if (_snap.settings.autoDayNightBacklight) {
@@ -361,12 +366,15 @@ void UiManager::updateBacklightAndAudio(uint32_t nowMs) {
             const uint16_t nightVal = (static_cast<uint16_t>(base) * 45U) / 100U;
             target = static_cast<uint8_t>(nightVal < 24U ? 24U : (nightVal > 115U ? 115U : nightVal));
         } else {
-            target = (base < 205U) ? 205U : base;
+            target = base;
         }
     }
 
-    // Smooth slew rate limiting (max 8 steps per frame) to avoid harsh brightness jumps
-    if (_appliedBrightness != target) {
+    // Restore brightness immediately upon standby wakeup; otherwise smooth slew rate limit (max 8 steps/frame)
+    if (justWokeDisplay) {
+        _appliedBrightness = target;
+        M5.Display.setBrightness(_appliedBrightness);
+    } else if (_appliedBrightness != target) {
         int16_t next = static_cast<int16_t>(_appliedBrightness);
         const int16_t diff = static_cast<int16_t>(target) - next;
         if (abs(diff) <= 8) {

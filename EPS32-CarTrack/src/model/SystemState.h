@@ -409,9 +409,10 @@ struct TripControlData {
 
     // Cross-Thread Command Flags (set by UI, consumed & cleared by services)
     bool                 cmdFullTripReset        = false; // Page 1 2s long-press or standby wakeup
-    bool                 cmdGpxBreakSegment      = false; // TrackLogger writes </trkseg><trkseg>
-    bool                 cmdStartManualTrip      = false; // [+ Sub Start] tapped
-    bool                 cmdStopManualTrip       = false; // [Stop Sub] tapped
+    bool                 cmdGpxBreakSegment      = false; // TrackLogger settles SINGLE & breaks <trkseg>
+    bool                 cmdStartManualTrip      = false; // [+ Sub Start] tapped (owned by TrackLogger)
+    bool                 cmdStopManualTrip       = false; // [Stop Sub] tapped (owned by TrackLogger)
+    bool                 cmdSplitManualTrip      = false; // ToolSettings [SUB Break] (<trkseg> on SUB only)
 };
 
 // -----------------------------------------------------------------------------

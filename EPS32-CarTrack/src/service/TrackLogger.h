@@ -115,11 +115,11 @@ private:
     bool healSingleGpxFileLocked(const char* fullPath);
 
     void loadNvsState();
-    void saveSubTripNvsState(bool active, uint16_t subIdx, uint16_t splitIdx);
+    void saveSubTripNvsState(bool active, uint16_t subIdx, uint16_t splitIdx, bool zeroManDist = false);
     void saveDailyNvsState(uint32_t ymd, float dayDistKm);
 
     void handlePendingCommands(const SystemStateSnapshot& snap);
-    void handleDailyRollover(const SystemStateSnapshot& snap, uint32_t localYmd);
+    bool handleDailyRollover(const SystemStateSnapshot& snap, uint32_t localYmd);
 
     bool openNewDualStreamLocked(DualGpxStream& stream,
                                  const char* relWgs,

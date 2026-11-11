@@ -157,7 +157,7 @@ void TrackLogger::loadNvsState() {
     _seenResetVersion = st.tripControl.tripResetVersion;
 }
 
-void TrackLogger::saveSubTripNvsState(bool active, uint16_t subIdx, uint16_t splitIdx) {
+void TrackLogger::saveSubTripNvsState(bool active, uint16_t subIdx, uint16_t splitIdx, bool zeroManDist) {
     Preferences prefs;
     if (!prefs.begin(NvsConfig::NAMESPACE, false)) {
         return;
@@ -165,6 +165,9 @@ void TrackLogger::saveSubTripNvsState(bool active, uint16_t subIdx, uint16_t spl
     prefs.putBool(NvsConfig::KEY_MAN_TRIP_ACT, active);
     prefs.putUShort(NvsConfig::KEY_SUB_IDX, subIdx);
     prefs.putUShort(NvsConfig::KEY_SUB_SPLIT_IDX, splitIdx);
+    if (zeroManDist) {
+        prefs.putFloat(NvsConfig::KEY_MAN_DIST_KM, 0.0f);
+    }
     prefs.end();
 }
 
@@ -1250,9 +1253,9 @@ void TrackLogger::handlePendingCommands(const SystemStateSnapshot& snap) {
         refreshStorageStats();
     }
 
-    // 5. Manual Sub-Trip Start ([+ Sub Start])
+    // 5. Manual Sub-Trip Start ([+ Sub Start]) - TrackLogger is the sole consumer!
     if (snap.tripControl.cmdStartManualTrip) {
-        {
+        if (_mounted) {
             SdGuard sdLock(_sdMutex);
             if (_manualTripActive && (_subStream.isOpen || _lastSubWgsRel[0] != '\0')) {
                 const char* subRef = _subStream.isOpen ? _subStream.relWgsPath : _lastSubWgsRel;
@@ -1266,9 +1269,11 @@ void TrackLogger::handlePendingCommands(const SystemStateSnapshot& snap) {
         _manualTripActive = true;
         _cachedSubStats   = TripStats{};
         _lastSubWgsRel[0] = '\0';
-        saveSubTripNvsState(true, _subIndex, _subVolumeIndex);
+        saveSubTripNvsState(true, _subIndex, _subVolumeIndex, true);
 
-        const float curAlt = snap.baro.isOnline ? snap.baro.fusedAltitudeM : snap.gnss.altitudeMeters;
+        const float curAlt = (snap.baro.isOnline || snap.baro.isP0Calibrated)
+                                 ? snap.baro.fusedAltitudeM
+                                 : snap.gnss.altitudeMeters;
         {
             StateGuard guard(SystemState::instance());
             SystemStateSnapshot& st = SystemState::instance().data();
@@ -1277,17 +1282,27 @@ void TrackLogger::handlePendingCommands(const SystemStateSnapshot& snap) {
             st.tripControl.manualSubIndex     = _subIndex;
             st.tripControl.manualSplitIndex   = _subVolumeIndex;
             st.tripControl.activeViewCategory = TRIP_MANUAL;
+            st.storage.subIndex               = _subIndex;
+            st.storage.subVolumeIndex         = _subVolumeIndex;
             st.trips[TRIP_MANUAL].resetWithAnchor(
                 snap.time.epochUtc, snap.gnss.latitude, snap.gnss.longitude,
                 snap.gnss.isValid, curAlt, snap.gnss.speedKmh);
         }
         SystemState::instance().resetTrail(TRIP_MANUAL);
+        if (snap.gnss.isValid) {
+            SystemState::instance().appendTrailPoint(
+                TRIP_MANUAL, snap.gnss.latE7, snap.gnss.lonE7, 0.0f, 0.0f);
+        }
         syncActivePathsToState();
     }
 
-    // 6. Manual Sub-Trip Stop ([Stop Sub])
+    // 6. Manual Sub-Trip Stop ([Stop Sub]) - Settle CSV/GPX first, THEN reset TRIP_MANUAL & trail!
     if (snap.tripControl.cmdStopManualTrip) {
-        {
+        if (snap.trips[TRIP_MANUAL].tripDistanceKm > _cachedSubStats.tripDistanceKm) {
+            _cachedSubStats = snap.trips[TRIP_MANUAL];
+        }
+
+        if (_mounted) {
             SdGuard sdLock(_sdMutex);
             const char* subRef = _subStream.isOpen ? _subStream.relWgsPath : _lastSubWgsRel;
             appendTripCsvRowLocked("SUB", _cachedSubStats, snap.time.epochUtc, snap.time.localTzOffsetMin, subRef);
@@ -1297,8 +1312,11 @@ void TrackLogger::handlePendingCommands(const SystemStateSnapshot& snap) {
         _manualTripActive = false;
         _cachedSubStats   = TripStats{};
         _lastSubWgsRel[0] = '\0';
-        saveSubTripNvsState(false, _subIndex, _subVolumeIndex);
+        saveSubTripNvsState(false, _subIndex, _subVolumeIndex, true);
 
+        const float curAlt = (snap.baro.isOnline || snap.baro.isP0Calibrated)
+                                 ? snap.baro.fusedAltitudeM
+                                 : snap.gnss.altitudeMeters;
         {
             StateGuard guard(SystemState::instance());
             SystemStateSnapshot& st = SystemState::instance().data();
@@ -1307,9 +1325,27 @@ void TrackLogger::handlePendingCommands(const SystemStateSnapshot& snap) {
             if (st.tripControl.activeViewCategory == TRIP_MANUAL) {
                 st.tripControl.activeViewCategory = TRIP_SINGLE;
             }
+            st.trips[TRIP_MANUAL].resetWithAnchor(
+                snap.time.epochUtc, snap.gnss.latitude, snap.gnss.longitude,
+                snap.gnss.isValid, curAlt, snap.gnss.speedKmh);
         }
+        SystemState::instance().resetTrail(TRIP_MANUAL);
         syncActivePathsToState();
-        refreshStorageStats();
+        if (_mounted) {
+            refreshStorageStats();
+        }
+    }
+
+    // 6b. Manual Sub-Trip Segment Break (ToolSettings [SUB Break]) - ONLY breaks _subStream!
+    if (snap.tripControl.cmdSplitManualTrip) {
+        if (_mounted && _manualTripActive) {
+            SdGuard sdLock(_sdMutex);
+            breakSegmentInDualStreamLocked(_subStream);
+        }
+        {
+            StateGuard guard(SystemState::instance());
+            SystemState::instance().data().tripControl.cmdSplitManualTrip = false;
+        }
     }
 
     // 7. Full Trip Reset / GPX Segment Break (Page 1 2s hold or standby wakeup)
@@ -1328,7 +1364,7 @@ void TrackLogger::handlePendingCommands(const SystemStateSnapshot& snap) {
             SystemState::instance().executeFullTripReset(payload);
         }
 
-        {
+        if (_mounted) {
             SdGuard sdLock(_sdMutex);
             if (_singleStream.isOpen || _lastSingleWgsRel[0] != '\0') {
                 const char* refPath = _singleStream.isOpen ? _singleStream.relWgsPath : _lastSingleWgsRel;
@@ -1336,14 +1372,14 @@ void TrackLogger::handlePendingCommands(const SystemStateSnapshot& snap) {
             }
             // Close single-trip GPX so next movement opens a brand-new timestamped single GPX pair
             closeDualStreamLocked(_singleStream);
-            _singleSplitSeq      = 1U;
-            _cachedSingleStats   = TripStats{};
-            _lastSingleWgsRel[0] = '\0';
 
             // Break <trkseg> inside daily & manual sub streams to mark trip boundary cleanly
             breakSegmentInDualStreamLocked(_dailyStream);
             breakSegmentInDualStreamLocked(_subStream);
         }
+        _singleSplitSeq      = 1U;
+        _cachedSingleStats   = TripStats{};
+        _lastSingleWgsRel[0] = '\0';
 
         {
             StateGuard guard(SystemState::instance());
@@ -1352,12 +1388,16 @@ void TrackLogger::handlePendingCommands(const SystemStateSnapshot& snap) {
             _seenResetVersion = st.tripControl.tripResetVersion;
         }
         syncActivePathsToState();
-        refreshStorageStats();
+        if (_mounted) {
+            refreshStorageStats();
+        }
     }
 
     // 8. 20-Minute Standstill Pre-Sleep Settlement Handshake (PowerMonitorService -> TrackLogger)
     if (snap.power.preSleepSettleReq && !snap.power.preSleepSettleAck) {
-        flushAndCloseAllStreams(true);
+        if (_mounted) {
+            flushAndCloseAllStreams(true);
+        }
         {
             StateGuard guard(SystemState::instance());
             SystemState::instance().data().power.preSleepSettleAck = true;
@@ -1365,21 +1405,21 @@ void TrackLogger::handlePendingCommands(const SystemStateSnapshot& snap) {
     }
 }
 
-void TrackLogger::handleDailyRollover(const SystemStateSnapshot& snap, uint32_t localYmd) {
-    if (localYmd < 20250101UL || !snap.time.isCalibrated) {
-        return;
+bool TrackLogger::handleDailyRollover(const SystemStateSnapshot& snap, uint32_t localYmd) {
+    if (localYmd < 20250101UL) {
+        return false;
     }
     if (_currentDailyYmd == 0UL) {
         _currentDailyYmd = localYmd;
         saveDailyNvsState(_currentDailyYmd, snap.trips[TRIP_DAILY].tripDistanceKm);
         StateGuard guard(SystemState::instance());
         SystemState::instance().data().tripControl.lastLocalDayYmd = _currentDailyYmd;
-        return;
+        return false;
     }
 
     if (localYmd != _currentDailyYmd) {
-        // Local midnight crossed: settle yesterday's daily GPX & CSV, reset TRIP_DAILY
-        {
+        // Local midnight crossed: settle yesterday's _cachedDailyStats into GPX & CSV BEFORE resetting TRIP_DAILY!
+        if (_mounted) {
             SdGuard sdLock(_sdMutex);
             if (_dailyStream.isOpen || _lastDailyWgsRel[0] != '\0') {
                 const char* ref = _dailyStream.isOpen ? _dailyStream.relWgsPath : _lastDailyWgsRel;
@@ -1393,7 +1433,9 @@ void TrackLogger::handleDailyRollover(const SystemStateSnapshot& snap, uint32_t 
         _lastDailyWgsRel[0]  = '\0';
         saveDailyNvsState(_currentDailyYmd, 0.0f);
 
-        const float curAlt = snap.baro.isOnline ? snap.baro.fusedAltitudeM : snap.gnss.altitudeMeters;
+        const float curAlt = (snap.baro.isOnline || snap.baro.isP0Calibrated)
+                                 ? snap.baro.fusedAltitudeM
+                                 : snap.gnss.altitudeMeters;
         {
             StateGuard guard(SystemState::instance());
             SystemStateSnapshot& st = SystemState::instance().data();
@@ -1403,9 +1445,17 @@ void TrackLogger::handleDailyRollover(const SystemStateSnapshot& snap, uint32_t 
                 snap.gnss.isValid, curAlt, snap.gnss.speedKmh);
         }
         SystemState::instance().resetTrail(TRIP_DAILY);
+        if (snap.gnss.isValid) {
+            SystemState::instance().appendTrailPoint(
+                TRIP_DAILY, snap.gnss.latE7, snap.gnss.lonE7, 0.0f, 0.0f);
+        }
         syncActivePathsToState();
-        refreshStorageStats();
+        if (_mounted) {
+            refreshStorageStats();
+        }
+        return true;
     }
+    return false;
 }
 
 void TrackLogger::update() {
@@ -1416,25 +1466,43 @@ void TrackLogger::update() {
 
     handlePendingCommands(snap);
 
-    if (!_mounted) {
-        return;
+    // Compute authoritative local YYYYMMDD (with UTC + localTzOffsetMin fallback before TimeService tick)
+    uint32_t localYmd = 0UL;
+    if (snap.time.isCalibrated && snap.time.localYear >= 2025U) {
+        localYmd = static_cast<uint32_t>(snap.time.localYear) * 10000UL
+                 + static_cast<uint32_t>(snap.time.localMonth) * 100UL
+                 + static_cast<uint32_t>(snap.time.localDay);
+    } else if (snap.time.epochUtc >= 1735689600UL) {
+        const time_t localEpoch = static_cast<time_t>(snap.time.epochUtc) +
+                                  static_cast<time_t>(snap.time.localTzOffsetMin) * 60;
+        struct tm ltm = {};
+        gmtime_r(&localEpoch, &ltm);
+        localYmd = static_cast<uint32_t>(ltm.tm_year + 1900) * 10000UL
+                 + static_cast<uint32_t>(ltm.tm_mon + 1) * 100UL
+                 + static_cast<uint32_t>(ltm.tm_mday);
     }
 
-    // Keep pre-reset trip stats snapshots fresh whenever no reset is pending
+    // Settle yesterday's _cachedDailyStats FIRST before refreshing caches from today's snap!
+    const bool dailyRolledOver = handleDailyRollover(snap, localYmd);
+
+    // Keep pre-reset trip stats snapshots fresh whenever no reset/rollover is pending on this tick
     if (!snap.tripControl.cmdFullTripReset &&
         !snap.tripControl.cmdGpxBreakSegment &&
         snap.tripControl.tripResetVersion == _seenResetVersion) {
         _cachedSingleStats = snap.trips[TRIP_SINGLE];
     }
-    _cachedDailyStats = snap.trips[TRIP_DAILY];
-    if (_manualTripActive) {
+    if (!dailyRolledOver) {
+        _cachedDailyStats = snap.trips[TRIP_DAILY];
+    }
+    if (_manualTripActive &&
+        !snap.tripControl.cmdStartManualTrip &&
+        !snap.tripControl.cmdStopManualTrip) {
         _cachedSubStats = snap.trips[TRIP_MANUAL];
     }
 
-    const uint32_t localYmd = static_cast<uint32_t>(snap.time.localYear) * 10000UL
-                            + static_cast<uint32_t>(snap.time.localMonth) * 100UL
-                            + static_cast<uint32_t>(snap.time.localDay);
-    handleDailyRollover(snap, localYmd);
+    if (!_mounted) {
+        return;
+    }
 
     // 1Hz recording cadence gate
     const uint32_t nowMs = millis();

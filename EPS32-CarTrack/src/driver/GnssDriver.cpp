@@ -126,6 +126,9 @@ void GnssDriver::loadNvsState() {
         if (manActive && isfinite(manDistKm) && manDistKm >= 0.0f) {
             st.trips[TRIP_MANUAL].tripDistanceKm = manDistKm;
         }
+        _seenLocalDayYmd    = lastDayYmd;
+        _seenManualActive   = manActive;
+        _seenManualSubIndex = subIdx;
     }
 }
 
@@ -150,13 +153,12 @@ void GnssDriver::saveWarmStartPosToNvs(int32_t latE7, int32_t lonE7, int32_t alt
 }
 
 void GnssDriver::saveTripPersistenceToNvs() {
-    uint8_t  actView    = 0;
-    bool     manActive  = false;
-    uint16_t subIdx     = 0;
-    uint16_t subSplit   = 1;
-    uint32_t lastDayYmd = 0;
-    float    dayDistKm  = 0.0f;
-    float    manDistKm  = 0.0f;
+    uint8_t actView         = 0;
+    bool    manActive       = false;
+    bool    manCmdPending   = false;
+    bool    dayValid        = false;
+    float   dayDistKm       = 0.0f;
+    float   manDistKm       = 0.0f;
 
     {
         StateGuard guard(SystemState::instance());
@@ -166,22 +168,23 @@ void GnssDriver::saveTripPersistenceToNvs() {
         const auto& st = SystemState::instance().data();
         actView        = static_cast<uint8_t>(st.tripControl.activeViewCategory);
         manActive      = st.tripControl.manualTripActive;
-        subIdx         = st.tripControl.manualSubIndex;
-        subSplit       = st.tripControl.manualSplitIndex;
-        lastDayYmd     = st.tripControl.lastLocalDayYmd;
+        manCmdPending  = st.tripControl.cmdStartManualTrip || st.tripControl.cmdStopManualTrip;
+        dayValid       = (st.tripControl.lastLocalDayYmd >= 20250101UL);
         dayDistKm      = st.trips[TRIP_DAILY].tripDistanceKm;
         manDistKm      = st.trips[TRIP_MANUAL].tripDistanceKm;
     }
 
+    // Note: KEY_MAN_TRIP_ACT, KEY_SUB_IDX, KEY_SUB_SPLIT_IDX and KEY_LAST_DAY_INT
+    // are owned & persisted authoritatively by TrackLogger to prevent cross-core NVS races.
     Preferences prefs;
     if (prefs.begin(NvsConfig::NAMESPACE, false)) {
         prefs.putUChar(NvsConfig::KEY_ACT_TRIP_VIEW, actView);
-        prefs.putBool(NvsConfig::KEY_MAN_TRIP_ACT, manActive);
-        prefs.putUShort(NvsConfig::KEY_SUB_IDX, subIdx);
-        prefs.putUShort(NvsConfig::KEY_SUB_SPLIT_IDX, subSplit);
-        prefs.putUInt(NvsConfig::KEY_LAST_DAY_INT, lastDayYmd);
-        prefs.putFloat(NvsConfig::KEY_DAY_DIST_KM, dayDistKm);
-        prefs.putFloat(NvsConfig::KEY_MAN_DIST_KM, manDistKm);
+        if (dayValid) {
+            prefs.putFloat(NvsConfig::KEY_DAY_DIST_KM, dayDistKm);
+        }
+        if (manActive && !manCmdPending) {
+            prefs.putFloat(NvsConfig::KEY_MAN_DIST_KM, manDistKm);
+        }
         prefs.end();
     }
 }
@@ -1000,19 +1003,20 @@ void GnssDriver::pollMonRf(uint32_t nowMs) {
 }
 
 void GnssDriver::handleTripCommandsAndRollover(uint32_t /*nowMs*/) {
-    bool doFullReset       = false;
-    bool doStartManual     = false;
-    bool doStopManual      = false;
-    bool doMidnightRoll    = false;
-    uint32_t curLocalYmd   = 0;
+    bool doFullReset      = false;
+    bool dailyRolledSync  = false;
+    bool manualStateSync  = false;
+    bool manualStartedNow = false;
     FullTripResetPayload resetPayload = {};
 
-    double curLat   = 0.0;
-    double curLon   = 0.0;
-    bool   validPos = false;
-    float  curAltM  = 0.0f;
-    float  curSpd   = 0.0f;
-    uint32_t nowUtc = 0;
+    double   curLat     = 0.0;
+    double   curLon     = 0.0;
+    bool     validPos   = false;
+    float    curAltM    = 0.0f;
+    float    curSpd     = 0.0f;
+    uint32_t nowUtc     = 0;
+    uint16_t dailyPts   = 0;
+    uint16_t manualPts  = 0;
 
     {
         StateGuard guard(SystemState::instance());
@@ -1035,57 +1039,36 @@ void GnssDriver::handleTripCommandsAndRollover(uint32_t /*nowMs*/) {
                                 st.gnss.hour, st.gnss.minute, st.gnss.second);
         }
 
-        // Compute local YYYYMMDD for automatic midnight daily-trip rollover
-        if (st.time.isCalibrated && st.time.localYear >= 2025) {
-            curLocalYmd = static_cast<uint32_t>(st.time.localYear) * 10000U +
-                          static_cast<uint32_t>(st.time.localMonth) * 100U +
-                          static_cast<uint32_t>(st.time.localDay);
-        } else if (nowUtc >= 1735689600UL) {
-            const time_t localEpoch = static_cast<time_t>(nowUtc) +
-                                      static_cast<time_t>(st.time.localTzOffsetMin) * 60;
-            struct tm ltm = {};
-            gmtime_r(&localEpoch, &ltm);
-            curLocalYmd = static_cast<uint32_t>(ltm.tm_year + 1900) * 10000U +
-                          static_cast<uint32_t>(ltm.tm_mon + 1) * 100U +
-                          static_cast<uint32_t>(ltm.tm_mday);
-        }
-
-        if (curLocalYmd >= 20250101UL) {
-            if (st.tripControl.lastLocalDayYmd == 0) {
-                st.tripControl.lastLocalDayYmd = curLocalYmd;
-            } else if (curLocalYmd != st.tripControl.lastLocalDayYmd) {
-                st.tripControl.lastLocalDayYmd = curLocalYmd;
-                st.trips[TRIP_DAILY].resetWithAnchor(nowUtc, curLat, curLon, validPos, curAltM, curSpd);
-                doMidnightRoll = true;
+        // TrackLogger::handleDailyRollover() is the sole owner of TRIP_DAILY midnight settlement & reset.
+        // Here we strictly observe lastLocalDayYmd changes to re-anchor local trail tracking cleanly.
+        if (st.tripControl.lastLocalDayYmd != _seenLocalDayYmd) {
+            const uint32_t prevYmd = _seenLocalDayYmd;
+            _seenLocalDayYmd = st.tripControl.lastLocalDayYmd;
+            if (prevYmd != 0U && _seenLocalDayYmd >= 20250101UL) {
+                dailyRolledSync = true;
+                dailyPts        = st.trailMeta[TRIP_DAILY].pointCount;
             }
         }
 
         if (st.tripControl.cmdFullTripReset) {
-            doFullReset                   = true;
-            resetPayload.timestampUtc     = nowUtc;
-            resetPayload.newStartLatitude = validPos ? curLat : 0.0;
-            resetPayload.newStartLongitude= validPos ? curLon : 0.0;
-            resetPayload.currentAltitudeM = curAltM;
-            resetPayload.currentSpeedKmh  = curSpd;
+            doFullReset                    = true;
+            resetPayload.timestampUtc      = nowUtc;
+            resetPayload.newStartLatitude  = validPos ? curLat : 0.0;
+            resetPayload.newStartLongitude = validPos ? curLon : 0.0;
+            resetPayload.currentAltitudeM  = curAltM;
+            resetPayload.currentSpeedKmh   = curSpd;
         }
 
-        if (st.tripControl.cmdStartManualTrip) {
-            st.tripControl.cmdStartManualTrip = false;
-            st.tripControl.manualTripActive   = true;
-            st.tripControl.manualSubIndex     = static_cast<uint16_t>(st.tripControl.manualSubIndex + 1U);
-            st.tripControl.manualSplitIndex   = 1U;
-            st.tripControl.activeViewCategory = TRIP_MANUAL;
-            st.trips[TRIP_MANUAL].resetWithAnchor(nowUtc, curLat, curLon, validPos, curAltM, curSpd);
-            doStartManual = true;
-        }
-
-        if (st.tripControl.cmdStopManualTrip) {
-            st.tripControl.cmdStopManualTrip = false;
-            st.tripControl.manualTripActive  = false;
-            if (st.tripControl.activeViewCategory == TRIP_MANUAL) {
-                st.tripControl.activeViewCategory = TRIP_SINGLE;
-            }
-            doStopManual = true;
+        // TrackLogger::handlePendingCommands() is the sole consumer of cmdStartManualTrip / cmdStopManualTrip.
+        // Observe committed (manualTripActive, manualSubIndex) transitions to sync local trail anchors.
+        if (st.tripControl.manualTripActive != _seenManualActive ||
+            st.tripControl.manualSubIndex != _seenManualSubIndex) {
+            manualStartedNow    = st.tripControl.manualTripActive &&
+                                  (!_seenManualActive || st.tripControl.manualSubIndex != _seenManualSubIndex);
+            _seenManualActive   = st.tripControl.manualTripActive;
+            _seenManualSubIndex = st.tripControl.manualSubIndex;
+            manualStateSync     = true;
+            manualPts           = st.trailMeta[TRIP_MANUAL].pointCount;
         }
     }
 
@@ -1098,10 +1081,9 @@ void GnssDriver::handleTripCommandsAndRollover(uint32_t /*nowMs*/) {
         }
     }
 
-    if (doMidnightRoll) {
-        SystemState::instance().resetTrail(TRIP_DAILY);
+    if (dailyRolledSync) {
         _trailHasLast[TRIP_DAILY] = false;
-        if (validPos) {
+        if (validPos && dailyPts == 0U) {
             SystemState::instance().appendTrailPoint(
                 TRIP_DAILY,
                 static_cast<int32_t>(llround(curLat * 1e7)),
@@ -1112,13 +1094,11 @@ void GnssDriver::handleTripCommandsAndRollover(uint32_t /*nowMs*/) {
             _trailLastLon[TRIP_DAILY] = curLon;
             _trailHasLast[TRIP_DAILY] = true;
         }
-        saveTripPersistenceToNvs();
     }
 
-    if (doStartManual) {
-        SystemState::instance().resetTrail(TRIP_MANUAL);
+    if (manualStateSync) {
         _trailHasLast[TRIP_MANUAL] = false;
-        if (validPos) {
+        if (manualStartedNow && validPos && manualPts == 0U) {
             SystemState::instance().appendTrailPoint(
                 TRIP_MANUAL,
                 static_cast<int32_t>(llround(curLat * 1e7)),
@@ -1129,9 +1109,6 @@ void GnssDriver::handleTripCommandsAndRollover(uint32_t /*nowMs*/) {
             _trailLastLon[TRIP_MANUAL] = curLon;
             _trailHasLast[TRIP_MANUAL] = true;
         }
-        saveTripPersistenceToNvs();
-    } else if (doStopManual) {
-        saveTripPersistenceToNvs();
     }
 }
 
@@ -1161,7 +1138,9 @@ void GnssDriver::updateTripOdometerAndTrails(uint32_t nowMs) {
         fusedAltM      = (st.baro.isOnline || st.baro.isP0Calibrated)
                              ? st.baro.fusedAltitudeM
                              : st.gnss.altitudeMeters;
-        manActive      = st.tripControl.manualTripActive;
+        manActive      = st.tripControl.manualTripActive &&
+                         !st.tripControl.cmdStartManualTrip &&
+                         !st.tripControl.cmdStopManualTrip;
         nowUtc         = st.time.epochUtc;
     }
 
@@ -1215,7 +1194,7 @@ void GnssDriver::updateTripOdometerAndTrails(uint32_t nowMs) {
             const bool moving = posValid && (speedKmh > GnssConfig::STATIC_DEADBAND_KMH);
 
             for (uint8_t cat = 0; cat < TRIP_CATEGORY_COUNT; ++cat) {
-                if (cat == TRIP_MANUAL && !st.tripControl.manualTripActive) {
+                if (cat == TRIP_MANUAL && !manActive) {
                     continue;
                 }
                 TripStats& t = st.trips[cat];

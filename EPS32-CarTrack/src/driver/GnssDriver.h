@@ -153,6 +153,9 @@ private:
     double            _trailLastLat[TRIP_CATEGORY_COUNT] = {};
     double            _trailLastLon[TRIP_CATEGORY_COUNT] = {};
     bool              _trailHasLast[TRIP_CATEGORY_COUNT] = {};
+    uint32_t          _seenLocalDayYmd    = 0;
+    bool              _seenManualActive   = false;
+    uint16_t          _seenManualSubIndex = 0;
 
     // AssistNow MGA Frame Reassembly Buffer (handles arbitrary 512B TCP chunks)
     static constexpr size_t MGA_CARRY_CAP = 320;

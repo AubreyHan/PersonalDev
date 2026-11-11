@@ -337,12 +337,14 @@ void PowerMonitorService::enterStandbySleep(uint32_t nowMs, const SystemStateSna
     if (curMhz >= 160UL) {
         _savedActiveCpuMhz = curMhz;
     }
-    M5.Display.setBrightness(0);
-    M5.Display.sleep();
+    // Note: M5.Display.sleep() & setBrightness(0) are executed exclusively on uiTask
+    // by UiManager::updateBacklightAndAudio() upon observing STANDBY_PHASE_SLEEPING,
+    // avoiding cross-task MIPI-DSI & SYS_I2C bus contention.
     setCpuFrequencyMhz(MotionPowerConfig::STANDBY_CPU_FREQ_MHZ);
 }
 
 void PowerMonitorService::wakeFromStandby(const char* wakeReason, const SystemStateSnapshot& snap) {
+    (void)snap;
     _phase             = STANDBY_PHASE_WAKING_UP;
     _standstillAccumMs = 0UL;
     _wakeMotionAccumMs = 0UL;
@@ -352,9 +354,8 @@ void PowerMonitorService::wakeFromStandby(const char* wakeReason, const SystemSt
         _sleepHook(false);
     }
 
-    M5.Display.wakeup();
-    M5.Display.setBrightness(snap.settings.screenBrightness);
-
+    // Note: M5.Display.wakeup() & backlight restoration are executed exclusively on uiTask
+    // by UiManager::updateBacklightAndAudio() upon observing STANDBY_PHASE_ACTIVE.
     {
         StateGuard guard(SystemState::instance());
         PowerData& p = SystemState::instance().data().power;
