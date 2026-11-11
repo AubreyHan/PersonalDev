@@ -322,22 +322,60 @@ public final class PhotoLibraryIndexer: NSObject, PHPhotoLibraryChangeObserver {
     }
 
     public func setFavorite(_ isFavorite: Bool, for asset: PHAsset) async throws {
-        try await PHPhotoLibrary.shared().performChanges {
-            let request = PHAssetChangeRequest(for: asset)
-            request.isFavorite = isFavorite
-        }
+        try await Self.performSetFavorite(isFavorite, for: asset)
         await buildIndex()
     }
 
     /// 批量将指定资产移入系统“最近删除”（FR-7.3，单次确认弹窗）
     public func deleteAssets(withIDs assetIDs: [String]) async throws {
         guard !assetIDs.isEmpty else { return }
-        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: assetIDs, options: nil)
-        guard fetchResult.count > 0 else { return }
-
-        try await PHPhotoLibrary.shared().performChanges {
-            PHAssetChangeRequest.deleteAssets(fetchResult)
-        }
+        let didDelete = try await Self.performDeleteAssets(withIDs: assetIDs)
+        guard didDelete else { return }
         await buildIndex()
+    }
+
+    nonisolated private static func performSetFavorite(_ isFavorite: Bool, for asset: PHAsset) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            PHPhotoLibrary.shared().performChanges({
+                let request = PHAssetChangeRequest(for: asset)
+                request.isFavorite = isFavorite
+            }, completionHandler: { success, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if success {
+                    continuation.resume(returning: ())
+                } else {
+                    continuation.resume(throwing: NSError(
+                        domain: "PhotoCleaner.PhotoLibraryIndexer",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "修改收藏状态未完成"]
+                    ))
+                }
+            })
+        }
+    }
+
+    nonisolated private static func performDeleteAssets(withIDs assetIDs: [String]) async throws -> Bool {
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: assetIDs, options: nil)
+        guard fetchResult.count > 0 else { return false }
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            PHPhotoLibrary.shared().performChanges({
+                PHAssetChangeRequest.deleteAssets(fetchResult)
+            }, completionHandler: { success, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if success {
+                    continuation.resume(returning: ())
+                } else {
+                    continuation.resume(throwing: NSError(
+                        domain: "PhotoCleaner.PhotoLibraryIndexer",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "删除照片未完成"]
+                    ))
+                }
+            })
+        }
+        return true
     }
 }

@@ -14,7 +14,7 @@ public final class MediaLoadService {
 
     public nonisolated static let defaultGridThumbnailSize = CGSize(width: 320, height: 320)
 
-    private let cachingManager: PHCachingImageManager
+    nonisolated private let cachingManager: PHCachingImageManager
     private let geocoder = CLGeocoder()
 
     /// 内存缓存：assetID -> 精确字节数 (EC-6)

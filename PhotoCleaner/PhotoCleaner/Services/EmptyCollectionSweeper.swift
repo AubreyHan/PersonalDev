@@ -108,9 +108,7 @@ public final class EmptyCollectionSweeper {
         if !emptyAlbums.isEmpty {
             let candidateIDs = emptyAlbums.map(\.localIdentifier)
             do {
-                try await PHPhotoLibrary.shared().performChanges {
-                    PHAssetCollectionChangeRequest.deleteAssetCollections(emptyAlbums as NSArray)
-                }
+                try await Self.performDeleteEmptyAlbums(emptyAlbums)
                 deletedAlbumIDs.append(contentsOf: candidateIDs)
             } catch {
                 if Self.isUserCancelledError(error) {
@@ -141,9 +139,7 @@ public final class EmptyCollectionSweeper {
 
             let candidateFolderIDs = deepestEmptyFolders.map(\.localIdentifier)
             do {
-                try await PHPhotoLibrary.shared().performChanges {
-                    PHCollectionListChangeRequest.deleteCollectionLists(deepestEmptyFolders as NSArray)
-                }
+                try await Self.performDeleteEmptyFolders(deepestEmptyFolders)
                 deletedFolderIDs.append(contentsOf: candidateFolderIDs)
             } catch {
                 if Self.isUserCancelledError(error) {
@@ -287,7 +283,49 @@ public final class EmptyCollectionSweeper {
         return false
     }
 
-    // MARK: - Private PhotoKit Traversal Helpers
+    // MARK: - Private PhotoKit Traversal & Mutation Helpers
+
+    nonisolated private static func performDeleteEmptyAlbums(_ emptyAlbums: [PHAssetCollection]) async throws {
+        let collections = emptyAlbums as NSArray
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            PHPhotoLibrary.shared().performChanges({
+                PHAssetCollectionChangeRequest.deleteAssetCollections(collections)
+            }, completionHandler: { success, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if success {
+                    continuation.resume(returning: ())
+                } else {
+                    continuation.resume(throwing: NSError(
+                        domain: "PhotoCleaner.EmptyCollectionSweeper",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "未能删除空相簿"]
+                    ))
+                }
+            })
+        }
+    }
+
+    nonisolated private static func performDeleteEmptyFolders(_ emptyFolders: [PHCollectionList]) async throws {
+        let lists = emptyFolders as NSArray
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            PHPhotoLibrary.shared().performChanges({
+                PHCollectionListChangeRequest.deleteCollectionLists(lists)
+            }, completionHandler: { success, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if success {
+                    continuation.resume(returning: ())
+                } else {
+                    continuation.resume(throwing: NSError(
+                        domain: "PhotoCleaner.EmptyCollectionSweeper",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "未能删除空相簿文件夹"]
+                    ))
+                }
+            })
+        }
+    }
 
     /// EC-2 安全红线：判定空普通相簿时，强制设置 `includeHiddenAssets = true` 统计真实总数！
     nonisolated private static func fetchWhitelistedEmptyRegularAlbums(

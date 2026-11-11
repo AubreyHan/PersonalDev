@@ -363,19 +363,8 @@ public final class AlbumGraphService {
         let deltaIDs = Array(assetIDs.subtracting(existing))
         guard !deltaIDs.isEmpty else { return }
 
-        guard let collection = PHAssetCollection.fetchAssetCollections(
-            withLocalIdentifiers: [albumID],
-            options: nil
-        ).firstObject else {
-            return
-        }
-        let assetsFetch = PHAsset.fetchAssets(withLocalIdentifiers: deltaIDs, options: nil)
-        guard assetsFetch.count > 0 else { return }
-
-        try await PHPhotoLibrary.shared().performChanges {
-            let changeRequest = PHAssetCollectionChangeRequest(for: collection)
-            changeRequest?.addAssets(assetsFetch)
-        }
+        let didPerform = try await Self.performAddAssets(deltaIDs: deltaIDs, toAlbumID: albumID)
+        guard didPerform else { return }
 
         applyLocalAdd(assetIDs: Set(deltaIDs), toAlbum: albumID)
     }
@@ -389,24 +378,16 @@ public final class AlbumGraphService {
             return existing.count
         }
 
-        guard let collection = PHAssetCollection.fetchAssetCollections(
-            withLocalIdentifiers: [albumID],
-            options: nil
-        ).firstObject else {
+        let outcome = try await Self.performRemoveAssets(toRemoveIDs: toRemoveIDs, fromAlbumID: albumID)
+        switch outcome {
+        case .collectionNotFound:
             return 0
-        }
-        let assetsFetch = PHAsset.fetchAssets(withLocalIdentifiers: toRemoveIDs, options: nil)
-        guard assetsFetch.count > 0 else {
+        case .noMatchingAssets:
             return existing.count
+        case .removed:
+            applyLocalRemove(assetIDs: Set(toRemoveIDs), fromAlbum: albumID)
+            return albumToAssets[albumID]?.count ?? 0
         }
-
-        try await PHPhotoLibrary.shared().performChanges {
-            let changeRequest = PHAssetCollectionChangeRequest(for: collection)
-            changeRequest?.removeAssets(assetsFetch)
-        }
-
-        applyLocalRemove(assetIDs: Set(toRemoveIDs), fromAlbum: albumID)
-        return albumToAssets[albumID]?.count ?? 0
     }
 
     /// 原子“新建相簿并加入选中资产”（FR-6.3 & EC-7）：
@@ -441,28 +422,11 @@ public final class AlbumGraphService {
         }
 
         let orderedIDs = Array(assetIDs)
-        let assetsFetch = orderedIDs.isEmpty ? nil : PHAsset.fetchAssets(withLocalIdentifiers: orderedIDs, options: nil)
-        let parentFolder: PHCollectionList? = {
-            guard let parentFolderID else { return nil }
-            return PHCollectionList.fetchCollectionLists(withLocalIdentifiers: [parentFolderID], options: nil).firstObject
-        }()
-
-        var createdLocalIdentifier: String = ""
-
-        try await PHPhotoLibrary.shared().performChanges {
-            let createRequest = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: trimmedTitle)
-            let placeholder = createRequest.placeholderForCreatedAssetCollection
-            createdLocalIdentifier = placeholder.localIdentifier
-
-            if let assetsFetch, assetsFetch.count > 0 {
-                createRequest.addAssets(assetsFetch)
-            }
-
-            if let parentFolder,
-               let folderRequest = PHCollectionListChangeRequest(for: parentFolder) {
-                folderRequest.addChildCollections([placeholder] as NSArray)
-            }
-        }
+        let createdLocalIdentifier = try await Self.performCreateAlbumAndAddAssets(
+            title: trimmedTitle,
+            parentFolderID: parentFolderID,
+            assetIDs: orderedIDs
+        )
 
         await reloadGraph()
         let createdNode = albumsByID[createdLocalIdentifier]
@@ -471,6 +435,118 @@ public final class AlbumGraphService {
             albumNode: createdNode,
             joinedExistingAlbum: false
         )
+    }
+
+    private enum RemoveOutcome: Sendable {
+        case collectionNotFound
+        case noMatchingAssets
+        case removed
+    }
+
+    nonisolated private static func performAddAssets(deltaIDs: [String], toAlbumID albumID: String) async throws -> Bool {
+        guard let collection = PHAssetCollection.fetchAssetCollections(
+            withLocalIdentifiers: [albumID],
+            options: nil
+        ).firstObject else {
+            return false
+        }
+        let assetsFetch = PHAsset.fetchAssets(withLocalIdentifiers: deltaIDs, options: nil)
+        guard assetsFetch.count > 0 else { return false }
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            PHPhotoLibrary.shared().performChanges({
+                let changeRequest = PHAssetCollectionChangeRequest(for: collection)
+                changeRequest?.addAssets(assetsFetch)
+            }, completionHandler: { success, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if success {
+                    continuation.resume(returning: ())
+                } else {
+                    continuation.resume(throwing: NSError(
+                        domain: "PhotoCleaner.AlbumGraphService",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "添加相簿成员未完成"]
+                    ))
+                }
+            })
+        }
+        return true
+    }
+
+    nonisolated private static func performRemoveAssets(toRemoveIDs: [String], fromAlbumID albumID: String) async throws -> RemoveOutcome {
+        guard let collection = PHAssetCollection.fetchAssetCollections(
+            withLocalIdentifiers: [albumID],
+            options: nil
+        ).firstObject else {
+            return .collectionNotFound
+        }
+        let assetsFetch = PHAsset.fetchAssets(withLocalIdentifiers: toRemoveIDs, options: nil)
+        guard assetsFetch.count > 0 else {
+            return .noMatchingAssets
+        }
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            PHPhotoLibrary.shared().performChanges({
+                let changeRequest = PHAssetCollectionChangeRequest(for: collection)
+                changeRequest?.removeAssets(assetsFetch)
+            }, completionHandler: { success, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if success {
+                    continuation.resume(returning: ())
+                } else {
+                    continuation.resume(throwing: NSError(
+                        domain: "PhotoCleaner.AlbumGraphService",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "移出相簿成员未完成"]
+                    ))
+                }
+            })
+        }
+        return .removed
+    }
+
+    nonisolated private static func performCreateAlbumAndAddAssets(
+        title: String,
+        parentFolderID: String?,
+        assetIDs: [String]
+    ) async throws -> String {
+        let assetsFetch = assetIDs.isEmpty ? nil : PHAsset.fetchAssets(withLocalIdentifiers: assetIDs, options: nil)
+        let parentFolder: PHCollectionList? = {
+            guard let parentFolderID else { return nil }
+            return PHCollectionList.fetchCollectionLists(withLocalIdentifiers: [parentFolderID], options: nil).firstObject
+        }()
+
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
+            var createdID = ""
+            PHPhotoLibrary.shared().performChanges({
+                let createRequest = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: title)
+                let placeholder = createRequest.placeholderForCreatedAssetCollection
+                createdID = placeholder.localIdentifier
+
+                if let assetsFetch, assetsFetch.count > 0 {
+                    createRequest.addAssets(assetsFetch)
+                }
+
+                if let parentFolder,
+                   let folderRequest = PHCollectionListChangeRequest(for: parentFolder) {
+                    folderRequest.addChildCollections([placeholder] as NSArray)
+                }
+            }, completionHandler: { success, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if success {
+                    continuation.resume(returning: createdID)
+                } else {
+                    continuation.resume(throwing: NSError(
+                        domain: "PhotoCleaner.AlbumGraphService",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "创建相簿未完成"]
+                    ))
+                }
+            })
+        }
     }
 
     // MARK: - Optimistic In-Memory Graph Patching
