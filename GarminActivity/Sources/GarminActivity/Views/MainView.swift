@@ -22,7 +22,7 @@ public struct MainView: View {
                 LoginView(viewModel: viewModel)
             }
         }
-        .frame(minWidth: 860, minHeight: 580)
+        .frame(minWidth: 920, minHeight: 600)
         .task {
             await viewModel.bootstrap()
         }
