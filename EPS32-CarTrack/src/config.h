@@ -318,11 +318,13 @@ namespace SdCardConfig {
 }
 
 namespace LittleFsConfig {
-    // Verified against local Arduino-ESP32 LittleFS.h & partitions.csv:
-    // partitions.csv entry: Name="spiffs", Type="data", SubType="littlefs" (0x83), Size=0x360000 (3.375 MiB)
-    // Calling LittleFS.begin(true) or LittleFS.begin(true, BASE_PATH, 10, PARTITION_LABEL) mounts cleanly.
+    // Verified against local Arduino-ESP32 LittleFS.h (L29) & esp_partition.h:
+    // - esp_partition.h defines ESP_PARTITION_SUBTYPE_DATA_LITTLEFS = 0x83 ("littlefs")
+    // - partitions.csv entry: Name="littlefs", Type="data", SubType="littlefs", Size=0x360000 (3.375 MiB)
+    // - IMPORTANT: Arduino-ESP32 LittleFS::begin() defaults 4th arg partitionLabel="spiffs"!
+    //   Always call: LittleFS.begin(true, LittleFsConfig::BASE_PATH, 10, LittleFsConfig::PARTITION_LABEL)
     constexpr const char* BASE_PATH       = "/littlefs";
-    constexpr const char* PARTITION_LABEL = "spiffs";
+    constexpr const char* PARTITION_LABEL = "littlefs";
     constexpr const char* TUNNELS_BIN_REL = "/tunnels.bin";          // Pass to LittleFS.open()
     constexpr const char* TUNNELS_BIN_VFS = "/littlefs/tunnels.bin"; // Full POSIX VFS path
 }
