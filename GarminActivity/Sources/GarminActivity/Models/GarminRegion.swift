@@ -21,4 +21,13 @@ public enum GarminRegion: String, Codable, CaseIterable, Sendable {
             return "中国区 (China)"
         }
     }
+
+    public var personalApiTokenPageURL: URL {
+        switch self {
+        case .global:
+            return URL(string: "https://connect.garmin.com/app/settings/personalApiToken")!
+        case .china:
+            return URL(string: "https://connect.garmin.cn/app/settings/personalApiToken")!
+        }
+    }
 }

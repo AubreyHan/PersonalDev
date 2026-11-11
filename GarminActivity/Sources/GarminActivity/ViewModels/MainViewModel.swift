@@ -20,6 +20,7 @@ public final class MainViewModel {
     }
 
     nonisolated public static let defaultSaveDirectoryDefaultsKey = "GarminActivity.saveDirectoryPath"
+    nonisolated public static let lastKnownRegionDefaultsKey = "GarminActivity.lastKnownRegion"
 
     // MARK: - Dependencies
 
@@ -29,12 +30,14 @@ public final class MainViewModel {
     private let exporter: any ActivityExporting
     private let userDefaults: UserDefaults
     private let saveDirectoryDefaultsKey: String
+    private let urlOpener: @MainActor (URL) -> Void
 
     // MARK: - Auth & Region State
 
     public var apiKeyInput: String = ""
     public var isAuthenticated: Bool = false
     public var currentRegion: GarminRegion? = nil
+    public var lastKnownRegion: GarminRegion? = nil
     public var isAuthenticating: Bool = false
     public var authErrorMessage: String? = nil
 
@@ -138,7 +141,8 @@ public final class MainViewModel {
         apiClient: any GarminApiClientProtocol = GarminApiClient(),
         exporter: any ActivityExporting = ActivityExporter(),
         userDefaults: UserDefaults = .standard,
-        saveDirectoryDefaultsKey: String = MainViewModel.defaultSaveDirectoryDefaultsKey
+        saveDirectoryDefaultsKey: String = MainViewModel.defaultSaveDirectoryDefaultsKey,
+        urlOpener: (@MainActor (URL) -> Void)? = nil
     ) {
         self.keychainService = keychainService
         self.authService = authService
@@ -146,6 +150,17 @@ public final class MainViewModel {
         self.exporter = exporter
         self.userDefaults = userDefaults
         self.saveDirectoryDefaultsKey = saveDirectoryDefaultsKey
+        self.urlOpener = urlOpener ?? { url in
+            // 仅在非 XCTest 环境下自动调用系统浏览器打开，避免单元测试触发外部浏览器
+            if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+                NSWorkspace.shared.open(url)
+            }
+        }
+
+        if let rawRegion = userDefaults.string(forKey: MainViewModel.lastKnownRegionDefaultsKey),
+           let region = GarminRegion(rawValue: rawRegion) {
+            self.lastKnownRegion = region
+        }
 
         // 每次冷启动固定设为当天 00:00:00
         self.startDate = Calendar.current.startOfDay(for: Date())
@@ -163,15 +178,28 @@ public final class MainViewModel {
 
     // MARK: - Authentication Actions
 
-    /// 启动时检查 Keychain，若有保存的 apiKey 和 region，静默获取有效 Token 并加载当天活动列表
+    /// 当前优先打开的获取 Personal API Key 页面（若上次登录过中国区则打开 .cn，否则默认打开国际区 .com）
+    public var preferredTokenPageURL: URL {
+        (currentRegion ?? lastKnownRegion ?? .global).personalApiTokenPageURL
+    }
+
+    /// 在浏览器中打开获取 Personal API Key 的页面
+    public func openPersonalApiKeyPage(for region: GarminRegion? = nil) {
+        let targetURL = region?.personalApiTokenPageURL ?? preferredTokenPageURL
+        urlOpener(targetURL)
+    }
+
+    /// 启动时检查 Keychain，若有保存的 apiKey 和 region，静默获取有效 Token 并加载当天活动列表；若需要输入 Key 则自动打开获取 Key 页面
     public func bootstrap() async {
         guard let stored = try? keychainService.loadCredentials(),
               !stored.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            openPersonalApiKeyPage()
             return
         }
 
         isAuthenticating = true
         authErrorMessage = nil
+        rememberRegion(stored.region)
 
         do {
             let session = try await authService.obtainValidToken(
@@ -182,6 +210,7 @@ public final class MainViewModel {
             activeApiKey = session.apiKey
             apiKeyInput = session.apiKey
             currentRegion = session.region
+            rememberRegion(session.region)
             isAuthenticated = true
             isAuthenticating = false
 
@@ -191,6 +220,7 @@ public final class MainViewModel {
             isAuthenticated = false
             currentRegion = nil
             authErrorMessage = error.localizedDescription
+            openPersonalApiKeyPage(for: stored.region)
         }
     }
 
@@ -210,6 +240,7 @@ public final class MainViewModel {
             try? keychainService.saveCredentials(apiKey: session.apiKey, region: session.region)
             activeApiKey = session.apiKey
             currentRegion = session.region
+            rememberRegion(session.region)
             isAuthenticated = true
             isAuthenticating = false
 
@@ -222,8 +253,9 @@ public final class MainViewModel {
         }
     }
 
-    /// 清除 Keychain 凭据并重置状态回到登录页
+    /// 清除 Keychain 凭据，重置状态回到登录页，并自动打开获取 Key 的页面
     public func logout() {
+        let previousRegion = currentRegion ?? lastKnownRegion
         try? keychainService.clearCredentials()
         activeApiKey = nil
         apiKeyInput = ""
@@ -240,6 +272,12 @@ public final class MainViewModel {
         lastExportedURLs = []
         showMissingGPSAlert = false
         missingGPSActivityNames = []
+        openPersonalApiKeyPage(for: previousRegion)
+    }
+
+    private func rememberRegion(_ region: GarminRegion) {
+        lastKnownRegion = region
+        userDefaults.set(region.rawValue, forKey: MainViewModel.lastKnownRegionDefaultsKey)
     }
 
     // MARK: - Activity Loading & Filtering

@@ -75,6 +75,28 @@ public struct LoginView: View {
                 viewModel.isAuthenticating ||
                 viewModel.apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             )
+
+            HStack(spacing: 16) {
+                Button {
+                    viewModel.openPersonalApiKeyPage(for: .global)
+                } label: {
+                    Label("打开国际区获取 Key (garmin.com)", systemImage: "safari")
+                        .font(.caption)
+                }
+                .buttonStyle(.link)
+
+                Text("·")
+                    .foregroundStyle(.tertiary)
+
+                Button {
+                    viewModel.openPersonalApiKeyPage(for: .china)
+                } label: {
+                    Label("打开中国区获取 Key (garmin.cn)", systemImage: "safari")
+                        .font(.caption)
+                }
+                .buttonStyle(.link)
+            }
+            .padding(.top, 4)
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
