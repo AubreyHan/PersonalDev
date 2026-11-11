@@ -3,7 +3,8 @@
 > **使用指南**:
 > 本文档面向在独立工程仓库 `/Users/aubreyhan/Tools/git_repo/PersonalDev/PhotoCleaner` 中使用 Antigravity 进行 Vibe Coding 开发。
 > 整个开发流程拆解为 **6 个有序阶段（Phases）与 14 个原子级任务（Atomic Tasks）**。
-> 建议按顺序逐阶段推进（例如下达指令：*“请阅读 `/Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/photo-cleaner/` 下的全套文档，执行 `IMPLEMENTATION_PLAN.md` 的 Phase 1”*）。
+> - **多智能体并行开发（推荐）**：在 `PhotoCleaner` 工作区直接输入 `/swarm`（或 `/swarm Phase 1`），系统将自动加载项目专属 [`.agents/skills/swarm/SKILL.md`](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/PhotoCleaner/.agents/skills/swarm/SKILL.md)，按模块文件所有权矩阵调度 `scaffold-models`、`core-services`、`viewmodels`、`ui-calendar-grid`、`ui-review-inspector` 与 `verifier` 并行推进研发与测试。
+> - **单智能体逐阶段开发**：也可按顺序逐阶段下达指令（例如：*“请阅读 `/Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/photo-cleaner/` 下的全套文档，执行 `IMPLEMENTATION_PLAN.md` 的 Phase 1”*）。
 
 ---
 
