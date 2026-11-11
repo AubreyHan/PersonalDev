@@ -58,9 +58,11 @@ private final class MockGarminApiClient: GarminApiClientProtocol, @unchecked Sen
     var zipDataByActivityId: [Int64: Data] = [:]
     var defaultZipData: Data = Data()
     var fetchedStartDates: [Date] = []
+    var fetchedEndDates: [Date] = []
 
-    func fetchActivities(from startDate: Date, region: GarminRegion, accessToken: String) async throws -> [ActivityItem] {
+    func fetchActivities(from startDate: Date, to endDate: Date, region: GarminRegion, accessToken: String) async throws -> [ActivityItem] {
         fetchedStartDates.append(startDate)
+        fetchedEndDates.append(endDate)
         return activitiesToReturn
     }
 
@@ -499,5 +501,71 @@ final class MainViewModelTests: XCTestCase {
 
         vm.logout()
         XCTAssertEqual(openedURLs.last, GarminRegion.china.personalApiTokenPageURL)
+    }
+
+    // MARK: 7. 起止日期独立选择与多格式同时下载测试
+
+    func testSeparateStartAndEndDatesAndMultiFormatExport() async throws {
+        let keychain = MockKeychainStore()
+        let auth = MockAuthService()
+        let api = MockGarminApiClient()
+        let exporter = SpyActivityExporter()
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GarminVMTests_MultiFormat_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let run1 = ActivityItem(
+            activityId: 301,
+            activityName: "晨跑",
+            startTimeLocal: "2026-11-10 07:00:00",
+            startTimeGMT: "2026-11-09 23:00:00",
+            activityType: ActivityTypeDTO(typeKey: "running"),
+            distance: 5000,
+            duration: 1500
+        )
+        let gpsPoints = [
+            TrackPoint(
+                timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+                latitudeDegrees: 31.2304,
+                longitudeDegrees: 121.4737,
+                altitudeMeters: 12.0,
+                distanceMeters: 100.0,
+                heartRateBpm: 145
+            )
+        ]
+        api.zipDataByActivityId[301] = ZipExtractor.createSingleFileZip(
+            fileName: "301_ACTIVITY.fit",
+            fileData: FitParser.buildSyntheticFit(records: gpsPoints)
+        )
+        api.activitiesToReturn = [run1]
+
+        let vm = MainViewModel(
+            keychainService: keychain,
+            authService: auth,
+            apiClient: api,
+            exporter: exporter
+        )
+        vm.saveDirectoryURL = tempDir
+
+        // 1) 启动默认起止日期均为当天
+        let today = Calendar.current.startOfDay(for: Date())
+        XCTAssertEqual(vm.startDate, today)
+        XCTAssertEqual(vm.endDate, today)
+
+        // 2) 多选下载类型：同时勾选 GPX 和 FIT
+        vm.selectedExportFormats = [.gpx, .fit]
+        XCTAssertEqual(vm.orderedSelectedExportFormats, [.gpx, .fit])
+
+        vm.apiKeyInput = "valid-key"
+        await vm.login()
+
+        vm.setActivitySelection(301, isSelected: true)
+        await vm.downloadSelected()
+
+        // 单个活动同时导出 GPX 和 FIT 两个文件
+        XCTAssertEqual(vm.lastExportedURLs.count, 2)
+        XCTAssertEqual(Set(vm.lastExportedURLs.map(\.pathExtension)), ["gpx", "fit"])
     }
 }
