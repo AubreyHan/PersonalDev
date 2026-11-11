@@ -769,7 +769,7 @@ public struct FitParser: Sendable {
     private static func readValidUInt32(_ bytes: [UInt8], at offset: Int, size: Int, isBigEndian: Bool) -> UInt32? {
         guard size >= 4 else { return nil }
         let val = readUInt32(bytes, at: offset, isBigEndian: isBigEndian)
-        return (val == 0xFFFF_FFFF || val == 0x0000_0000) ? nil : val
+        return val == 0xFFFF_FFFF ? nil : val
     }
 
     private static func readValidInt32(_ bytes: [UInt8], at offset: Int, size: Int, isBigEndian: Bool) -> Int32? {
