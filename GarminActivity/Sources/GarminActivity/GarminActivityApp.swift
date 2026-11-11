@@ -15,11 +15,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct GarminActivityApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @State private var viewModel = MainViewModel()
 
     var body: some Scene {
         WindowGroup("Garmin Activity Exporter") {
-            Text("Garmin Activity Exporter")
-                .frame(minWidth: 800, minHeight: 560)
+            MainView(viewModel: viewModel)
         }
     }
 }
