@@ -217,15 +217,8 @@ final class AuthAndApiTests: XCTestCase {
         let nearExpiryJWT = makeJWT(exp: nearExpiryExp)
         let refreshedJWT = makeJWT(exp: refreshedExp)
 
-        let counterLock = NSLock()
-        var callCount = 0
-
         MockURLProtocol.setHandler { request in
-            counterLock.lock()
-            callCount += 1
-            let currentCall = callCount
-            counterLock.unlock()
-
+            let currentCall = MockURLProtocol.getRecordedRequests().count
             let url = try XCTUnwrap(request.url)
             let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
             let tokenToReturn = (currentCall == 1) ? nearExpiryJWT : refreshedJWT
