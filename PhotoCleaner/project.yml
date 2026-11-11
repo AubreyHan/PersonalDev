@@ -1,0 +1,40 @@
+name: PhotoCleaner
+options:
+  bundleIdPrefix: com.personaldev
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+targets:
+  PhotoCleaner:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: PhotoCleaner
+        excludes:
+          - App/Info.plist
+          - App/PhotoCleaner.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.personaldev.PhotoCleaner
+        INFOPLIST_FILE: PhotoCleaner/App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: PhotoCleaner/App/PhotoCleaner.entitlements
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: YES
+        COMBINE_HIDPI_IMAGES: YES
+  PhotoCleanerTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: PhotoCleanerTests
+    dependencies:
+      - target: PhotoCleaner
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.personaldev.PhotoCleanerTests
+        GENERATE_INFOPLIST_FILE: YES
