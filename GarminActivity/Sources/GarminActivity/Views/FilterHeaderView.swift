@@ -10,63 +10,120 @@ public struct FilterHeaderView: View {
 
     public var body: some View {
         HStack(spacing: 16) {
-            // 1. 起始日期日历控件（仅起始日期，无结束日期，范围 2000-01-01 至今天）
-            HStack(spacing: 8) {
-                Text("起始日期:")
-                    .fontWeight(.medium)
+            // 1. 起始日期与结束日期日历控件（分开选择，2000-01-01 至今天，默认均为当天）
+            HStack(spacing: 12) {
+                HStack(spacing: 6) {
+                    Text("起始日期:")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
 
-                DatePicker(
-                    "",
-                    selection: $viewModel.startDate,
-                    in: MainViewModel.earliestAllowedDate...Date(),
-                    displayedComponents: .date
-                )
-                .labelsHidden()
-                .datePickerStyle(.compact)
+                    DatePicker(
+                        "",
+                        selection: $viewModel.startDate,
+                        in: MainViewModel.earliestAllowedDate...Date(),
+                        displayedComponents: .date
+                    )
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                    .fixedSize()
+                }
+                .fixedSize(horizontal: true, vertical: false)
+
+                HStack(spacing: 6) {
+                    Text("结束日期:")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+
+                    DatePicker(
+                        "",
+                        selection: $viewModel.endDate,
+                        in: MainViewModel.earliestAllowedDate...Date(),
+                        displayedComponents: .date
+                    )
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                    .fixedSize()
+                }
+                .fixedSize(horizontal: true, vertical: false)
             }
+            .fixedSize(horizontal: true, vertical: false)
 
             Divider()
-                .frame(height: 20)
+                .frame(height: 18)
 
-            // 2. 动态运动类型多选下拉框（仅展示当前日期范围内实际存在的类型）
+            // 2. 动态运动类型多选下拉框（仅展示当前起止日期范围内实际存在的类型）
             HStack(spacing: 8) {
                 Text("运动类型:")
+                    .font(.subheadline)
                     .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
 
                 Button {
                     isTypePopoverPresented.toggle()
                 } label: {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Text(typeFilterSummaryText)
+                            .font(.subheadline)
                             .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                        Spacer(minLength: 4)
                         Image(systemName: "chevron.down")
-                            .font(.caption)
+                            .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
-                    .frame(minWidth: 130, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .frame(width: 145, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color(nsColor: .controlColor))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
+                    )
                 }
+                .buttonStyle(.plain)
                 .disabled(viewModel.availableTypes.isEmpty)
+                .opacity(viewModel.availableTypes.isEmpty ? 0.55 : 1.0)
                 .popover(isPresented: $isTypePopoverPresented, arrowEdge: .bottom) {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
+                            Text("选择运动类型")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.secondary)
+
+                            Spacer()
+
                             Button("全选") {
                                 viewModel.selectAllTypes()
                             }
                             .buttonStyle(.link)
+                            .font(.caption)
 
-                            Spacer()
+                            Text("·")
+                                .foregroundStyle(.tertiary)
 
-                            Button("取消全选") {
+                            Button("清空") {
                                 viewModel.deselectAllTypes()
                             }
                             .buttonStyle(.link)
+                            .font(.caption)
                         }
-                        .padding(.bottom, 2)
 
                         Divider()
 
                         ScrollView {
-                            VStack(alignment: .leading, spacing: 6) {
+                            VStack(alignment: .leading, spacing: 8) {
                                 ForEach(viewModel.availableTypes, id: \.self) { typeKey in
                                     Toggle(
                                         isOn: Binding(
@@ -75,6 +132,8 @@ public struct FilterHeaderView: View {
                                         )
                                     ) {
                                         Text(typeKey)
+                                            .font(.subheadline)
+                                            .lineLimit(1)
                                     }
                                     .toggleStyle(.checkbox)
                                 }
@@ -84,37 +143,56 @@ public struct FilterHeaderView: View {
                         .frame(maxHeight: 240)
                     }
                     .padding(12)
-                    .frame(width: 220)
+                    .frame(width: 230)
                 }
             }
+            .fixedSize(horizontal: true, vertical: false)
 
-            Spacer()
+            Spacer(minLength: 12)
 
             // 3. 右侧：当前自动识别的区域标签、刷新按钮、「更换/退出 Key」按钮
-            if let region = viewModel.currentRegion {
-                Text(region.displayName)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .padding(.horizontal, 8)
+            HStack(spacing: 10) {
+                if let region = viewModel.currentRegion {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 6, height: 6)
+                        Text(region.displayName)
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 10)
                     .padding(.vertical, 4)
                     .background(Color.accentColor.opacity(0.12))
                     .clipShape(Capsule())
-            }
-
-            Button {
-                Task {
-                    await viewModel.loadActivities()
+                    .fixedSize(horizontal: true, vertical: false)
                 }
-            } label: {
-                Label("刷新", systemImage: "arrow.clockwise")
-            }
-            .disabled(viewModel.isLoadingActivities)
 
-            Button("更换/退出 Key") {
-                viewModel.logout()
+                Button {
+                    Task {
+                        await viewModel.loadActivities()
+                    }
+                } label: {
+                    Label("刷新", systemImage: "arrow.clockwise")
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                .controlSize(.regular)
+                .disabled(viewModel.isLoadingActivities)
+
+                Button {
+                    viewModel.logout()
+                } label: {
+                    Text("更换/退出 Key")
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                .controlSize(.regular)
             }
+            .fixedSize(horizontal: true, vertical: false)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 18)
         .padding(.vertical, 12)
         .background(.bar)
     }
