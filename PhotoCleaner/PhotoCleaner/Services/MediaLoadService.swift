@@ -58,7 +58,22 @@ public final class MediaLoadService {
         contentMode: PHImageContentMode = .aspectFill,
         resultHandler: @escaping @MainActor (NSImage?, Bool) -> Void
     ) -> PHImageRequestID {
+        performRequestThumbnail(
+            for: asset,
+            targetSize: targetSize,
+            contentMode: contentMode,
+            resultHandler: resultHandler
+        )
+    }
+
+    nonisolated private func performRequestThumbnail(
+        for asset: PHAsset,
+        targetSize: CGSize,
+        contentMode: PHImageContentMode,
+        resultHandler: @escaping @MainActor (NSImage?, Bool) -> Void
+    ) -> PHImageRequestID {
         let options = Self.makeLocalThumbnailOptions(deliveryMode: .opportunistic)
+        let assetID = asset.localIdentifier
         return cachingManager.requestImage(
             for: asset,
             targetSize: targetSize,
@@ -69,9 +84,9 @@ public final class MediaLoadService {
             let isDegraded = (info?[PHImageResultIsDegradedKey] as? NSNumber)?.boolValue ?? false
             Task { @MainActor in
                 if isInCloud && image == nil {
-                    self?.localAvailabilityCache[asset.localIdentifier] = false
+                    self?.localAvailabilityCache[assetID] = false
                 } else if image != nil && !isDegraded {
-                    self?.localAvailabilityCache[asset.localIdentifier] = !isInCloud
+                    self?.localAvailabilityCache[assetID] = !isInCloud
                 }
                 resultHandler(image, isInCloud)
             }
@@ -83,6 +98,14 @@ public final class MediaLoadService {
         for asset: PHAsset,
         targetSize: CGSize = MediaLoadService.defaultGridThumbnailSize,
         contentMode: PHImageContentMode = .aspectFill
+    ) async -> (image: NSImage?, isInCloud: Bool) {
+        await performLoadThumbnail(for: asset, targetSize: targetSize, contentMode: contentMode)
+    }
+
+    nonisolated private func performLoadThumbnail(
+        for asset: PHAsset,
+        targetSize: CGSize,
+        contentMode: PHImageContentMode
     ) async -> (image: NSImage?, isInCloud: Bool) {
         await withCheckedContinuation { continuation in
             let options = Self.makeLocalThumbnailOptions(deliveryMode: .highQualityFormat)
@@ -175,6 +198,20 @@ public final class MediaLoadService {
         progressHandler: (@MainActor @Sendable (Double) -> Void)? = nil,
         resultHandler: @escaping @MainActor (NSImage?, Bool, Error?) -> Void
     ) -> PHImageRequestID {
+        performRequestHighResImage(
+            for: asset,
+            targetSize: targetSize,
+            progressHandler: progressHandler,
+            resultHandler: resultHandler
+        )
+    }
+
+    nonisolated private func performRequestHighResImage(
+        for asset: PHAsset,
+        targetSize: CGSize,
+        progressHandler: (@MainActor @Sendable (Double) -> Void)?,
+        resultHandler: @escaping @MainActor (NSImage?, Bool, Error?) -> Void
+    ) -> PHImageRequestID {
         let options = PHImageRequestOptions()
         options.isNetworkAccessAllowed = true
         options.deliveryMode = .opportunistic
@@ -187,6 +224,7 @@ public final class MediaLoadService {
             }
         }
 
+        let assetID = asset.localIdentifier
         return cachingManager.requestImage(
             for: asset,
             targetSize: targetSize,
@@ -197,7 +235,7 @@ public final class MediaLoadService {
             let error = info?[PHImageErrorKey] as? Error
             Task { @MainActor in
                 if image != nil && !isDegraded {
-                    self?.localAvailabilityCache[asset.localIdentifier] = true
+                    self?.localAvailabilityCache[assetID] = true
                 }
                 resultHandler(image, isDegraded, error)
             }
@@ -209,6 +247,14 @@ public final class MediaLoadService {
         for asset: PHAsset,
         targetSize: CGSize = CGSize(width: 2560, height: 2560),
         progressHandler: (@MainActor @Sendable (Double) -> Void)? = nil
+    ) async -> NSImage? {
+        await performLoadHighResImage(for: asset, targetSize: targetSize, progressHandler: progressHandler)
+    }
+
+    nonisolated private func performLoadHighResImage(
+        for asset: PHAsset,
+        targetSize: CGSize,
+        progressHandler: (@MainActor @Sendable (Double) -> Void)?
     ) async -> NSImage? {
         await withCheckedContinuation { continuation in
             let options = PHImageRequestOptions()
@@ -245,6 +291,20 @@ public final class MediaLoadService {
         progressHandler: (@MainActor @Sendable (Double) -> Void)? = nil,
         resultHandler: @escaping @MainActor (PHLivePhoto?, Bool, Error?) -> Void
     ) -> PHImageRequestID {
+        performRequestLivePhoto(
+            for: asset,
+            targetSize: targetSize,
+            progressHandler: progressHandler,
+            resultHandler: resultHandler
+        )
+    }
+
+    nonisolated private func performRequestLivePhoto(
+        for asset: PHAsset,
+        targetSize: CGSize,
+        progressHandler: (@MainActor @Sendable (Double) -> Void)?,
+        resultHandler: @escaping @MainActor (PHLivePhoto?, Bool, Error?) -> Void
+    ) -> PHImageRequestID {
         let options = PHLivePhotoRequestOptions()
         options.isNetworkAccessAllowed = true
         options.deliveryMode = .opportunistic
@@ -275,6 +335,14 @@ public final class MediaLoadService {
         for asset: PHAsset,
         targetSize: CGSize = CGSize(width: 2048, height: 2048),
         progressHandler: (@MainActor @Sendable (Double) -> Void)? = nil
+    ) async -> PHLivePhoto? {
+        await performLoadLivePhoto(for: asset, targetSize: targetSize, progressHandler: progressHandler)
+    }
+
+    nonisolated private func performLoadLivePhoto(
+        for asset: PHAsset,
+        targetSize: CGSize,
+        progressHandler: (@MainActor @Sendable (Double) -> Void)?
     ) async -> PHLivePhoto? {
         await withCheckedContinuation { continuation in
             let options = PHLivePhotoRequestOptions()
@@ -307,6 +375,18 @@ public final class MediaLoadService {
     public func requestPlayerItem(
         for asset: PHAsset,
         progressHandler: (@MainActor @Sendable (Double) -> Void)? = nil,
+        resultHandler: @escaping @MainActor (AVPlayerItem?, Error?) -> Void
+    ) -> PHImageRequestID {
+        performRequestPlayerItem(
+            for: asset,
+            progressHandler: progressHandler,
+            resultHandler: resultHandler
+        )
+    }
+
+    nonisolated private func performRequestPlayerItem(
+        for asset: PHAsset,
+        progressHandler: (@MainActor @Sendable (Double) -> Void)?,
         resultHandler: @escaping @MainActor (AVPlayerItem?, Error?) -> Void
     ) -> PHImageRequestID {
         let options = PHVideoRequestOptions()
