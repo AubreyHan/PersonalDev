@@ -2,6 +2,14 @@ import Foundation
 import Observation
 import AppKit
 
+public enum ActivitySortField: String, CaseIterable, Sendable {
+    case name
+    case dateTime
+    case type
+    case distance
+    case duration
+}
+
 @MainActor
 @Observable
 public final class MainViewModel {
@@ -107,8 +115,67 @@ public final class MainViewModel {
         }
     }
 
+    public var sortField: ActivitySortField = .dateTime
+    public var sortAscending: Bool = false
+
     public var filteredActivities: [ActivityItem] {
-        allActivities.filter { selectedTypes.contains($0.typeKey) }
+        let filtered = allActivities.filter { selectedTypes.contains($0.typeKey) }
+        return filtered.sorted { lhs, rhs in
+            let orderedAsc: Bool
+            switch sortField {
+            case .name:
+                let cmp = lhs.displayName.localizedStandardCompare(rhs.displayName)
+                if cmp == .orderedSame {
+                    orderedAsc = lhs.activityId < rhs.activityId
+                } else {
+                    orderedAsc = (cmp == .orderedAscending)
+                }
+            case .dateTime:
+                if lhs.startTimeLocal == rhs.startTimeLocal {
+                    orderedAsc = lhs.activityId < rhs.activityId
+                } else {
+                    orderedAsc = lhs.startTimeLocal < rhs.startTimeLocal
+                }
+            case .type:
+                let cmp = lhs.typeKey.localizedStandardCompare(rhs.typeKey)
+                if cmp == .orderedSame {
+                    orderedAsc = lhs.startTimeLocal < rhs.startTimeLocal
+                } else {
+                    orderedAsc = (cmp == .orderedAscending)
+                }
+            case .distance:
+                let lDist = lhs.distance ?? -1
+                let rDist = rhs.distance ?? -1
+                if lDist == rDist {
+                    orderedAsc = lhs.startTimeLocal < rhs.startTimeLocal
+                } else {
+                    orderedAsc = lDist < rDist
+                }
+            case .duration:
+                let lDur = lhs.duration ?? -1
+                let rDur = rhs.duration ?? -1
+                if lDur == rDur {
+                    orderedAsc = lhs.startTimeLocal < rhs.startTimeLocal
+                } else {
+                    orderedAsc = lDur < rDur
+                }
+            }
+            return sortAscending ? orderedAsc : !orderedAsc
+        }
+    }
+
+    public func toggleSort(by field: ActivitySortField) {
+        if sortField == field {
+            sortAscending.toggle()
+        } else {
+            sortField = field
+            switch field {
+            case .name, .type:
+                sortAscending = true
+            case .dateTime, .distance, .duration:
+                sortAscending = false
+            }
+        }
     }
 
     public var isLoadingActivities: Bool = false

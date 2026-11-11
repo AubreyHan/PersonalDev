@@ -9,7 +9,7 @@ public struct ActivityListView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            // 表头：全选/取消全选复选框 + 严格 5 项基础信息列（名称、日期/时间、类型、距离、时长）
+            // 表头：全选/取消全选复选框 + 严格 5 项可点击排序基础信息列（名称、日期/时间、类型、距离、时长）
             HStack(spacing: 14) {
                 Toggle(
                     "",
@@ -23,40 +23,40 @@ public struct ActivityListView: View {
                 .disabled(viewModel.filteredActivities.isEmpty)
                 .frame(width: 28, alignment: .center)
 
-                Text("名称")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                sortableColumnHeader(
+                    title: "名称",
+                    field: .name,
+                    alignment: .leading
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text("日期/时间")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(width: 170, alignment: .leading)
+                sortableColumnHeader(
+                    title: "日期/时间",
+                    field: .dateTime,
+                    alignment: .leading
+                )
+                .frame(width: 170, alignment: .leading)
 
-                Text("类型")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(width: 140, alignment: .leading)
+                sortableColumnHeader(
+                    title: "类型",
+                    field: .type,
+                    alignment: .leading
+                )
+                .frame(width: 140, alignment: .leading)
 
-                Text("距离")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(width: 105, alignment: .trailing)
+                sortableColumnHeader(
+                    title: "距离",
+                    field: .distance,
+                    alignment: .trailing
+                )
+                .frame(width: 105, alignment: .trailing)
 
-                Text("时长")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(width: 95, alignment: .trailing)
+                sortableColumnHeader(
+                    title: "时长",
+                    field: .duration,
+                    alignment: .trailing
+                )
+                .frame(width: 95, alignment: .trailing)
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 9)
@@ -142,5 +142,39 @@ public struct ActivityListView: View {
                 .listStyle(.inset(alternatesRowBackgrounds: true))
             }
         }
+    }
+
+    @ViewBuilder
+    private func sortableColumnHeader(
+        title: String,
+        field: ActivitySortField,
+        alignment: Alignment
+    ) -> some View {
+        let isActive = (viewModel.sortField == field)
+        Button {
+            viewModel.toggleSort(by: field)
+        } label: {
+            HStack(spacing: 4) {
+                if alignment == .trailing {
+                    Spacer(minLength: 0)
+                }
+                Text(title)
+                    .font(.caption)
+                    .fontWeight(isActive ? .bold : .semibold)
+                    .foregroundStyle(isActive ? .primary : .secondary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+
+                Image(systemName: isActive ? (viewModel.sortAscending ? "chevron.up" : "chevron.down") : "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: isActive ? .bold : .regular))
+                    .foregroundStyle(isActive ? Color.accentColor : Color.secondary.opacity(0.5))
+
+                if alignment == .leading {
+                    Spacer(minLength: 0)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
