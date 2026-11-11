@@ -46,6 +46,8 @@
 		020B35E0A4EF5C998C1B9000 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F590C87394404D123BA6357 /* PreferencesView.swift */; };
 		B60158308846111FCBBD3E8B /* Calendar366Sidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BD213D7E81A21972C97F2DF /* Calendar366Sidebar.swift */; };
 		B70549CF567E593F74090F65 /* CleanupStatsCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D6F6D438CDB7738A1ED597A /* CleanupStatsCard.swift */; };
+		D1A2B3C4E5F60718293A4B5C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* Assets.xcassets */; };
+		E1A2B3C4E5F60718293A4B5E /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = F1B2C3D4E5F60718293A4B5F /* AppIcon.icns */; };
 		CA01DFD1095FE1FF89161F00 /* AlbumMembershipStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A27CF51D9E6EFD3251A7E0F9 /* AlbumMembershipStateTests.swift */; };
 		0249DC06D98B422F4F619302 /* FavoriteProtectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CBB0F9A5787CFBE9CFFA42 /* FavoriteProtectionTests.swift */; };
 		AA5CAF48AD24F20BF44FA900 /* MonthDayProgressTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52B4A4ED8C15FE1D0D221CB /* MonthDayProgressTests.swift */; };
