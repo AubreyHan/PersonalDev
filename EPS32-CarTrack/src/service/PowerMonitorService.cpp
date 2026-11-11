@@ -110,9 +110,9 @@ bool PowerMonitorService::begin() {
     }
 
     if (_inaOnline) {
-        SystemStateSnapshot snap;
-        if (SystemState::instance().getSnapshot(snap, pdMS_TO_TICKS(20))) {
-            sampleAndIntegrateCoulomb(nowMs, snap);
+        static SystemStateSnapshot s_bootSnap;
+        if (SystemState::instance().getSnapshot(s_bootSnap, pdMS_TO_TICKS(20))) {
+            sampleAndIntegrateCoulomb(nowMs, s_bootSnap);
         }
     }
     return _inaOnline;
@@ -503,14 +503,14 @@ void PowerMonitorService::stepStandbyStateMachine(uint32_t nowMs, const SystemSt
 void PowerMonitorService::update() {
     const uint32_t nowMs = millis();
 
-    SystemStateSnapshot snap;
-    if (!SystemState::instance().getSnapshot(snap, pdMS_TO_TICKS(20))) {
+    static SystemStateSnapshot s_powerSnap;
+    if (!SystemState::instance().getSnapshot(s_powerSnap, pdMS_TO_TICKS(20))) {
         return;
     }
 
     if (nowMs - _lastSampleMs >= Ina226Config::SAMPLE_INTERVAL_MS) {
-        sampleAndIntegrateCoulomb(nowMs, snap);
+        sampleAndIntegrateCoulomb(nowMs, s_powerSnap);
     }
 
-    stepStandbyStateMachine(nowMs, snap);
+    stepStandbyStateMachine(nowMs, s_powerSnap);
 }

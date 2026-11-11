@@ -6,8 +6,11 @@ Workflow:
   1. Detect connected M5Stack Tab5 USB serial port (/dev/cu.usbmodem* or /dev/cu.wchusbserial*).
   2. Query ESP32-P4 chip metadata, MAC address, and 16MB Flash health via esptool before flashing.
   3. Flash firmware & capture boot [HW_SELF_TEST] serial diagnostic report to verify all sensors:
-     - Tab5 Onboard : ESP32-P4 PSRAM, BMI270 Master (0x68), RX8130CE RTC (0x32), INA226 (0x40), MicroSD
-     - Module GNSS  : NEO-M9N (UART), BMI270 Slave (0x69), BMP280 Baro (0x76), BMM150 (0x10 HW ACK)
+     - Tab5 Onboard : ESP32-P4 32MB PSRAM, BMI270 Master (0x68), RX8130CE RTC (0x32),
+                      INA226 (0x41, R_SHUNT=5mOhm; 0x40 ES7210 untouched), FSPI MicroSD, ESP32-C6 SDIO
+     - Module GNSS  : NEO-M9N (UART RX=7/TX=6 primary, 48/47 & 38/37 fallback @ 115200 bps),
+                      BMI270 Slave (0x69), BMP280 Baro (0x76),
+                      BMM150 (AUX behind 0x69, BYPASSED for MagSafe; 0x10 ES8388 untouched)
 """
 
 import glob
@@ -87,15 +90,16 @@ def verify_sensors_over_serial(port, timeout_sec=12):
         print(f"[ERROR] Serial monitor error: {e}")
         return False
 
-    joined = "\n".join(lines)
     required_checks = [
+        ("Tab5 PSRAM 32MB    (HEX)",  "ONLINE (OK)"),
         ("Tab5 BMI270 Master (0x68)", "ONLINE (OK)"),
         ("M135 BMI270 Slave  (0x69)", "ONLINE (OK)"),
         ("Tab5 RX8130CE      (0x32)", "ONLINE (OK)"),
-        ("Tab5 INA226 Gauge  (0x40)", "ONLINE (OK)"),
+        ("Tab5 INA226 Gauge  (0x41)", "ONLINE (OK)"),
         ("M135 BMP280        (0x76)", "ONLINE (OK)"),
-        ("M135 BMM150        (0x10)", "HW_ACK (OK)"),
+        ("M135 BMM150        (AUX)",  "BYPASSED (MagSafe)"),
         ("M135 NEO-M9N       (UART)", "ONLINE (OK)"),
+        ("Tab5 ESP32-C6      (SDIO)", "ONLINE (OK)"),
     ]
 
     all_ok = True
@@ -130,7 +134,7 @@ def main():
         print("[WARN] One or more sensors did not report ONLINE. Check M5-Bus stacking of Module GNSS.")
         sys.exit(4)
 
-    print("\n[SUCCESS] All M5Stack Tab5 + Module GNSS sensors verified and firmware is running!")
+    print("\n[ALL PASS] M5Track-Tab5 MCU, Flash, Onboard Sensors & Module GNSS verified 100%!")
 
 
 if __name__ == "__main__":

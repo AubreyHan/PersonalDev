@@ -1409,7 +1409,7 @@ void TrackLogger::handleDailyRollover(const SystemStateSnapshot& snap, uint32_t 
 }
 
 void TrackLogger::update() {
-    SystemStateSnapshot snap;
+    static SystemStateSnapshot snap;
     if (!SystemState::instance().getSnapshot(snap, pdMS_TO_TICKS(20))) {
         return;
     }

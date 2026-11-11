@@ -515,7 +515,7 @@ namespace TaskConfig {
 
     constexpr BaseType_t  CORE_NET_CLOUD     = 0;
     constexpr UBaseType_t PRIO_NET_CLOUD     = 2;
-    constexpr uint32_t    STACK_NET_CLOUD    = 20480UL;
+    constexpr uint32_t    STACK_NET_CLOUD    = 24576UL;
 
     // Core 1: 60fps PSRAM UI engine, 1Hz SdFat GPX logger & 2Hz INA226 power monitor
     constexpr BaseType_t  CORE_UI            = 1;
@@ -529,7 +529,7 @@ namespace TaskConfig {
 
     constexpr BaseType_t  CORE_POWER         = 1;
     constexpr UBaseType_t PRIO_POWER         = 1;
-    constexpr uint32_t    STACK_POWER        = 8192UL;
+    constexpr uint32_t    STACK_POWER        = 10240UL;
 }
 
 // -----------------------------------------------------------------------------
