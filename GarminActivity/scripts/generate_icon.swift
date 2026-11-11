@@ -58,10 +58,10 @@ func renderIcon(size: Int) -> NSImage {
         ctx.drawRadialGradient(
             glowGrad,
             startCenter: CGPoint(x: 512, y: 600),
-            startRadius: 10,
+            startRadius: 0,
             endCenter: CGPoint(x: 512, y: 600),
             endRadius: 420,
-            options: []
+            options: [.drawsBeforeStartLocation]
         )
     }
 
@@ -76,7 +76,6 @@ func renderIcon(size: Int) -> NSImage {
     // 3. GPS Activity Route Path (winding athletic track from bottom-left to top-right)
     let routePath = CGMutablePath()
     let p0 = CGPoint(x: 245, y: 400)
-    let p1 = CGPoint(x: 390, y: 640)
     let p2 = CGPoint(x: 560, y: 480)
     let p3 = CGPoint(x: 755, y: 715)
 
