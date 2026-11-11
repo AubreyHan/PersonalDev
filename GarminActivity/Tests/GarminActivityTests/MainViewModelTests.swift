@@ -492,12 +492,7 @@ final class MainViewModelTests: XCTestCase {
         XCTAssertEqual(openedURLs, [GarminRegion.global.personalApiTokenPageURL])
 
         // 2) 登录中国区账号后点击“更换/退出 Key”(logout)：自动打开中国区获取 Key 页面
-        auth.sessionToReturn = AuthSession(
-            apiKey: "cn-key",
-            region: .china,
-            accessToken: "cn-token",
-            expiresAt: Date().addingTimeInterval(86400)
-        )
+        auth.detectedRegion = .china
         vm.apiKeyInput = "cn-key"
         await vm.login()
         XCTAssertEqual(vm.currentRegion, .china)
