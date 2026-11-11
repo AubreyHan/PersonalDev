@@ -47,7 +47,6 @@
 		B60158308846111FCBBD3E8B /* Calendar366Sidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BD213D7E81A21972C97F2DF /* Calendar366Sidebar.swift */; };
 		B70549CF567E593F74090F65 /* CleanupStatsCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D6F6D438CDB7738A1ED597A /* CleanupStatsCard.swift */; };
 		D1A2B3C4E5F60718293A4B5C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* Assets.xcassets */; };
-		E1A2B3C4E5F60718293A4B5E /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = F1B2C3D4E5F60718293A4B5F /* AppIcon.icns */; };
 		CA01DFD1095FE1FF89161F00 /* AlbumMembershipStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A27CF51D9E6EFD3251A7E0F9 /* AlbumMembershipStateTests.swift */; };
 		0249DC06D98B422F4F619302 /* FavoriteProtectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CBB0F9A5787CFBE9CFFA42 /* FavoriteProtectionTests.swift */; };
 		AA5CAF48AD24F20BF44FA900 /* MonthDayProgressTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52B4A4ED8C15FE1D0D221CB /* MonthDayProgressTests.swift */; };
@@ -112,6 +111,8 @@
 		5C69D0D15882F23FF0B76991 /* SimilarityClusteringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SimilarityClusteringTests.swift"; path = "PhotoCleanerTests/SimilarityClusteringTests.swift"; sourceTree = "<group>"; };
 		77F054B412CEFE2A6A249199 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "Info.plist"; path = "PhotoCleaner/App/Info.plist"; sourceTree = "<group>"; };
 		2C509A2C16BA3A23D46B2160 /* PhotoCleaner.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = "PhotoCleaner.entitlements"; path = "PhotoCleaner/App/PhotoCleaner.entitlements"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = "Assets.xcassets"; path = "PhotoCleaner/Resources/Assets.xcassets"; sourceTree = "<group>"; };
+		F1B2C3D4E5F60718293A4B5F /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; name = "AppIcon.icns"; path = "PhotoCleaner/Resources/AppIcon.icns"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -155,6 +156,8 @@
 			children = (
 				77F054B412CEFE2A6A249199 /* Info.plist */,
 				2C509A2C16BA3A23D46B2160 /* PhotoCleaner.entitlements */,
+				A1B2C3D4E5F60718293A4B5D /* Assets.xcassets */,
+				F1B2C3D4E5F60718293A4B5F /* AppIcon.icns */,
 				FA505A5644E1B21048AF79C8 /* AppDelegate.swift */,
 				753DE9B9AF8442FFE43848CA /* PhotoCleanerApp.swift */,
 				A53DA8BEDA421AE293E28707 /* AlbumModels.swift */,
@@ -291,6 +294,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D1A2B3C4E5F60718293A4B5C /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -424,6 +428,7 @@
 		0615050D04BD2DC4E6CFFAFF /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = PhotoCleaner/App/PhotoCleaner.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
@@ -447,6 +452,7 @@
 		2761849A6D0E26CA4E1817A1 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = PhotoCleaner/App/PhotoCleaner.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
