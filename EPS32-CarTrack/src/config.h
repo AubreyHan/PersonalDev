@@ -507,27 +507,27 @@ namespace ThemeColors {
 // -----------------------------------------------------------------------------
 namespace TaskConfig {
     // Core 0: High-rate sensor/GNSS ingestion & async ESP32-C6 network/cloud I/O
-    constexpr BaseType_t CORE_GNSS_IMU        = 0;
-    constexpr UBaseType_t PRIO_GNSS_IMU       = 5;
-    constexpr uint32_t   STACK_GNSS_IMU       = 8192UL;
+    constexpr BaseType_t  CORE_GNSS_IMU      = 0;
+    constexpr UBaseType_t PRIO_GNSS_IMU      = 5;
+    constexpr uint32_t    STACK_GNSS_IMU     = 12288UL;
 
-    constexpr BaseType_t CORE_NET_CLOUD       = 0;
-    constexpr UBaseType_t PRIO_NET_CLOUD      = 2;
-    constexpr uint32_t   STACK_NET_CLOUD      = 16384UL;
+    constexpr BaseType_t  CORE_NET_CLOUD     = 0;
+    constexpr UBaseType_t PRIO_NET_CLOUD     = 2;
+    constexpr uint32_t    STACK_NET_CLOUD    = 20480UL;
 
     // Core 1: 60fps PSRAM UI engine, 1Hz SdFat GPX logger & 2Hz INA226 power monitor
-    constexpr BaseType_t CORE_UI              = 1;
-    constexpr UBaseType_t PRIO_UI             = 4;
-    constexpr uint32_t   STACK_UI             = 12288UL;
-    constexpr uint32_t   UI_FRAME_PERIOD_MS   = 16UL; // ~60 FPS
+    constexpr BaseType_t  CORE_UI            = 1;
+    constexpr UBaseType_t PRIO_UI            = 4;
+    constexpr uint32_t    STACK_UI           = 20480UL;
+    constexpr uint32_t    UI_FRAME_PERIOD_MS = 16UL; // ~60 FPS
 
-    constexpr BaseType_t CORE_STORAGE         = 1;
-    constexpr UBaseType_t PRIO_STORAGE        = 3;
-    constexpr uint32_t   STACK_STORAGE        = 12288UL;
+    constexpr BaseType_t  CORE_STORAGE       = 1;
+    constexpr UBaseType_t PRIO_STORAGE       = 3;
+    constexpr uint32_t    STACK_STORAGE      = 16384UL;
 
-    constexpr BaseType_t CORE_POWER           = 1;
-    constexpr UBaseType_t PRIO_POWER          = 1;
-    constexpr uint32_t   STACK_POWER          = 6144UL;
+    constexpr BaseType_t  CORE_POWER         = 1;
+    constexpr UBaseType_t PRIO_POWER         = 1;
+    constexpr uint32_t    STACK_POWER        = 8192UL;
 }
 
 // -----------------------------------------------------------------------------
