@@ -11,8 +11,8 @@
 ## 2. 功能需求规格 (Functional Requirements)
 
 ### 2.1 认证与区域自动识别 (Authentication & Auto Region Detection)
-- **FR-1.1 Personal API Key 输入**：
-  - 首次启动或未保存凭据时，显示简洁的 API Key 登录界面，供用户粘贴在 Garmin Connect 网页端生成的 `Personal API Key`。
+- **FR-1.1 Personal API Key 输入与自动打开获取页面**：
+  - 首次启动（无已保存凭据）或点击「更换/退出 Key」进入登录界面时，显示简洁的 API Key 输入界面，并**自动在系统默认浏览器中打开 Garmin Connect 获取 Personal API Key 的页面**（默认打开国际区 `https://connect.garmin.com/app/settings/personalApiToken`；若上次登录过中国区则自动打开 `https://connect.garmin.cn/app/settings/personalApiToken`，同时在登录页底部附带双区获取页面的快捷链接）。
 - **FR-1.2 国际区/中国区自动探测**：
   - 界面**不设手动区域选择框**。
   - 用户提交 API Key 后，应用自动向官方两个区域的 Token 换取接口发起探测请求：

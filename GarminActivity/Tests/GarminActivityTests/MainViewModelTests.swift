@@ -463,4 +463,46 @@ final class MainViewModelTests: XCTestCase {
         XCTAssertNil(keychain.stored)
         XCTAssertEqual(keychain.clearCallCount, 1)
     }
+
+    // MARK: 6. 首次进入或更换 Key 时自动打开获取 Key 页面
+
+    func testAutoOpenPersonalApiKeyPageOnFirstEntryAndLogout() async {
+        let keychain = MockKeychainStore()
+        let auth = MockAuthService()
+        let api = MockGarminApiClient()
+        let suiteName = "GarminVMTests_AutoOpen_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        var openedURLs: [URL] = []
+
+        let vm = MainViewModel(
+            keychainService: keychain,
+            authService: auth,
+            apiClient: api,
+            exporter: SpyActivityExporter(),
+            userDefaults: defaults,
+            urlOpener: { url in
+                openedURLs.append(url)
+            }
+        )
+
+        // 1) 首次进入（Keychain 无保存的 Key）：bootstrap 自动打开默认国际区获取 Key 页面
+        await vm.bootstrap()
+        XCTAssertEqual(openedURLs, [GarminRegion.global.personalApiTokenPageURL])
+
+        // 2) 登录中国区账号后点击“更换/退出 Key”(logout)：自动打开中国区获取 Key 页面
+        auth.sessionToReturn = AuthSession(
+            apiKey: "cn-key",
+            region: .china,
+            accessToken: "cn-token",
+            expiresAt: Date().addingTimeInterval(86400)
+        )
+        vm.apiKeyInput = "cn-key"
+        await vm.login()
+        XCTAssertEqual(vm.currentRegion, .china)
+
+        vm.logout()
+        XCTAssertEqual(openedURLs.last, GarminRegion.china.personalApiTokenPageURL)
+    }
 }
