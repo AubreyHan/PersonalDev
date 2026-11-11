@@ -1,230 +1,135 @@
-# 技术架构设计 (ARCHITECTURE) - Garmin Activity Exporter
+# 技术架构设计 (ARCHITECTURE) - Garmin Activity Exporter (v1)
 
 ## 1. 整体系统架构 (System Architecture)
 
-`garmin-activity-exporter` 采用 **Tauri 2.0 (Rust) + React 19 (TypeScript)** 现代跨平台桌面架构：
-- **前端 (Frontend / Webview)**：专注于 UI 状态呈现、多维检索、虚拟化表格渲染、导出进度可视化与设置交互。
-- **后端 (Rust Core)**：专注于 Garmin SSO 协议逆向认证、网络请求与 Cookie Jar 会话池、系统级安全钥匙串（Keychain）存取、并发下载队列与限流调度、本地 SQLite 索引与文件系统 I/O。
+本项目采用纯正的 **macOS 原生桌面架构（Swift 6 + SwiftUI）**，直接对接官方 **Garmin Connect Personal API**，无跨端 WebView 开销、无第三方数据库依赖，架构精简清晰。
 
 ### 架构全景图
 
 ```mermaid
 flowchart TB
-    subgraph UI ["前端界面层 (React 19 + TypeScript + Tailwind CSS)"]
-        LoginPage["登录与区域选择页 (Global / CN)"]
-        ActivityList["活动列表与筛选器 (TanStack Table + Virtualizer)"]
-        ExportQueueView["导出进度监控与控制抽屉"]
-        SettingsModal["设置中心 (格式选择、路径配置、命名模板)"]
-        StateStore["全局状态管理 (Zustand)"]
+    subgraph UI ["视图层 (SwiftUI Views)"]
+        LoginView["API Key 登录页 (LoginView)"]
+        ToolbarView["顶部控制栏 (起始日期日历 + 动态类型多选下拉框 + 更换Key)"]
+        ActivityTableView["活动列表视图 (5列: 名称/日期时间/类型/距离/时长 + 多选框)"]
+        DownloadBarView["底部下载控制栏 (保存目录 + 格式选择 GPX/TCX/FIT + 同类型合并开关)"]
     end
 
-    subgraph IPC ["Tauri IPC 消息管道"]
-        Commands["Tauri Commands (Rust -> Frontend 调用)"]
-        Events["Tauri Event Bus (异步下载进度/状态推送)"]
+    subgraph VM ["状态管理层 (@Observable ViewModel)"]
+        AppViewModel["AppViewModel<br/>- 登录态与区域管理<br/>- 日期与动态类型筛选状态<br/>- 勾选集合与同类型合并判定"]
     end
 
-    subgraph Core ["Rust 后端核心引擎 (Tauri 2.0 Native)"]
-        direction TB
-        AuthMgr["认证管理器 (Auth Manager)<br/>- SSO 握手与 CookieJar<br/>- OAuth 刷新机制<br/>- MFA 挑战处理"]
-        GarminClient["Garmin API 客户端<br/>- 双区域名路由<br/>- 活动列表分页拉取<br/>- 官方 GPX/TCX 端点调用"]
-        QueueWorker["并发下载引擎 (Queue Worker)<br/>- Semaphore 并发受控 (2-3 并发)<br/>- 抖动随机延时 (防429)<br/>- 指数退避重试"]
-        FileExporter["文件写入直存管理器<br/>- 命名模板解析器<br/>- 平铺直存 (零子目录)<br/>- 特殊字符净化"]
-        LocalDB["本地 SQLite 索引库<br/>- 导出记录持久化<br/>- 增量对比比对器"]
-        KeyringService["系统钥匙串安全服务<br/>- OS Native Keyring (macOS/Win/Linux)"]
+    subgraph Core ["核心服务层 (Swift Services)"]
+        AuthService["PersonalApiAuthService<br/>- 双区 (.com / .cn) 自动探测<br/>- JWT Bearer Token 换取与过期管理"]
+        KeychainService["KeychainService<br/>- macOS Security 框架存取 API Key 与区域"]
+        GarminClient["GarminPersonalApiClient<br/>- 分页拉取起始日期至今活动<br/>- 下载原始活动 ZIP 流"]
+        FitProcessor["FitFileProcessor & Exporter<br/>- 内存解压 ZIP 提取 .fit<br/>- FIT 解析转 GPX / TCX<br/>- 同类型多活动时序升序合并 (.gpx / .tcx / .fit)"]
     end
 
-    subgraph External ["外部环境与目标"]
-        GarminGlobal["Garmin Global Servers<br/>(sso.garmin.com / connect.garmin.com)"]
-        GarminCN["Garmin China Servers<br/>(sso.garmin.cn / connect.garmin.cn)"]
-        LocalFS["本地文件系统<br/>(~/Documents/Garmin_Activities/...)"]
-        OSKeyring["操作系统原生钥匙串<br/>(Keychain / Credential Manager)"]
+    subgraph External ["外部系统与接口"]
+        GarminGlobal["Garmin Global Personal API<br/>(personal.connectapi.garmin.com)"]
+        GarminCN["Garmin China Personal API<br/>(personal.connectapi.garmin.cn)"]
+        MacKeychain["macOS Keychain"]
+        LocalFS["本地保存目录 (默认 ~/Downloads)"]
     end
 
-    UI <--> IPC
-    IPC <--> Core
-    AuthMgr <--> GarminGlobal
-    AuthMgr <--> GarminCN
+    UI <--> VM
+    VM --> Core
+    AuthService <--> GarminGlobal
+    AuthService <--> GarminCN
+    AuthService <--> KeychainService
+    KeychainService <--> MacKeychain
     GarminClient <--> GarminGlobal
     GarminClient <--> GarminCN
-    QueueWorker --> FileExporter
-    FileExporter --> LocalFS
-    FileExporter --> LocalDB
-    KeyringService <--> OSKeyring
+    FitProcessor --> LocalFS
 ```
 
 ---
 
 ## 2. 技术选型与决策依据 (Tech Stack)
 
-| 层次 / 领域 | 选用技术 | 版本/库 | 选型理由 |
-| :--- | :--- | :--- | :--- |
-| **桌面运行时** | **Tauri 2.0** | `2.x` | 相比 Electron，内存消耗减少 80%（~40MB vs ~200MB），安装包体积仅 ~15MB，无 Chromium 冗余打包，直接调用 OS Webview。 |
-| **核心后端语言** | **Rust** | `2021 Edition` | 极高并发控制能力、内存安全、原生文件 I/O 吞吐、与操作系统底层 Keychain/Keyring 原生绑定无损耗。 |
-| **HTTP 与网络客户端** | **reqwest** | `0.12` (with rustls, cookies) | 工业级异步 HTTP 客户端，原生支持持久化 CookieJar，自定义 Header 与重定向策略，稳定处理 Garmin SSO。 |
-| **系统凭据存储** | **keyring-rs** | `3.x` | 跨平台对接 macOS Keychain、Windows Credential Manager、Linux Freedesktop Secret Service，确保密码机密性。 |
-| **本地元数据持久化** | **rusqlite** / **bundled SQLite** | `0.31` | 轻量单文件内嵌数据库，毫秒级快速索引数万条已导出活动元数据，支撑秒级增量状态比对。 |
-| **前端框架** | **React + TypeScript** | `React 19, TS 5.x` | 类型完备，生态丰富，组件化程度高。 |
-| **构建工具** | **Vite** | `6.x` | 极速 HMR 热更新与优化的现代化打包。 |
-| **UI 与样式组件** | **Tailwind CSS + Lucide Icons** | `v3.4+` | 原子化样式，极高定制自由度，支持深色/浅色模式自适应。 |
-| **高性能大列表** | **@tanstack/react-virtual** + **@tanstack/react-table** | `v3 / v8` | 虚拟化 DOM 渲染，即使加载上千条运动数据仍能保证 60 FPS 流畅滚动。 |
-| **客户端状态管理** | **Zustand** | `5.x` | 轻量直观，避免 React Context 频繁重渲染问题。 |
+| 模块 | 选用技术 | 说明 |
+| :--- | :--- | :--- |
+| **开发语言与 UI 框架** | **Swift 6 + SwiftUI** | macOS 原生性能与交互体验，原生支持 `DatePicker`、`Table`、`Menu`、`NSOpenPanel`。 |
+| **最低系统版本** | **macOS 14.0 (Sonoma)+** | 原生支持 `@Observable` 宏与现代 SwiftUI 表格/日历组件。 |
+| **网络请求** | **Foundation `URLSession` (`async/await`)** | 零外部网络库依赖，原生支持并发请求双区探测与流式下载。 |
+| **凭据安全存储** | **macOS `Security` (Keychain Services)** | 系统级安全存储 `Personal API Key` 与所属区域。 |
+| **偏好配置存储** | **`UserDefaults` (`@AppStorage`)** | 仅用于记住用户选择的下载保存目录（及 Security-Scoped Bookmark）与默认导出格式；**不保存起始日期**（确保每次打开默认当天）。 |
+| **ZIP 解压与 FIT 解析** | **Swift 原生解压 / FIT 解析器** | Garmin Personal API 下载接口返回包含单个 `.fit` 文件的标准 ZIP 流，在内存中直接提取 `.fit` 二进制并解析 Record/Lap/Session 消息。 |
 
 ---
 
-## 3. 推荐工程目录结构 (Directory Structure)
+## 3. 工程目录结构 (Directory Structure)
 
-未来在独立业务工程仓库中进行编码实现时，推荐的标准代码组织结构如下：
+在业务仓库 `/Users/aubreyhan/Tools/git_repo/PersonalDev/GarminActivity` 中的推荐结构：
 
 ```text
-garmin-activity-exporter/
-├── src-tauri/                       # Rust 核心后端工程
-│   ├── Cargo.toml                  # Rust 依赖声明
-│   ├── tauri.conf.json             # Tauri 2.0 配置文件 (权限、窗口、插件)
-│   ├── src/
-│   │   ├── main.rs                 # 应用程序入口
-│   │   ├── lib.rs                  # 核心库逻辑与 command 注册
-│   │   ├── auth/                   # 认证子系统
-│   │   │   ├── mod.rs
-│   │   │   ├── sso.rs              # Garmin SSO 握手与 OAuth 获取
-│   │   │   ├── session.rs          # 会话管理与 Cookie 持久化
-│   │   │   └── keychain.rs         # OS Keyring 密码读写接口
-│   │   ├── garmin/                 # Garmin API 交互层
-│   │   │   ├── mod.rs
-│   │   │   ├── endpoints.rs        # 域名路由器 (CN vs Global URL 端点)
-│   │   │   ├── activities.rs       # 活动搜索与分页接口
-│   │   │   └── download.rs         # GPX / TCX 下载流
-│   │   ├── exporter/               # 导出流水线与本地归档
-│   │   │   ├── mod.rs
-│   │   │   ├── queue.rs            # 并发受控的下载队列调度器
-│   │   │   ├── template.rs         # 文件名格式化模板引擎
-│   │   │   ├── merger.rs           # 多活动 GPX/TCX 无损轨迹合并引擎 (时序对齐/传感器保真)
-│   │   │   └── file_writer.rs      # 文件写入与平铺直存管理 (无需创建子目录)
-│   │   ├── db/                     # 本地 SQLite 数据层
-│   │   │   ├── mod.rs
-│   │   │   ├── schema.rs           # 数据库初始化表结构
-│   │   │   └── history_repo.rs     # 导出历史查询与增量对比
-│   │   └── commands/               # 前端调用的 Tauri Commands
-│   │       ├── auth_commands.rs
-│   │       ├── activity_commands.rs
-│   │       └── export_commands.rs
-├── src/                            # 前端工程 (React 19 + TypeScript)
-│   ├── index.html
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── vite.config.ts
-│   ├── tailwind.config.js
-│   └── src/
-│       ├── main.tsx
-│       ├── App.tsx                 # 主页面框架与导航
-│       ├── api/                    # 包装 Tauri invoke 的类型化 API 客户端
-│       │   ├── auth.ts
-│       │   ├── activities.ts
-│       │   └── exporter.ts
-│       ├── components/             # 可复用 UI 组件
-│       │   ├── ActivityTable.tsx   # 虚拟滚动运动表格
-│       │   ├── ActivityCard.tsx    # 运动卡片视图
-│       │   ├── FilterBar.tsx       # 时间与运动分类多维筛选器
-│       │   ├── ExportDrawer.tsx    # 导出任务队列抽屉
-│       │   ├── SettingsDialog.tsx  # 设置对话框 (路径/模板/格式)
-│       │   └── LoginModal.tsx      # 双区登录弹窗与 MFA 验证码输入
-│       ├── store/                  # Zustand 状态切片
-│       │   ├── authStore.ts
-│       │   ├── activityStore.ts
-│       │   └── exportStore.ts
-│       ├── types/                  # 全局 TypeScript 接口定义
-│       │   ├── garmin.ts
-│       │   ├── activity.ts
-│       │   └── export.ts
-│       └── utils/                  # 格式化与辅助工具
-│           ├── formatters.ts       # 配速、心率、距离格式转换
-│           └── path.ts
+GarminActivity/
+├── Package.swift / GarminActivity.xcodeproj
+└── Sources/
+    └── GarminActivity/
+        ├── GarminActivityApp.swift          # 应用入口
+        ├── Models/
+        │   ├── GarminRegion.swift           # 国际区 (.com) / 中国区 (.cn) 枚举与 BaseURL
+        │   ├── ActivityItem.swift           # 活动列表模型 (5大展示字段 + 原始属性)
+        │   ├── ExportFormat.swift           # GPX / TCX / FIT 格式枚举
+        │   └── ParsedActivityData.swift     # 从 FIT 解析出的轨迹点、分段(Lap)与传感器时序模型
+        ├── Services/
+        │   ├── KeychainService.swift        # Keychain 读写/清除 API Key 与 Region
+        │   ├── PersonalApiAuthService.swift # 双区 Token 接口自动探测与 JWT 过期检查
+        │   ├── GarminApiClient.swift        # 活动列表分页拉取与活动 ZIP 下载
+        │   ├── ZipExtractor.swift           # 从下载的 ZIP 字节流中提取 .fit 数据
+        │   ├── FitParser.swift              # 解析 .fit 二进制中的时间戳、经纬度、高程、心率、踏频、功率、分段
+        │   └── ActivityExporter.swift       # 单文件导出与多活动同类型时序升序合并引擎 (GPX/TCX/FIT)
+        ├── ViewModels/
+        │   └── MainViewModel.swift          # 主视图状态机 (日期重置、动态类型集、多选与合并条件计算)
+        └── Views/
+            ├── LoginView.swift              # Personal API Key 输入与自动探测状态展示
+            ├── MainView.swift               # 主窗口布局
+            ├── FilterHeaderView.swift       # 起始日期日历控件 (2000~今天) + 动态类型多选下拉框
+            ├── ActivityListView.swift       # 活动列表视图 (复选框 + 5项信息)
+            └── DownloadFooterView.swift     # 底部保存目录选择、导出格式、合并复选框与下载按钮
 ```
 
 ---
 
-## 4. 核心子系统流程与交互机制
+## 4. 核心交互流程
 
-### 4.1 Garmin SSO 双区认证时序 (Authentication Flow)
-
-Garmin 的认证流程基于 SSO 重定向与 OAuth 握手。不同区域（Global vs China）的 URL 基址与 SSO 服务域名不同：
-- Global: `https://sso.garmin.com/sso` 与 `https://connect.garmin.com`
-- China: `https://sso.garmin.cn/sso` 与 `https://connect.garmin.cn`
+### 4.1 Token 接口自动探测区域流程
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor User as 用户
-    participant UI as 前端 (React)
-    participant Rust as Tauri 后端 (Auth Manager)
-    participant SSO as Garmin SSO 端点
-    participant Modern as Garmin Connect 网关
+    participant App as AppViewModel / AuthService
+    participant Global as personal.connectapi.garmin.com
+    participant CN as personal.connectapi.garmin.cn
+    participant KC as macOS Keychain
 
-    User->>UI: 选择区域 (Global / CN)，输入账号密码
-    UI->>Rust: invoke("login", { domain, email, password })
-    Rust->>SSO: GET /sso/signin (携带 service URL，获取 CSRF 与 cookies)
-    SSO-->>Rust: 返回 ticket cookie 与登录页面表单
-    Rust->>SSO: POST /sso/signin (提交 username, password, _csrf)
-    
-    alt 触发 MFA 二步验证
-        SSO-->>Rust: 返回 response 状态为 NEED_MFA
-        Rust-->>UI: emit("mfa-required")
-        UI->>User: 弹出验证码输入框
-        User->>UI: 输入 6 位验证码
-        UI->>Rust: invoke("submit_mfa", { code })
-        Rust->>SSO: POST /sso/verifyMfa (提交 code)
+    User->>App: 输入 Personal API Key 点击登录
+    par 并发探测双区 Token 接口
+        App->>Global: POST /personalapitoken-service/personal-api/personal-api-key/token<br/>Header: Authorization: ApiKey <key>
+        App->>CN: POST /personalapitoken-service/personal-api/personal-api-key/token<br/>Header: Authorization: ApiKey <key>
     end
-
-    SSO-->>Rust: 302 重定向到 Modern 网关 (携带 service ticket)
-    Rust->>Modern: GET /modern?ticket=ST-xxxx
-    Modern-->>Rust: 返回登录成功 JWT 与 OAuth 凭据 (存入 CookieJar)
-    Rust->>Rust: 将凭据与会话写入系统 Keyring 与本地配置
-    Rust-->>UI: 登录成功，返回用户信息
+    alt 国际区返回 200 OK (JWT Token)
+        Global-->>App: 200 OK (access_token)
+        App->>KC: 保存 API Key + Region = .global
+        App-->>User: 进入主界面 (默认加载当天活动)
+    else 中国区返回 200 OK (JWT Token)
+        CN-->>App: 200 OK (access_token)
+        App->>KC: 保存 API Key + Region = .china
+        App-->>User: 进入主界面 (默认加载当天活动)
+    else 均返回 401 / 失败
+        App-->>User: 提示 API Key 无效或网络异常
+    end
 ```
 
-### 4.2 导出流水线与限流设计 (Export Pipeline)
+### 4.2 起始日期拉取与动态类型筛选流程
 
-为防止短时间内大批量请求导致用户 IP 被 Garmin 防爬系统风控拦截，设计了并发受控的队列模型：
-
-```mermaid
-flowchart LR
-    subgraph Trigger ["任务触发"]
-        T1["批量勾选 (N项)"]
-        T2["一键增量同步 (未导出项)"]
-    end
-
-    subgraph Queue ["下载管理队列 (Queue Worker)"]
-        Pending["待下载队列 (FIFO)"]
-        Semaphore["Tokio 并发信号量 (Max 2~3)"]
-        Worker1["下载 Worker 1"]
-        Worker2["下载 Worker 2"]
-    end
-
-    subgraph Exec ["下载与归档"]
-        Fetch["下载 GPX / TCX 数据"]
-        Jitter["随机等待 300~800ms"]
-        Save["解析模板并写入本地文件"]
-        DBUpdate["更新 SQLite 索引为已导出"]
-    end
-
-    Trigger --> Pending
-    Pending --> Semaphore
-    Semaphore --> Worker1 & Worker2
-    Worker1 & Worker2 --> Fetch
-    Fetch --> Save --> DBUpdate
-    DBUpdate --> Jitter
-    Jitter --> Pending
-```
-
----
-
-## 5. 错误恢复与异常边界设计
-
-1. **Garmin 429 Too Many Requests (限流处理)**：
-   - 当收到 HTTP 429 或连接被重置时，队列自动暂停。
-   - 采用指数退避算法：初次延时 5s，若仍失败则等待 15s、30s，并在 UI 队列上明确提示“触发限流保护，正在降速重试中”，避免盲目重试导致封号。
-2. **Session 过期与静默续约**：
-   - 在活动列表翻页或下载过程中若返回 HTTP 401 / 403，Rust 客户端自动利用当前会话上下文执行一次快速 ticket 重新认证。
-   - 若重新认证失败，通知前端抛出“登录凭据已过期，请重新登录”的友好弹窗，且下载队列进入安全暂停态，保留当前下载进度不丢失。
-3. **文件名非法字符与系统兼容性**：
-   - 用户在 Garmin 上的活动标题常包含表情包、斜杠或特殊符号（如 `晨跑 / 5km (PB! 🎉)`）。
-   - 文件命名引擎会通过内置净化器自动过滤或替换跨平台非法字符（`\ / : * ? " < > |` 及换行符），将不可打印字符替换为下划线，避免 macOS / Windows 保存文件抛出 I/O 错误。
+1. **应用启动**：`startDate` 固定初始化为 `Date.now`（当天 `00:00:00`）。
+2. **拉取活动**：调用 `GET /activitylist-service/activities/search/activities?startDate=YYYY-MM-DD&start=0&limit=99`（若返回满 99 条则自动递增 `start` 循环拉取，直至获取起始日期至今的全部活动）。
+3. **动态生成类型筛选项**：
+   - 从拉取到的 `allActivities` 数组中提取所有不重复的 `activityType.typeKey`，按出现频次或字母排序生成 `availableTypes`。
+   - 将选中类型集合 `selectedTypes` 默认设为 `Set(availableTypes)`（全选）。
+   - 若用户切换多选下拉框中的类型复选框，仅在本地过滤 `filteredActivities = allActivities.filter { selectedTypes.contains($0.typeKey) }`，无需重复请求网络。
+   - 当过滤结果变化导致部分已勾选 Activity 不在当前可见列表中时，自动清理不可见项的勾选状态，防止误下载。
