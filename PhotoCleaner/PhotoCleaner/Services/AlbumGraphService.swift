@@ -146,8 +146,8 @@ public final class AlbumGraphService {
                     )
                     collectedFolders.append(folderNode)
                 } else if let album = collection as? PHAssetCollection,
-                          album.collectionType == .album,
-                          album.collectionSubtype == .albumRegular,
+                          album.assetCollectionType == .album,
+                          album.assetCollectionSubtype == .albumRegular,
                           album.canPerform(.addContent) || album.canPerform(.removeContent) {
                     let title = (album.localizedTitle ?? "未命名相簿").trimmingCharacters(in: .whitespacesAndNewlines)
                     let safeTitle = title.isEmpty ? "未命名相簿" : title

@@ -306,8 +306,8 @@ public final class EmptyCollectionSweeper {
                     let children = PHCollection.fetchCollections(in: folder, options: nil)
                     visit(children)
                 } else if let album = collection as? PHAssetCollection,
-                          album.collectionType == .album,
-                          album.collectionSubtype == .albumRegular,
+                          album.assetCollectionType == .album,
+                          album.assetCollectionSubtype == .albumRegular,
                           album.canPerform(.delete),
                           !ignoredAlbumIDs.contains(album.localIdentifier) {
                     let trueAssetCount = PHAsset.fetchAssets(in: album, options: trueCountOptions).count

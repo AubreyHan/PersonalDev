@@ -12,7 +12,7 @@ import PhotosUI
 public final class MediaLoadService {
     public static let shared = MediaLoadService()
 
-    public static let defaultGridThumbnailSize = CGSize(width: 320, height: 320)
+    public nonisolated static let defaultGridThumbnailSize = CGSize(width: 320, height: 320)
 
     private let cachingManager: PHCachingImageManager
     private let geocoder = CLGeocoder()
