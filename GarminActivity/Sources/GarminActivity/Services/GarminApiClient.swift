@@ -21,8 +21,14 @@ public enum GarminApiError: LocalizedError, Equatable, Sendable {
 }
 
 public protocol GarminApiClientProtocol: Sendable {
-    func fetchActivities(from startDate: Date, region: GarminRegion, accessToken: String) async throws -> [ActivityItem]
+    func fetchActivities(from startDate: Date, to endDate: Date, region: GarminRegion, accessToken: String) async throws -> [ActivityItem]
     func downloadActivityZip(activityId: Int64, region: GarminRegion, accessToken: String) async throws -> Data
+}
+
+extension GarminApiClientProtocol {
+    public func fetchActivities(from startDate: Date, region: GarminRegion, accessToken: String) async throws -> [ActivityItem] {
+        try await fetchActivities(from: startDate, to: Date(), region: region, accessToken: accessToken)
+    }
 }
 
 public final class GarminApiClient: GarminApiClientProtocol, Sendable {
@@ -37,10 +43,12 @@ public final class GarminApiClient: GarminApiClientProtocol, Sendable {
 
     public func fetchActivities(
         from startDate: Date,
+        to endDate: Date = Date(),
         region: GarminRegion,
         accessToken: String
     ) async throws -> [ActivityItem] {
         let startDateString = Self.formatLocalStartDate(startDate)
+        let endDateString = Self.formatLocalStartDate(endDate)
         var startOffset = 0
         var seenIDs = Set<Int64>()
         var collectedActivities: [ActivityItem] = []
@@ -57,7 +65,8 @@ public final class GarminApiClient: GarminApiClientProtocol, Sendable {
             components.queryItems = [
                 URLQueryItem(name: "start", value: String(startOffset)),
                 URLQueryItem(name: "limit", value: String(Self.pageLimit)),
-                URLQueryItem(name: "startDate", value: startDateString)
+                URLQueryItem(name: "startDate", value: startDateString),
+                URLQueryItem(name: "endDate", value: endDateString)
             ]
 
             guard let url = components.url else {
