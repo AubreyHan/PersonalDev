@@ -3,6 +3,8 @@
 > [!IMPORTANT]
 > **执行提示 (Execution Notice)**：
 > 本文档面向业务代码仓库 `/Users/aubreyhan/Tools/git_repo/PersonalDev/GarminActivity` 的实际编码工作。严格按照第一版（v1）范围实施，不添加任何未定义的功能。
+> - **多智能体并行开发（推荐）**：在 `GarminActivity` 工作区直接输入 `/swarm`（或 `/swarm Phase 1`），系统将自动加载项目专属 [`.agents/skills/swarm/SKILL.md`](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/GarminActivity/.agents/skills/swarm/SKILL.md)，按模块文件所有权矩阵调度 `scaffold-models`、`auth-api-services`、`fit-export-engine`、`viewmodel-ui` 与 `verifier` 并行推进研发与测试。
+> - **单智能体逐阶段开发**：也可按顺序逐阶段下达指令。
 
 ---
 
