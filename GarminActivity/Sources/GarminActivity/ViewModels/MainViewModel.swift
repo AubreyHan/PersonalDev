@@ -8,7 +8,7 @@ public final class MainViewModel {
     // MARK: - Constants
 
     /// 日历控件允许选择的最早起始日期：2000-01-01 00:00:00（本地日历）
-    public static var earliestAllowedDate: Date {
+    nonisolated public static var earliestAllowedDate: Date {
         var components = DateComponents()
         components.year = 2000
         components.month = 1
@@ -19,7 +19,7 @@ public final class MainViewModel {
         return Calendar.current.date(from: components) ?? Date(timeIntervalSince1970: 946684800)
     }
 
-    public static let defaultSaveDirectoryDefaultsKey = "GarminActivity.saveDirectoryPath"
+    nonisolated public static let defaultSaveDirectoryDefaultsKey = "GarminActivity.saveDirectoryPath"
 
     // MARK: - Dependencies
 

@@ -1,10 +1,11 @@
 import SwiftUI
 
+@MainActor
 public struct MainView: View {
     @Bindable var viewModel: MainViewModel
 
-    public init(viewModel: MainViewModel = MainViewModel()) {
-        self.viewModel = viewModel
+    public init(viewModel: MainViewModel? = nil) {
+        self.viewModel = viewModel ?? MainViewModel()
     }
 
     public var body: some View {
