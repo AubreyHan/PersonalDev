@@ -554,7 +554,7 @@ public struct FitParser: Sendable {
                 defer { fieldOffset += field.size }
                 switch field.fieldDefNum {
                 case 253: // timestamp (uint32)
-                    if let raw = readValidUInt32(bytes, at: fieldOffset, size: field.size, isBigEndian: def.isBigEndian) {
+                    if let raw = readValidUInt32(bytes, at: fieldOffset, size: field.size, isBigEndian: def.isBigEndian), raw > 0 {
                         timestampRaw = raw
                         lastTimestampRaw = raw
                     }

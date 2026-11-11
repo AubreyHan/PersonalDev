@@ -423,4 +423,44 @@ final class MainViewModelTests: XCTestCase {
         XCTAssertEqual(vm.lastExportedURLs[0].pathExtension, "tcx")
         XCTAssertTrue(FileManager.default.fileExists(atPath: vm.lastExportedURLs[0].path))
     }
+
+    // MARK: 5. Keychain 自动登录 (bootstrap) 与退出清理 (logout)
+
+    func testBootstrapAutoLoginAndLogoutReset() async {
+        let keychain = MockKeychainStore()
+        keychain.stored = StoredCredentials(apiKey: "saved-global-key", region: .global)
+
+        let auth = MockAuthService()
+        let api = MockGarminApiClient()
+        api.activitiesToReturn = [
+            ActivityItem(
+                activityId: 901,
+                activityName: "Morning Run",
+                startTimeLocal: "2026-11-11 06:30:00",
+                activityType: ActivityTypeDTO(typeKey: "running"),
+                distance: 6000,
+                duration: 1800
+            )
+        ]
+
+        let vm = MainViewModel(
+            keychainService: keychain,
+            authService: auth,
+            apiClient: api,
+            exporter: SpyActivityExporter()
+        )
+
+        await vm.bootstrap()
+        XCTAssertTrue(vm.isAuthenticated)
+        XCTAssertEqual(vm.currentRegion, .global)
+        XCTAssertEqual(vm.allActivities.count, 1)
+        XCTAssertEqual(vm.availableTypes, ["running"])
+
+        vm.logout()
+        XCTAssertFalse(vm.isAuthenticated)
+        XCTAssertNil(vm.currentRegion)
+        XCTAssertTrue(vm.allActivities.isEmpty)
+        XCTAssertNil(keychain.stored)
+        XCTAssertEqual(keychain.clearCallCount, 1)
+    }
 }
