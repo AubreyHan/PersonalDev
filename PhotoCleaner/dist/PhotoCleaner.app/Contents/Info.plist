@@ -10,6 +10,10 @@
 	<string>PhotoCleaner</string>
 	<key>CFBundleExecutable</key>
 	<string>PhotoCleaner</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.personaldev.PhotoCleaner</string>
 	<key>CFBundleInfoDictionaryVersion</key>
