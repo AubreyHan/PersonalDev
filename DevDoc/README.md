@@ -31,7 +31,7 @@ DevDoc/
 - [m5-vehicle-tracker](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/m5-vehicle-tracker/README.md)：基于 M5Stack Core2 + u-blox NEO-M9N 的车载高精度轨迹记录仪与多功能数字仪表系统。
 - [github-auto-sync](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/github-auto-sync/README.md)：基于 Tauri 2.0 (Rust) + React 的轻量级桌面系统托盘应用，支持多目录 Git 仓库自动递归发现、动态监听与 4 种模式策略化自动同步。
 - [qnap-photosphere](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/qnap-photosphere/README.md)：基于 Go + QPKG 原生打包的威联通 NAS 全能相册与资产清洗中枢，集成 Immich 协议兼容与 CPU 友好型 AI 整理。
-- [garmin-activity-exporter](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/garmin-activity-exporter/README.md)：基于 Tauri 2.0 (Rust) + React 的现代化轻量桌面应用，支持 Garmin 双区登录、GPX/TCX 通用轨迹批量与增量导出、多维筛选及灵活模板归档。
+- [garmin-activity-exporter](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/garmin-activity-exporter/README.md)：基于 macOS 原生 Swift + SwiftUI 构建的轻量桌面应用，对接 Garmin Connect Personal API，支持 Token 接口自动探测双区、单日历起始日期选择、动态现有运动类型多选筛选、5 项基础信息列表展示，以及勾选单个/多个活动下载与同类型活动合并导出（GPX/TCX/FIT）。
 - [english-word](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/english-word/README.md)：基于 React 19 + Vite PWA (IndexedDB 离线优先) 与 Cloudflare 全家桶 (Pages + Workers + D1 + Workers AI) 的跨平台多租户英语单词学习与艾宾浩斯复习系统，支持听说读写四步递进式闯关与盲测复习回炉机制。
 - [photo-album](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/photo-album/PRD.md)：专为威联通 QNAP TS-873A (QTS 5.x) 打造的原生 QPKG 照片定时导入、Live Photo 配对、MD5 判重与按拍摄日期归档软件。
 - [photo-cleaner](file:///Users/aubreyhan/Tools/git_repo/PersonalDev/DevDoc/photo-cleaner/README.md)：基于原生 Swift 6 + SwiftUI + PhotoKit + Vision 的 macOS 系统相册“那年今日（366 天切片）”渐进式清理与相簿归属管理工具，支持年份分组网格、空格大图快审、当日相似图同屏对比、相簿归属双向调整与空相簿/空文件夹即刻自动删除。
