@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'teacher' | 'student';
+export type UserRole = 'admin' | 'user' | 'teacher' | 'student';
 
 export interface User {
   id: string;
@@ -7,12 +7,6 @@ export interface User {
   role: UserRole;
   createdAt: number;
   updatedAt: number;
-}
-
-export interface TeacherStudentRelation {
-  teacherId: string;
-  studentId: string;
-  boundAt: number;
 }
 
 export interface WordMeaning {
@@ -45,9 +39,10 @@ export interface WordExample {
   targetInSentence: string;    // 句中实际出现的目标词或变形，如 "wrote" (忽略大小写精准挖空)
 }
 
-export interface TeacherWord {
+export interface WordItem {
   id: string;
-  teacherId: string;
+  userId: string;
+  teacherId?: string;          // 兼容历史字段
   teacherName?: string;
   text: string;
   normalizedText: string;
@@ -65,10 +60,12 @@ export interface TeacherWord {
   updatedAt: number;
 }
 
+export type TeacherWord = WordItem;
+
 export type StudyStatus = 'unlearned' | 'learning' | 'reviewing' | 'mastered';
 
 /**
- * 学生端「学习」模块子步骤断点持久化结构 (保存在 IndexedDB 与 D1)
+ * 用户端「学习」模块子步骤断点持久化结构 (保存在 IndexedDB 与 D1)
  */
 export interface StudyCheckpoint {
   step: '1' | '2.1' | '2.2' | '2.3' | '2.4';
@@ -79,8 +76,9 @@ export interface StudyCheckpoint {
   updatedAt: number;
 }
 
-export interface StudentWordProgress {
-  studentId: string;
+export interface UserWordProgress {
+  userId: string;
+  studentId?: string;             // 兼容历史字段
   normalizedText: string;
   status: StudyStatus;
   ebbinghausStage: number;        // 0:未入池, 1:+1d, 2:+2d, 3:+4d, 4:+7d, 5:+15d, 6:+30d
@@ -95,8 +93,11 @@ export interface StudentWordProgress {
   updatedAt: number;
 }
 
-export interface StudentAnalyticsSummary {
-  studentId: string;
+export type StudentWordProgress = UserWordProgress;
+
+export interface UserAnalyticsSummary {
+  userId: string;
+  studentId?: string;
   username: string;
   displayName: string;
   totalWords: number;
@@ -108,7 +109,9 @@ export interface StudentAnalyticsSummary {
   lastActiveAt: number | null;
 }
 
-export interface StudentWeakWord {
+export type StudentAnalyticsSummary = UserAnalyticsSummary;
+
+export interface UserWeakWord {
   normalizedText: string;
   text: string;
   meanings: WordMeaning[];
@@ -118,3 +121,5 @@ export interface StudentWeakWord {
   currentStage: number;
   nextReviewDate: string | null;
 }
+
+export type StudentWeakWord = UserWeakWord;
