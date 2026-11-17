@@ -2,9 +2,9 @@ import { Hono } from 'hono';
 import { handle } from 'hono/cloudflare-pages';
 import { authRouter } from './routes/auth';
 import { adminRouter } from './routes/admin';
-import { teacherRouter } from './routes/teacher';
+import { wordsRouter } from './routes/words';
+import { syncRouter } from './routes/sync';
 import { speechRouter } from './routes/speech';
-import { studentRouter } from './routes/student';
 import type { Env, HonoVariables } from './types';
 
 const app = new Hono<{ Bindings: Env; Variables: HonoVariables }>().basePath('/api');
@@ -21,9 +21,13 @@ app.options('*', (c) => c.body(null, 204));
 
 app.route('/auth', authRouter);
 app.route('/admin', adminRouter);
-app.route('/teacher', teacherRouter);
+app.route('/words', wordsRouter);
+app.route('/sync', syncRouter);
 app.route('/speech', speechRouter);
-app.route('/student', studentRouter);
+
+// 兼容过渡：将旧的 /teacher 和 /student 路径映射至新的通用路由
+app.route('/teacher', wordsRouter);
+app.route('/student', syncRouter);
 
 export const onRequest = handle(app);
 export default app;
